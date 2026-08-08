@@ -3,8 +3,10 @@ import { unzipSync } from "fflate";
 
 const BASE = "https://api.kiriengine.app/api/v1/open";
 
-export const MIN_IMAGES = 20;
-export const MAX_IMAGES = 300;
+/** https://docs.kiriengine.app/3dgs-scan/video-upload */
+export const MAX_VIDEO_SECONDS = 180;
+export const MAX_VIDEO_WIDTH = 1920;
+export const MAX_VIDEO_HEIGHT = 1080;
 
 /** https://docs.kiriengine.app/model/retrieve-3d-model-status */
 export const KIRI_STATUS = {
@@ -38,18 +40,13 @@ async function kiriFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return body.data;
 }
 
-/** Submits a photo set for Gaussian Splat reconstruction; returns the job id. */
-export async function submitImages(images: File[]): Promise<string> {
-  if (images.length < MIN_IMAGES || images.length > MAX_IMAGES) {
-    throw new Error(
-      `KIRI needs between ${MIN_IMAGES} and ${MAX_IMAGES} images, got ${images.length}`,
-    );
-  }
+/** Submits one walkthrough video for Gaussian Splat reconstruction. */
+export async function submitVideo(video: File): Promise<string> {
   const form = new FormData();
-  for (const image of images) form.append("imagesFiles", image, image.name);
+  form.append("videoFile", video, video.name);
 
   const data = await kiriFetch<{ serialize: string; calculateType: number }>(
-    "/3dgs/image",
+    "/3dgs/video",
     { method: "POST", body: form },
   );
   return data.serialize;

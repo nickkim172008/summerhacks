@@ -1,15 +1,14 @@
-import { submitImages } from "@/lib/kiri.server";
+import { submitVideo } from "@/lib/kiri.server";
 
 export async function POST(req: Request) {
   try {
-    const form = await req.formData();
-    const images = form.getAll("images").filter((v): v is File => v instanceof File);
-    return Response.json({ serialize: await submitImages(images) });
+    const video = (await req.formData()).get("video");
+    if (!(video instanceof File)) {
+      return Response.json({ error: "A video file is required" }, { status: 400 });
+    }
+    return Response.json({ serialize: await submitVideo(video) });
   } catch (error) {
-    return Response.json({ error: message(error) }, { status: 400 });
+    const msg = error instanceof Error ? error.message : "Upload failed";
+    return Response.json({ error: msg }, { status: 400 });
   }
-}
-
-function message(error: unknown) {
-  return error instanceof Error ? error.message : "Upload failed";
 }

@@ -5,34 +5,45 @@ import { useRouter } from "next/navigation";
 import { createPlace } from "@/lib/places";
 import { isFirebaseConfigured } from "@/lib/firebase";
 
-const MIN_IMAGES = 20;
-const MAX_IMAGES = 300;
+// https://docs.kiriengine.app/3dgs-scan/video-upload
+const MAX_SECONDS = 180;
+const MAX_WIDTH = 1920;
+const MAX_HEIGHT = 1080;
 const POLL_INTERVAL_MS = 20_000;
 
 type Phase = "idle" | "uploading" | "processing" | "saving";
 
 const PHASE_LABEL: Record<Exclude<Phase, "idle">, string> = {
-  uploading: "Sending photos to KIRI…",
+  uploading: "Sending the walkthrough to KIRI…",
   processing: "KIRI is reconstructing the scene. This takes 30–90 minutes.",
   saving: "Saving the place…",
 };
 
+type VideoMeta = { seconds: number; width: number; height: number };
+
 export default function CapturePage() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [video, setVideo] = useState<File | null>(null);
+  const [meta, setMeta] = useState<VideoMeta | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const countValid = files.length >= MIN_IMAGES && files.length <= MAX_IMAGES;
-  const canSubmit = name.trim() && countValid && phase === "idle";
+  const problem = meta && describeProblem(meta);
+  const canSubmit = name.trim() && video && !problem && phase === "idle";
+
+  async function handleFile(file: File | undefined) {
+    setVideo(file ?? null);
+    setMeta(file ? await readVideoMeta(file) : null);
+  }
 
   async function submit() {
+    if (!video) return;
     setError(null);
     setPhase("uploading");
     try {
       const form = new FormData();
-      for (const file of files) form.append("images", file);
+      form.append("video", video);
 
       const submitRes = await fetch("/api/capture/submit", {
         method: "POST",
@@ -67,8 +78,10 @@ export default function CapturePage() {
     <main className="mx-auto max-w-xl px-6 py-12 text-white">
       <h1 className="text-2xl font-semibold">Capture a place</h1>
       <p className="mt-2 text-sm text-neutral-400">
-        Upload {MIN_IMAGES}–{MAX_IMAGES} photos taken from all angles and
-        heights. KIRI reconstructs them into a walkable Gaussian splat.
+        Upload one slow walkthrough video of the space — under {MAX_SECONDS / 60}{" "}
+        minutes, {MAX_WIDTH}×{MAX_HEIGHT} or smaller. Move steadily and cover it
+        from several angles and heights. Each place is its own scene; you link
+        them together with hotspots afterwards.
       </p>
 
       {!isFirebaseConfigured && (
@@ -88,16 +101,15 @@ export default function CapturePage() {
 
         <input
           type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+          accept="video/*"
+          onChange={(e) => handleFile(e.target.files?.[0])}
           className="text-sm text-neutral-400"
         />
 
-        {files.length > 0 && (
-          <p className={`text-sm ${countValid ? "text-neutral-400" : "text-amber-400"}`}>
-            {files.length} photos selected
-            {!countValid && ` — need between ${MIN_IMAGES} and ${MAX_IMAGES}`}
+        {meta && (
+          <p className={`text-sm ${problem ? "text-amber-400" : "text-neutral-400"}`}>
+            {meta.width}×{meta.height}, {meta.seconds.toFixed(0)}s
+            {problem && ` — ${problem}`}
           </p>
         )}
 
@@ -116,6 +128,36 @@ export default function CapturePage() {
       </div>
     </main>
   );
+}
+
+function describeProblem({ seconds, width, height }: VideoMeta) {
+  if (seconds > MAX_SECONDS) return `too long, max ${MAX_SECONDS / 60} minutes`;
+  if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+    return `too large, max ${MAX_WIDTH}×${MAX_HEIGHT}`;
+  }
+  return null;
+}
+
+/** Checked here so an oversized upload never costs KIRI credits. */
+function readVideoMeta(file: File): Promise<VideoMeta | null> {
+  return new Promise((resolve) => {
+    const el = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    el.preload = "metadata";
+    el.onloadedmetadata = () => {
+      URL.revokeObjectURL(url);
+      resolve({
+        seconds: el.duration,
+        width: el.videoWidth,
+        height: el.videoHeight,
+      });
+    };
+    el.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    el.src = url;
+  });
 }
 
 async function waitUntilReady(serialize: string) {
