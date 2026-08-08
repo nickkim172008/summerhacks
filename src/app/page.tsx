@@ -3,47 +3,104 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { subscribeToPlaces } from "@/lib/places";
-import { createAlbum, subscribeToAlbums } from "@/lib/albums";
+import { subscribeToPlaces, subscribeToPlacesByUploader } from "@/lib/places";
+import { createAlbum, subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
+import { signOut, useAuthProfile } from "@/lib/auth";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Album, Place } from "@/lib/types";
 
 export default function AlbumsPage() {
   const router = useRouter();
+  const { user, profile, loading: authLoading, needsUsername } =
+    useAuthProfile();
   const [albums, setAlbums] = useState<Album[] | null>(null);
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [error, setError] = useState(!isFirebaseConfigured);
   const [showNewAlbum, setShowNewAlbum] = useState(false);
 
   useEffect(() => {
-    if (!isFirebaseConfigured) return;
-    return subscribeToAlbums(setAlbums, () => setError(true));
-  }, []);
+    if (!authLoading && needsUsername) router.replace("/setup");
+  }, [authLoading, needsUsername, router]);
+
   useEffect(() => {
     if (!isFirebaseConfigured) return;
-    return subscribeToPlaces(setPlaces, () => setError(true));
-  }, []);
+    if (!user) {
+      // Signed out: show everything so the library still works for browsing.
+      return subscribeToPlaces(setPlaces, () => setError(true));
+    }
+    return subscribeToPlacesByUploader(user.uid, setPlaces, () =>
+      setError(true),
+    );
+  }, [user]);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured || !user) {
+      setAlbums(user === null || user === undefined ? [] : null);
+      return;
+    }
+    return subscribeToAlbumsByOwner(user.uid, setAlbums, () => setError(true));
+  }, [user]);
 
   const placeById = useMemo(
     () => new Map((places ?? []).map((p) => [p.id, p])),
     [places],
   );
 
-  const loading = !error && (albums === null || places === null);
+  const loading =
+    !error &&
+    (authLoading ||
+      places === null ||
+      (Boolean(user) && albums === null));
 
   return (
     <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
       <nav className="sticky top-0 z-20 border-b border-black/10 bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex h-13 max-w-5xl items-center justify-between px-6 py-3">
           <span className="text-sm font-semibold tracking-tight">Photos</span>
-          <button
-            onClick={() => setShowNewAlbum(true)}
-            aria-label="New Album"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-xl leading-none text-[#0071e3] transition hover:bg-neutral-200"
-          >
-            +
-          </button>
+          <div className="flex items-center gap-3">
+            {profile ? (
+              <>
+                <Link
+                  href={`/u/${profile.username}`}
+                  className="text-[13px] text-[#0071e3]"
+                >
+                  @{profile.username}
+                </Link>
+                <button
+                  onClick={() => signOut()}
+                  className="text-[13px] text-neutral-500"
+                >
+                  Sign Out
+                </button>
+              </>
+            ) : user ? (
+              <Link href="/setup" className="text-[13px] text-[#0071e3]">
+                Finish setup
+              </Link>
+            ) : (
+              <Link href="/signin" className="text-[13px] text-[#0071e3]">
+                Sign In
+              </Link>
+            )}
+            <button
+              onClick={() => {
+                if (!user) {
+                  router.push("/signin");
+                  return;
+                }
+                if (needsUsername) {
+                  router.push("/setup");
+                  return;
+                }
+                setShowNewAlbum(true);
+              }}
+              aria-label="New Album"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-xl leading-none text-[#0071e3] transition hover:bg-neutral-200"
+            >
+              +
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -63,11 +120,11 @@ export default function AlbumsPage() {
         {!error && !loading && (
           <>
             <h2 className="mt-6 text-[22px] font-bold tracking-tight">
-              My Albums
+              {user ? "My Albums" : "Library"}
             </h2>
             <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
               <RecentsCard places={places ?? []} />
-              {albums?.map((album) => (
+              {(albums ?? []).map((album) => (
                 <AlbumCard
                   key={album.id}
                   album={album}
@@ -76,7 +133,7 @@ export default function AlbumsPage() {
               ))}
             </ul>
 
-            {albums?.length === 0 && (
+            {user && (albums?.length ?? 0) === 0 && (
               <p className="mt-10 text-sm text-neutral-500">
                 Create an album with the{" "}
                 <span className="font-medium text-[#0071e3]">+</span> button
@@ -84,15 +141,24 @@ export default function AlbumsPage() {
                 Hacks” album for the whole journey.
               </p>
             )}
+
+            {!user && (
+              <p className="mt-10 text-sm text-neutral-500">
+                <Link href="/signin" className="text-[#0071e3]">
+                  Sign in
+                </Link>{" "}
+                to create albums and claim a public profile.
+              </p>
+            )}
           </>
         )}
       </div>
 
-      {showNewAlbum && (
+      {showNewAlbum && user && (
         <NewAlbumDialog
           onCancel={() => setShowNewAlbum(false)}
           onCreate={async (name) => {
-            const id = await createAlbum(name);
+            const id = await createAlbum(name, user.uid);
             setShowNewAlbum(false);
             router.push(`/album/${id}`);
           }}

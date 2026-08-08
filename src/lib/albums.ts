@@ -8,9 +8,18 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "./firebase";
 import type { Album } from "./types";
+
+function sortByCreatedDesc(albums: Album[]) {
+  return [...albums].sort((a, b) => {
+    const aTime = a.createdAt?.toMillis?.() ?? 0;
+    const bTime = b.createdAt?.toMillis?.() ?? 0;
+    return bTime - aTime;
+  });
+}
 
 export function subscribeToAlbums(
   onChange: (albums: Album[]) => void,
@@ -26,6 +35,25 @@ export function subscribeToAlbums(
   );
 }
 
+export function subscribeToAlbumsByOwner(
+  ownerId: string,
+  onChange: (albums: Album[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const q = query(collection(db, "albums"), where("ownerId", "==", ownerId));
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        sortByCreatedDesc(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Album),
+        ),
+      );
+    },
+    onError,
+  );
+}
+
 export function subscribeToAlbum(
   albumId: string,
   onChange: (album: Album | null) => void,
@@ -35,10 +63,14 @@ export function subscribeToAlbum(
   });
 }
 
-export async function createAlbum(name: string): Promise<string> {
+export async function createAlbum(
+  name: string,
+  ownerId: string,
+): Promise<string> {
   const albumRef = doc(collection(db, "albums"));
   await setDoc(albumRef, {
     name,
+    ownerId,
     placeIds: [],
     createdAt: serverTimestamp(),
   });
