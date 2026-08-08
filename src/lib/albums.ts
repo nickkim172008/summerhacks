@@ -57,10 +57,17 @@ export function subscribeToAlbumsByOwner(
 export function subscribeToAlbum(
   albumId: string,
   onChange: (album: Album | null) => void,
+  onError?: (error: Error) => void,
 ) {
-  return onSnapshot(doc(db, "albums", albumId), (snap) => {
-    onChange(snap.exists() ? ({ id: snap.id, ...snap.data() } as Album) : null);
-  });
+  return onSnapshot(
+    doc(db, "albums", albumId),
+    (snap) => {
+      onChange(
+        snap.exists() ? ({ id: snap.id, ...snap.data() } as Album) : null,
+      );
+    },
+    onError,
+  );
 }
 
 export async function createAlbum(

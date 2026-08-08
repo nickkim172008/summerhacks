@@ -2,12 +2,15 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { subscribeToPlaces } from "@/lib/places";
+import { useRouter } from "next/navigation";
+import { subscribeToPlacesByUploader } from "@/lib/places";
 import { addPlacesToAlbum, subscribeToAlbum } from "@/lib/albums";
+import { isFirebaseConfigured } from "@/lib/firebase";
+import { useAuthProfile } from "@/lib/auth";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Album, Place } from "@/lib/types";
 
-/** "recents" is a virtual album containing every environment. */
+/** "recents" is a virtual album containing every environment you own. */
 export default function AlbumPage({
   params,
 }: {
@@ -15,19 +18,43 @@ export default function AlbumPage({
 }) {
   const { albumId } = use(params);
   const isRecents = albumId === "recents";
+  const router = useRouter();
+  const { user, loading: authLoading, needsUsername } = useAuthProfile();
 
   const [album, setAlbum] = useState<Album | null | undefined>(
     isRecents ? null : undefined,
   );
   const [places, setPlaces] = useState<Place[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (isRecents) return;
-    return subscribeToAlbum(albumId, setAlbum);
-  }, [albumId, isRecents]);
-  useEffect(() => subscribeToPlaces(setPlaces), []);
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/signin");
+      return;
+    }
+    if (needsUsername) router.replace("/setup");
+  }, [authLoading, needsUsername, router, user]);
+
+  useEffect(() => {
+    if (isRecents || !user) return;
+    return subscribeToAlbum(
+      albumId,
+      setAlbum,
+      () => setError("Couldn’t load this album."),
+    );
+  }, [albumId, isRecents, user]);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured || !user) return;
+    return subscribeToPlacesByUploader(
+      user.uid,
+      setPlaces,
+      () => setError("Couldn’t load environments."),
+    );
+  }, [user]);
 
   const albumPlaces = useMemo(() => {
     if (places === null) return null;
@@ -57,7 +84,13 @@ export default function AlbumPage({
   }
 
   const title = isRecents ? "Recents" : (album?.name ?? "");
-  const loading = albumPlaces === null || (!isRecents && album === undefined);
+  const loading =
+    !error &&
+    (authLoading ||
+      !user ||
+      albumPlaces === null ||
+      (!isRecents && album === undefined));
+  const readyPlaces = albumPlaces ?? [];
   // ?new=1 so the entry point is always a blank form, never the saved capture.
   const captureHref = isRecents
     ? "/capture?new=1"
@@ -112,12 +145,22 @@ export default function AlbumPage({
       <div className="mx-auto max-w-5xl px-6">
         <h1 className="mt-8 text-[34px] font-bold tracking-tight">{title}</h1>
         <p className="text-neutral-500">
-          {loading
-            ? "Loading…"
-            : `${albumPlaces.length} ${albumPlaces.length === 1 ? "environment" : "environments"}`}
+          {error
+            ? error
+            : loading
+              ? "Loading…"
+              : `${readyPlaces.length} ${readyPlaces.length === 1 ? "environment" : "environments"}`}
         </p>
 
-        {!loading && albumPlaces.length === 0 && (
+        {error && (
+          <div className="mt-10">
+            <Link href="/" className="text-[#0071e3]">
+              Back to Albums
+            </Link>
+          </div>
+        )}
+
+        {!error && !loading && readyPlaces.length === 0 && (
           <div className="mt-24 flex flex-col items-center gap-2 text-center">
             <p className="text-[22px] font-semibold">No Environments</p>
             <p className="max-w-xs text-sm text-neutral-500">
@@ -142,9 +185,9 @@ export default function AlbumPage({
           </div>
         )}
 
-        {!loading && albumPlaces.length > 0 && (
+        {!error && !loading && readyPlaces.length > 0 && (
           <ul className="mt-6 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5">
-            {albumPlaces.map((place) => (
+            {readyPlaces.map((place) => (
               <li key={place.id}>
                 <Link
                   href={`/place/${place.id}?album=${albumId}`}

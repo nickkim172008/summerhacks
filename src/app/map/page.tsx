@@ -15,7 +15,7 @@ const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
     </div>
   ),
 });
-import { subscribeToAlbums, subscribeToAlbumsByOwner } from "@/lib/albums";
+import { subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useLiveLocation } from "@/lib/geolocation";
 import {
@@ -23,7 +23,7 @@ import {
   DEMO_PERSONAL_PLACE_IDS,
 } from "@/lib/demoMapData";
 import { placesWithLocation } from "@/lib/maps";
-import { subscribeToPlaces } from "@/lib/places";
+import { subscribeToPlacesByUploader } from "@/lib/places";
 import type { Album, Place } from "@/lib/types";
 
 type LocatedPlace = Place & { location: { lat: number; lng: number } };
@@ -52,16 +52,19 @@ export default function MapPage() {
   }, [authLoading, needsUsername, router]);
 
   useEffect(() => {
-    if (!isFirebaseConfigured) return;
-    return subscribeToPlaces(setAllPlaces);
-  }, []);
+    if (!isFirebaseConfigured || !user) {
+      setAllPlaces([]);
+      return;
+    }
+    return subscribeToPlacesByUploader(user.uid, setAllPlaces);
+  }, [user]);
 
   useEffect(() => {
     if (!isFirebaseConfigured) return;
     if (user) {
       return subscribeToAlbumsByOwner(user.uid, setAlbums);
     }
-    return subscribeToAlbums(setAlbums);
+    setAlbums([]);
   }, [user]);
 
   // Personal requires sign-in; fall back if they sign out mid-session.

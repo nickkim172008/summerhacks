@@ -4,7 +4,8 @@ import { Suspense, use, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PlaceExperience from "@/components/PlaceExperience";
-import { addHotspot, getPlace, subscribeToPlaces } from "@/lib/places";
+import { addHotspot, getPlace, subscribeToPlacesByUploader } from "@/lib/places";
+import { useAuth } from "@/lib/auth";
 import type { Place } from "@/lib/types";
 
 export default function PlacePage({
@@ -33,21 +34,32 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
     : from
       ? `?from=${encodeURIComponent(from)}`
       : "";
+  const { user } = useAuth();
   // undefined while loading, null once we know it isn't there.
   const [place, setPlace] = useState<Place | null | undefined>();
   const [allPlaces, setAllPlaces] = useState<Place[]>([]);
 
   useEffect(() => {
     let active = true;
-    getPlace(placeId).then((found) => {
-      if (active) setPlace(found);
-    });
+    getPlace(placeId)
+      .then((found) => {
+        if (active) setPlace(found);
+      })
+      .catch(() => {
+        if (active) setPlace(null);
+      });
     return () => {
       active = false;
     };
   }, [placeId]);
 
-  useEffect(() => subscribeToPlaces(setAllPlaces), []);
+  useEffect(() => {
+    if (!user) {
+      setAllPlaces([]);
+      return;
+    }
+    return subscribeToPlacesByUploader(user.uid, setAllPlaces);
+  }, [user]);
 
   if (place === null) {
     return (
