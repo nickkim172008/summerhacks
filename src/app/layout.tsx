@@ -2,8 +2,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Photos",
-  description: "Walkable memories, organized into albums.",
+  title: {
+    default: "Atlas",
+    template: "%s · Atlas",
+  },
+  description: "Spatial memories, mapped and organized into albums.",
+  icons: {
+    icon: "/brand/atlas-mark.png",
+    apple: "/brand/atlas-mark.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

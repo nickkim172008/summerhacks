@@ -1,15 +1,18 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuthProfile } from "@/lib/auth";
 import { subscribeToAlbumsByOwner } from "@/lib/albums";
 import { subscribeToPlacesByUploader } from "@/lib/places";
 import {
   BIO_MAX_LENGTH,
+  prepareProfilePhoto,
   subscribeToProfileByUsername,
   updateBio,
+  updatePhotoURL,
 } from "@/lib/profiles";
+import { uploadProfilePhoto } from "@/lib/splatStore";
 import {
   follow,
   subscribeToFollowerCount,
@@ -104,18 +107,7 @@ export default function ProfilePage({
         ) : (
           <>
             <header className="mt-8 flex items-center gap-4">
-              {profile.photoURL ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={profile.photoURL}
-                  alt=""
-                  className="h-16 w-16 rounded-full object-cover"
-                />
-              ) : (
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 text-xl font-semibold text-neutral-500">
-                  {profile.username.slice(0, 1).toUpperCase()}
-                </div>
-              )}
+              <ProfileAvatar profile={profile} editable={isOwn} />
               <div>
                 <h1 className="text-[28px] font-bold tracking-tight">
                   {profile.displayName}
@@ -123,6 +115,11 @@ export default function ProfilePage({
                 <p className="text-[15px] text-neutral-500">
                   @{profile.username}
                 </p>
+                {isOwn && (
+                  <p className="mt-0.5 text-[12px] text-neutral-400">
+                    Tap the photo to change it
+                  </p>
+                )}
               </div>
               {!isOwn && user && (
                 <FollowButton followerId={user.uid} followingId={profile.id} />
@@ -206,6 +203,84 @@ export default function ProfilePage({
         )}
       </div>
     </main>
+  );
+}
+
+function ProfileAvatar({
+  profile,
+  editable,
+}: {
+  profile: Profile;
+  editable: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onPick(file: File | undefined) {
+    if (!file || !editable || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const prepared = await prepareProfilePhoto(file);
+      const url = await uploadProfilePhoto(profile.id, prepared);
+      await updatePhotoURL(profile.id, url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn’t update photo");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  const face = profile.photoURL ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={profile.photoURL}
+      alt=""
+      className="h-full w-full object-cover"
+    />
+  ) : (
+    <span className="text-xl font-semibold text-neutral-500">
+      {profile.username.slice(0, 1).toUpperCase()}
+    </span>
+  );
+
+  if (!editable) {
+    return (
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100">
+        {face}
+      </div>
+    );
+  }
+
+  return (
+    <div className="shrink-0">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+        className="hidden"
+        onChange={(e) => void onPick(e.target.files?.[0])}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        aria-label="Change profile photo"
+        className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-neutral-100 transition hover:ring-2 hover:ring-[#0071e3]/40 disabled:opacity-60"
+      >
+        {face}
+        <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+          {busy ? "…" : "Edit"}
+        </span>
+      </button>
+      {error && (
+        <p className="mt-2 max-w-[10rem] text-[11px] leading-snug text-red-500">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 

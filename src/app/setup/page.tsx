@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthProfile } from "@/lib/auth";
 import { claimUsername, validateUsername } from "@/lib/profiles";
+import AtlasLogo from "@/components/AtlasLogo";
 
 export default function SetupUsernamePage() {
   const router = useRouter();
@@ -55,8 +56,8 @@ export default function SetupUsernamePage() {
     <main className="flex min-h-screen flex-col bg-white text-[#1d1d1f]">
       <nav className="border-b border-black/10 bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl items-center px-6 py-3">
-          <Link href="/" className="text-sm font-semibold tracking-tight">
-            Photos
+          <Link href="/" aria-label="Atlas home">
+            <AtlasLogo priority className="h-auto w-[92px]" />
           </Link>
         </div>
       </nav>

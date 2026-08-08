@@ -1,0 +1,33 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Profile photos: only the owner may write their avatar.
+    match /avatars/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn()
+                   && request.auth.uid == userId
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    match /splats/{placeId}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+
+    match /videos/{placeId}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+
+    match /audio/{placeId}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+  }
+}

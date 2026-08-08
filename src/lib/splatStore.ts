@@ -70,6 +70,24 @@ export async function uploadAudio(
   return getDownloadURL(audioRef);
 }
 
+/** Profile avatar — always stored as a square JPEG under avatars/{uid}. */
+export async function uploadProfilePhoto(
+  uid: string,
+  image: Blob,
+): Promise<string> {
+  const photoRef = ref(storage, `avatars/${uid}/profile.jpg`);
+  try {
+    await uploadBytes(photoRef, image, { contentType: "image/jpeg" });
+  } catch (error) {
+    const code = error instanceof FirebaseError ? ` (${error.code})` : "";
+    throw new Error(
+      `Photo upload failed${code}. Enable Storage in the Firebase console, then try again.`,
+      { cause: error },
+    );
+  }
+  return getDownloadURL(photoRef);
+}
+
 function extensionFor(file: Blob & { name?: string }) {
   const fromName = file.name?.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{2,5}$/.test(fromName)) return fromName;

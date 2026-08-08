@@ -11,6 +11,7 @@ import {
   useAuth,
 } from "@/lib/auth";
 import { getProfile } from "@/lib/profiles";
+import AtlasLogo from "@/components/AtlasLogo";
 
 export type AuthMode = "signin" | "signup";
 
@@ -88,9 +89,10 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
       <nav className="relative z-10 mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-5">
         <Link
           href="/"
-          className="text-[15px] font-semibold tracking-tight text-[#1d1d1f]/80 transition hover:text-[#1d1d1f]"
+          aria-label="Atlas home"
+          className="transition hover:opacity-80"
         >
-          Photos
+          <AtlasLogo priority className="h-auto w-[92px]" />
         </Link>
         <Link
           href={copy.switchHref}
@@ -102,9 +104,10 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
 
       <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 pb-16 pt-6">
         <div className="auth-rise">
-          <p className="auth-brand text-[clamp(3.25rem,12vw,5.5rem)] font-bold leading-[0.9] tracking-[-0.04em]">
-            Photos
-          </p>
+          <AtlasLogo
+            priority
+            className="h-auto w-[min(100%,22rem)] drop-shadow-sm"
+          />
           <h1 className="mt-6 text-[28px] font-semibold tracking-tight text-[#1d1d1f] sm:text-[32px]">
             {copy.title}
           </h1>

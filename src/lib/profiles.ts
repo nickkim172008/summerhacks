@@ -108,3 +108,49 @@ export async function updateBio(uid: string, bio: string): Promise<void> {
     bio: bio.trim().slice(0, BIO_MAX_LENGTH),
   });
 }
+
+export async function updatePhotoURL(
+  uid: string,
+  photoURL: string,
+): Promise<void> {
+  await updateDoc(doc(db, "profiles", uid), { photoURL });
+}
+
+/**
+ * Downscale + center-crop to a square JPEG so avatars stay small and consistent.
+ */
+export async function prepareProfilePhoto(file: File): Promise<Blob> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Choose a JPEG, PNG, or WebP image.");
+  }
+  if (file.size > 12 * 1024 * 1024) {
+    throw new Error("That image is too large. Try one under 12 MB.");
+  }
+
+  const bitmap = await createImageBitmap(file);
+  const size = 512;
+  const scale = Math.max(size / bitmap.width, size / bitmap.height);
+  const drawW = bitmap.width * scale;
+  const drawH = bitmap.height * scale;
+  const dx = (size - drawW) / 2;
+  const dy = (size - drawH) / 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    bitmap.close();
+    throw new Error("Could not process that image.");
+  }
+  ctx.fillStyle = "#f5f5f7";
+  ctx.fillRect(0, 0, size, size);
+  ctx.drawImage(bitmap, dx, dy, drawW, drawH);
+  bitmap.close();
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.88),
+  );
+  if (!blob) throw new Error("Could not process that image.");
+  return blob;
+}

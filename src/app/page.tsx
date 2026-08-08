@@ -8,6 +8,7 @@ import { createAlbum, subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { signOut, useAuthProfile } from "@/lib/auth";
 import AppTabs from "@/components/AppTabs";
+import AtlasLogo from "@/components/AtlasLogo";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Album, Place } from "@/lib/types";
 
@@ -57,7 +58,7 @@ export default function AlbumsPage() {
     <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
       <nav className="sticky top-0 z-20 border-b border-black/10 bg-white/80 backdrop-blur-xl">
         <div className="mx-auto flex h-13 max-w-5xl items-center justify-between px-6 py-3">
-          <span className="text-sm font-semibold tracking-tight">Photos</span>
+          <AtlasLogo priority className="h-auto w-[92px]" />
           <div className="flex items-center gap-3">
             {profile ? (
               <>
