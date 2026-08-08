@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import AppTabs from "@/components/AppTabs";
 import { useAuthProfile } from "@/lib/auth";
 
 const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
@@ -219,7 +218,6 @@ export default function MapPage() {
         </section>
       </div>
 
-      <AppTabs active="map" />
     </main>
   );
 }

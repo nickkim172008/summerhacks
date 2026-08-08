@@ -7,7 +7,6 @@ import {
   searchProfiles,
   subscribeToRecentProfiles,
 } from "@/lib/profiles";
-import AppTabs from "@/components/AppTabs";
 import type { Profile } from "@/lib/types";
 
 const DEBOUNCE_MS = 250;
@@ -101,7 +100,6 @@ export default function DiscoverPage() {
         )}
       </div>
 
-      <AppTabs active="discover" />
     </main>
   );
 }

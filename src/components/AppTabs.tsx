@@ -1,34 +1,64 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 type Tab = "library" | "discover" | "map";
 
-export default function AppTabs({ active }: { active: Tab }) {
+/** Bottom tab bar — mount once from the root layout so it stays on every screen. */
+export default function AppTabs({ active }: { active?: Tab } = {}) {
+  const pathname = usePathname() ?? "/";
+  const current = active ?? tabForPath(pathname);
+
+  // Auth / setup flows stay chrome-free.
+  if (shouldHideTabs(pathname)) return null;
+
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-black/10 bg-white/90 backdrop-blur-xl">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-5xl items-stretch justify-around px-6 py-2">
         <TabLink
           href="/"
           label="Library"
           icon={<LibraryIcon />}
-          active={active === "library"}
+          active={current === "library"}
         />
         <TabLink
           href="/discover"
           label="Discover"
           icon={<DiscoverIcon />}
-          active={active === "discover"}
+          active={current === "discover"}
         />
         <TabLink
           href="/map"
           label="Map"
           icon={<MapIcon />}
-          active={active === "map"}
+          active={current === "map"}
         />
       </div>
     </nav>
+  );
+}
+
+function tabForPath(pathname: string): Tab | null {
+  if (pathname === "/discover" || pathname.startsWith("/discover/")) {
+    return "discover";
+  }
+  if (pathname === "/map" || pathname.startsWith("/map/")) {
+    return "map";
+  }
+  // Library covers home, albums, profiles, capture, places, etc.
+  return "library";
+}
+
+function shouldHideTabs(pathname: string) {
+  return (
+    pathname === "/signin" ||
+    pathname === "/signup" ||
+    pathname === "/setup" ||
+    pathname.startsWith("/signin/") ||
+    pathname.startsWith("/signup/") ||
+    pathname.startsWith("/setup/")
   );
 }
 
