@@ -26,6 +26,8 @@ import { placesWithLocation } from "@/lib/maps";
 import { subscribeToPlaces } from "@/lib/places";
 import type { Album, Place } from "@/lib/types";
 
+type LocatedPlace = Place & { location: { lat: number; lng: number } };
+
 type Scope =
   | { kind: "public" }
   | { kind: "personal" }
@@ -69,16 +71,16 @@ export default function MapPage() {
     }
   }, [user, scope.kind]);
 
-  const filtered = useMemo(() => {
+  const filtered = useMemo((): LocatedPlace[] => {
     const real = placesWithLocation(allPlaces ?? []);
     // Seed Toronto demo points so the heatmap isn't empty before real users.
-    const publicPool = mergePlaces(real, DEMO_MAP_PLACES);
+    const publicPool = mergePlaces(real, placesWithLocation(DEMO_MAP_PLACES));
 
     if (scope.kind === "public") return publicPool;
     if (!user) return [];
     if (scope.kind === "personal") {
       const mine = real.filter((p) => p.uploaderId === user.uid);
-      const demoPersonal = DEMO_MAP_PLACES.filter((p) =>
+      const demoPersonal = placesWithLocation(DEMO_MAP_PLACES).filter((p) =>
         DEMO_PERSONAL_PLACE_IDS.has(p.id),
       );
       return mergePlaces(mine, demoPersonal);
@@ -90,7 +92,9 @@ export default function MapPage() {
     // Albums with no geotagged places still show a small demo cluster.
     return inAlbum.length > 0
       ? inAlbum
-      : DEMO_MAP_PLACES.filter((p) => DEMO_PERSONAL_PLACE_IDS.has(p.id));
+      : placesWithLocation(DEMO_MAP_PLACES).filter((p) =>
+          DEMO_PERSONAL_PLACE_IDS.has(p.id),
+        );
   }, [allPlaces, albums, scope, user]);
 
   const scopeLabel =
@@ -214,7 +218,7 @@ export default function MapPage() {
   );
 }
 
-function mergePlaces(real: Place[], demo: Place[]) {
+function mergePlaces(real: LocatedPlace[], demo: LocatedPlace[]) {
   const seen = new Set(real.map((p) => p.id));
   return [...real, ...demo.filter((p) => !seen.has(p.id))];
 }
