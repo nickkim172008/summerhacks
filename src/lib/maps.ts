@@ -1,4 +1,5 @@
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
+import { DEMO_MAP_PLACES } from "./demoMapData";
 
 /** Fallback before GPS resolves (downtown Toronto). */
 export const DEFAULT_MAP_CENTER = {
@@ -8,6 +9,23 @@ export const DEFAULT_MAP_CENTER = {
 
 export const CITY_ZOOM = 13;
 
+export type HeatWeightedPoint = {
+  location: google.maps.LatLng;
+  weight: number;
+};
+
+export type GoogleMapsLibs = {
+  Map: typeof google.maps.Map;
+  LatLng: typeof google.maps.LatLng;
+  LatLngBounds: typeof google.maps.LatLngBounds;
+  Marker: typeof google.maps.Marker;
+  InfoWindow: typeof google.maps.InfoWindow;
+  // visualization.HeatmapLayer is stubbed in @types — keep loose
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  HeatmapLayer: new (opts?: any) => any;
+  SymbolPath: typeof google.maps.SymbolPath;
+};
+
 export function getGoogleMapsApiKey() {
   return process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ?? "";
 }
@@ -16,26 +34,40 @@ export function isGoogleMapsConfigured() {
   return Boolean(getGoogleMapsApiKey());
 }
 
-let ready: Promise<void> | null = null;
+let libsPromise: Promise<GoogleMapsLibs> | null = null;
 
-/** Load Maps JS + visualization (heatmap) once. */
-export function loadGoogleMaps() {
-  if (!ready) {
+/** Load Maps JS + visualization heatmap library once. */
+export function loadGoogleMaps(): Promise<GoogleMapsLibs> {
+  if (!libsPromise) {
     const key = getGoogleMapsApiKey();
     if (!key) {
-      ready = Promise.reject(
+      libsPromise = Promise.reject(
         new Error("Missing NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"),
       );
     } else {
       setOptions({ key, v: "weekly" });
-      ready = Promise.all([
-        importLibrary("maps"),
-        importLibrary("visualization"),
-        importLibrary("marker"),
-      ]).then(() => undefined);
+      libsPromise = (async () => {
+        const maps = await importLibrary("maps");
+        const visualization = await importLibrary("visualization");
+        await importLibrary("marker");
+        return {
+          Map: maps.Map,
+          LatLng: google.maps.LatLng,
+          LatLngBounds: google.maps.LatLngBounds,
+          Marker: google.maps.Marker,
+          InfoWindow: maps.InfoWindow,
+          HeatmapLayer: (
+            visualization as unknown as {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              HeatmapLayer: new (opts?: any) => any;
+            }
+          ).HeatmapLayer,
+          SymbolPath: google.maps.SymbolPath,
+        };
+      })();
     }
   }
-  return ready;
+  return libsPromise;
 }
 
 export function placesWithLocation<
@@ -51,24 +83,36 @@ export function placesWithLocation<
   );
 }
 
-/**
- * Heatmap points. Demo pins are jittered into small clouds so the layer
- * reads clearly with few real users.
- */
-export function placesToLatLngs(
+/** Always have something to heat — fall back to Toronto demo pins. */
+export function heatPlacesFor(
   places: { id: string; location: { lat: number; lng: number } }[],
-): google.maps.LatLngLiteral[] {
-  const points: google.maps.LatLngLiteral[] = [];
-  for (const place of places) {
-    const copies = place.id.startsWith("demo-map-") ? 8 : 1;
+) {
+  return places.length > 0 ? places : placesWithLocation(DEMO_MAP_PLACES);
+}
+
+/**
+ * Weighted points for google.maps.visualization.HeatmapLayer.
+ * Demo pins expand into dense clouds so the overlay is obvious.
+ */
+export function placesToHeatData(
+  places: { id: string; location: { lat: number; lng: number } }[],
+): HeatWeightedPoint[] {
+  const points: HeatWeightedPoint[] = [];
+  const source = heatPlacesFor(places);
+
+  for (const place of source) {
+    const copies = place.id.startsWith("demo-map-") ? 12 : 3;
     for (let i = 0; i < copies; i++) {
       const seed = hashStr(`${place.id}:${i}`);
-      const jitterLat = i === 0 ? 0 : ((seed % 1000) / 1000 - 0.5) * 0.012;
+      const jitterLat = i === 0 ? 0 : ((seed % 1000) / 1000 - 0.5) * 0.01;
       const jitterLng =
-        i === 0 ? 0 : (((seed >>> 10) % 1000) / 1000 - 0.5) * 0.012;
+        i === 0 ? 0 : (((seed >>> 10) % 1000) / 1000 - 0.5) * 0.01;
       points.push({
-        lat: place.location.lat + jitterLat,
-        lng: place.location.lng + jitterLng,
+        location: new google.maps.LatLng(
+          place.location.lat + jitterLat,
+          place.location.lng + jitterLng,
+        ),
+        weight: place.id.startsWith("demo-map-") ? 2 : 1,
       });
     }
   }

@@ -7,26 +7,18 @@ import {
   DEFAULT_MAP_CENTER,
   isGoogleMapsConfigured,
   loadGoogleMaps,
-  placesToLatLngs,
+  placesToHeatData,
+  type GoogleMapsLibs,
 } from "@/lib/maps";
 import type { LatLng } from "@/lib/geolocation";
 import type { Place } from "@/lib/types";
 
 type LocatedPlace = Place & { location: { lat: number; lng: number } };
 
-/** @types/google.maps stubs HeatmapLayer after deprecation — keep a local shape. */
 type HeatmapLayerLike = {
-  setData: (data: google.maps.LatLngLiteral[] | google.maps.LatLng[]) => void;
+  setData: (data: unknown) => void;
   setMap: (map: google.maps.Map | null) => void;
 };
-
-type HeatmapCtor = new (opts: {
-  data: google.maps.LatLngLiteral[];
-  map: google.maps.Map;
-  radius?: number;
-  opacity?: number;
-  maxIntensity?: number;
-}) => HeatmapLayerLike;
 
 export default function PlacesMap({
   places,
@@ -39,6 +31,7 @@ export default function PlacesMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
+  const libsRef = useRef<GoogleMapsLibs | null>(null);
   const heatRef = useRef<HeatmapLayerLike | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const liveMarkerRef = useRef<google.maps.Marker | null>(null);
@@ -62,11 +55,12 @@ export default function PlacesMap({
 
     async function init() {
       try {
-        await loadGoogleMaps();
+        const libs = await loadGoogleMaps();
         if (cancelled || !containerRef.current) return;
+        libsRef.current = libs;
 
         const start = liveRef.current ?? DEFAULT_MAP_CENTER;
-        const map = new google.maps.Map(containerRef.current, {
+        const map = new libs.Map(containerRef.current, {
           center: start,
           zoom: CITY_ZOOM,
           mapTypeControl: false,
@@ -76,33 +70,32 @@ export default function PlacesMap({
           gestureHandling: "greedy",
         });
         mapRef.current = map;
-        infoRef.current = new google.maps.InfoWindow();
+        infoRef.current = new libs.InfoWindow();
 
-        const HeatmapLayer = (
-          google.maps as unknown as {
-            visualization: { HeatmapLayer: HeatmapCtor };
-          }
-        ).visualization.HeatmapLayer;
-
-        heatRef.current = new HeatmapLayer({
-          data: placesToLatLngs(placesRef.current),
+        // Heatmap sits on top of the Google basemap.
+        const heat = new libs.HeatmapLayer({
+          data: placesToHeatData(placesRef.current),
           map,
-          radius: 48,
-          opacity: 0.85,
-          maxIntensity: 6,
-        });
+          radius: 56,
+          opacity: 0.9,
+          maxIntensity: 4,
+          dissipating: true,
+        }) as HeatmapLayerLike;
+        heatRef.current = heat;
 
-        syncMarkers(map, placesRef.current, markersRef, infoRef);
-        fitMap(map, placesRef.current, liveRef.current, didCenterRef);
+        syncMarkers(libs, map, placesRef.current, markersRef, infoRef);
+        fitMap(libs, map, placesRef.current, liveRef.current, didCenterRef);
 
         if (liveRef.current) {
-          ensureLiveMarker(map, liveRef.current, liveMarkerRef);
+          ensureLiveMarker(libs, map, liveRef.current, liveMarkerRef);
         }
 
         setReady(true);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not load Google Maps");
+        setError(
+          err instanceof Error ? err.message : "Could not load Google Maps",
+        );
       }
     }
 
@@ -118,6 +111,7 @@ export default function PlacesMap({
       liveMarkerRef.current = null;
       infoRef.current?.close();
       mapRef.current = null;
+      libsRef.current = null;
       didCenterRef.current = false;
       setReady(false);
     };
@@ -125,20 +119,27 @@ export default function PlacesMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready) return;
-    heatRef.current?.setData(placesToLatLngs(places));
-    syncMarkers(map, places, markersRef, infoRef);
+    const libs = libsRef.current;
+    if (!map || !libs || !ready) return;
+
+    const data = placesToHeatData(places);
+    heatRef.current?.setData(data);
+    // Keep heat on top if the map reorders overlays.
+    heatRef.current?.setMap(map);
+
+    syncMarkers(libs, map, places, markersRef, infoRef);
     if (!didCenterRef.current) {
-      fitMap(map, places, liveRef.current, didCenterRef);
+      fitMap(libs, map, places, liveRef.current, didCenterRef);
     }
   }, [places, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || !liveLocation) return;
-    ensureLiveMarker(map, liveLocation, liveMarkerRef);
+    const libs = libsRef.current;
+    if (!map || !libs || !ready || !liveLocation) return;
+    ensureLiveMarker(libs, map, liveLocation, liveMarkerRef);
     if (!didCenterRef.current) {
-      fitMap(map, placesRef.current, liveLocation, didCenterRef);
+      fitMap(libs, map, placesRef.current, liveLocation, didCenterRef);
     }
   }, [liveLocation, ready]);
 
@@ -147,7 +148,7 @@ export default function PlacesMap({
       <div
         className={`flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-neutral-500 ${className}`}
       >
-        <p>Add your Google Maps key to show the map.</p>
+        <p>Add your Google Maps key to show the map + heatmap.</p>
         <p>
           Set{" "}
           <code className="text-[#1d1d1f]">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>{" "}
@@ -171,7 +172,7 @@ export default function PlacesMap({
     <div className={`relative h-full w-full ${className}`}>
       <div ref={containerRef} className="absolute inset-0 h-full w-full" />
       <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-white/95 px-3 py-1 text-[11px] font-medium text-[#1d1d1f] shadow ring-1 ring-black/10">
-        Google Maps · {places.length} spots
+        Heatmap on · {places.length || "demo"} spots
       </div>
       {error && error !== "missing-key" && (
         <div className="absolute inset-x-4 bottom-24 z-10 rounded-xl bg-white/95 px-4 py-3 text-center text-sm text-red-600 shadow-lg ring-1 ring-black/10">
@@ -183,6 +184,7 @@ export default function PlacesMap({
 }
 
 function syncMarkers(
+  libs: GoogleMapsLibs,
   map: google.maps.Map,
   places: LocatedPlace[],
   markersRef: MutableRefObject<google.maps.Marker[]>,
@@ -190,15 +192,14 @@ function syncMarkers(
 ) {
   for (const marker of markersRef.current) marker.setMap(null);
 
-  // One marker per place (not per jittered heat point).
   markersRef.current = places.map((place) => {
-    const marker = new google.maps.Marker({
+    const marker = new libs.Marker({
       map,
       position: place.location,
       title: place.name,
       opacity: 0.95,
       icon: {
-        path: google.maps.SymbolPath.CIRCLE,
+        path: libs.SymbolPath.CIRCLE,
         scale: 6,
         fillColor: "#0071e3",
         fillOpacity: 1,
@@ -227,18 +228,19 @@ function syncMarkers(
 }
 
 function ensureLiveMarker(
+  libs: GoogleMapsLibs,
   map: google.maps.Map,
   location: LatLng,
   markerRef: MutableRefObject<google.maps.Marker | null>,
 ) {
   if (!markerRef.current) {
-    markerRef.current = new google.maps.Marker({
+    markerRef.current = new libs.Marker({
       map,
       position: location,
       title: "You are here",
       zIndex: 999,
       icon: {
-        path: google.maps.SymbolPath.CIRCLE,
+        path: libs.SymbolPath.CIRCLE,
         scale: 8,
         fillColor: "#0071e3",
         fillOpacity: 1,
@@ -252,6 +254,7 @@ function ensureLiveMarker(
 }
 
 function fitMap(
+  libs: GoogleMapsLibs,
   map: google.maps.Map,
   places: LocatedPlace[],
   live: LatLng | null | undefined,
@@ -266,7 +269,7 @@ function fitMap(
     return;
   }
 
-  const bounds = new google.maps.LatLngBounds();
+  const bounds = new libs.LatLngBounds();
   for (const place of places) bounds.extend(place.location);
   if (live) bounds.extend(live);
   map.fitBounds(bounds, 72);
