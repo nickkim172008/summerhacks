@@ -5,7 +5,18 @@ import Link from "next/link";
 import { useAuthProfile } from "@/lib/auth";
 import { subscribeToAlbumsByOwner } from "@/lib/albums";
 import { subscribeToPlacesByUploader } from "@/lib/places";
-import { subscribeToProfileByUsername } from "@/lib/profiles";
+import {
+  BIO_MAX_LENGTH,
+  subscribeToProfileByUsername,
+  updateBio,
+} from "@/lib/profiles";
+import {
+  follow,
+  subscribeToFollowerCount,
+  subscribeToFollowingCount,
+  subscribeToIsFollowing,
+  unfollow,
+} from "@/lib/follows";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Album, Place, Profile } from "@/lib/types";
 
@@ -19,6 +30,8 @@ export default function ProfilePage({
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [albums, setAlbums] = useState<Album[] | null>(null);
   const [places, setPlaces] = useState<Place[] | null>(null);
+  const [followers, setFollowers] = useState<number | null>(null);
+  const [following, setFollowing] = useState<number | null>(null);
 
   useEffect(() => {
     return subscribeToProfileByUsername(username, setProfile);
@@ -28,13 +41,19 @@ export default function ProfilePage({
     if (!profile) {
       setAlbums(null);
       setPlaces(null);
+      setFollowers(null);
+      setFollowing(null);
       return;
     }
     const unsubAlbums = subscribeToAlbumsByOwner(profile.id, setAlbums);
     const unsubPlaces = subscribeToPlacesByUploader(profile.id, setPlaces);
+    const unsubFollowers = subscribeToFollowerCount(profile.id, setFollowers);
+    const unsubFollowing = subscribeToFollowingCount(profile.id, setFollowing);
     return () => {
       unsubAlbums();
       unsubPlaces();
+      unsubFollowers();
+      unsubFollowing();
     };
   }, [profile]);
 
@@ -105,7 +124,18 @@ export default function ProfilePage({
                   @{profile.username}
                 </p>
               </div>
+              {!isOwn && user && (
+                <FollowButton followerId={user.uid} followingId={profile.id} />
+              )}
             </header>
+
+            <BioSection profile={profile} editable={isOwn} />
+
+            <dl className="mt-6 flex gap-8">
+              <Stat label="Environments" value={places?.length ?? null} />
+              <Stat label="Followers" value={followers} />
+              <Stat label="Following" value={following} />
+            </dl>
 
             <section className="mt-10">
               <h2 className="text-[22px] font-bold tracking-tight">Albums</h2>
@@ -177,6 +207,150 @@ export default function ProfilePage({
       </div>
     </main>
   );
+}
+
+function Stat({ label, value }: { label: string; value: number | null }) {
+  return (
+    <div>
+      <dd className="text-[22px] font-bold tracking-tight tabular-nums">
+        {value ?? "—"}
+      </dd>
+      <dt className="text-[13px] text-neutral-500">{label}</dt>
+    </div>
+  );
+}
+
+function FollowButton({
+  followerId,
+  followingId,
+}: {
+  followerId: string;
+  followingId: string;
+}) {
+  const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    return subscribeToIsFollowing(followerId, followingId, setIsFollowing);
+  }, [followerId, followingId]);
+
+  async function toggle() {
+    if (isFollowing === null || busy) return;
+    setBusy(true);
+    try {
+      if (isFollowing) await unfollow(followerId, followingId);
+      else await follow(followerId, followingId);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={isFollowing === null || busy}
+      className={`ml-auto rounded-full px-5 py-2 text-[15px] font-medium transition disabled:opacity-40 ${
+        isFollowing
+          ? "border border-black/10 hover:bg-neutral-50"
+          : "bg-[#0071e3] text-white hover:bg-[#0077ed]"
+      }`}
+    >
+      {isFollowing ? "Following" : "Follow"}
+    </button>
+  );
+}
+
+function BioSection({
+  profile,
+  editable,
+}: {
+  profile: Profile;
+  editable: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(profile.bio ?? "");
+  const [saving, setSaving] = useState(false);
+
+  // A live snapshot can land while this sits open; don't clobber what's typed.
+  useEffect(() => {
+    if (!editing) setDraft(profile.bio ?? "");
+  }, [profile.bio, editing]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await updateBio(profile.id, draft);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="mt-6 max-w-lg">
+        <textarea
+          autoFocus
+          rows={3}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.slice(0, BIO_MAX_LENGTH))}
+          placeholder="Tell people about the places you capture."
+          className="w-full resize-none rounded-xl border border-black/10 bg-neutral-50 px-3 py-2 text-[15px] outline-none focus:border-[#0071e3]"
+        />
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-[12px] text-neutral-400">
+            {draft.length}/{BIO_MAX_LENGTH}
+          </span>
+          <div className="flex gap-4 text-[14px]">
+            <button
+              onClick={() => {
+                setDraft(profile.bio ?? "");
+                setEditing(false);
+              }}
+              disabled={saving}
+              className="text-neutral-500 transition hover:text-neutral-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={saving}
+              className="font-semibold text-[#0071e3] transition hover:text-[#0077ed] disabled:opacity-40"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (profile.bio) {
+    return (
+      <div className="mt-6 max-w-lg">
+        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
+          {profile.bio}
+        </p>
+        {editable && (
+          <button
+            onClick={() => setEditing(true)}
+            className="mt-2 text-[13px] text-[#0071e3]"
+          >
+            Edit bio
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return editable ? (
+    <button
+      onClick={() => setEditing(true)}
+      className="mt-6 text-[15px] text-neutral-400 transition hover:text-neutral-600"
+    >
+      + Add a bio
+    </button>
+  ) : null;
 }
 
 function coverFor(album: Album, placeById: Map<string, Place>) {

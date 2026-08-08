@@ -6,6 +6,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  updateDoc,
   where,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -98,4 +99,12 @@ export async function claimUsername(
   const created = await getProfile(uid);
   if (!created) throw new Error("Could not create profile.");
   return created;
+}
+
+export const BIO_MAX_LENGTH = 280;
+
+export async function updateBio(uid: string, bio: string): Promise<void> {
+  await updateDoc(doc(db, "profiles", uid), {
+    bio: bio.trim().slice(0, BIO_MAX_LENGTH),
+  });
 }

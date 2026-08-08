@@ -56,6 +56,23 @@ service cloud.firestore {
       }
     }
 
+    // One doc per follow edge, id "{followerId}_{followingId}". Pinning the id
+    // to request.auth.uid is what stops forgery: without it any signed-in
+    // client could write edges on other people's behalf and inflate their
+    // counts. Self-follows are rejected so a profile cannot pad its own.
+    match /follows/{followId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+                    && followId == request.auth.uid + '_'
+                       + request.resource.data.followingId
+                    && request.resource.data.followerId == request.auth.uid
+                    && request.resource.data.followerId
+                       != request.resource.data.followingId;
+      allow delete: if signedIn()
+                    && resource.data.followerId == request.auth.uid;
+      allow update: if false;
+    }
+
     // Deny every collection that has not been explicitly allowed above.
     match /{document=**} {
       allow read, write: if false;
