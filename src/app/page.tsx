@@ -1,81 +1,210 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { subscribeToPlaces } from "@/lib/places";
+import { createAlbum, subscribeToAlbums } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
-import type { Place } from "@/lib/types";
+import PlaceThumb from "@/components/PlaceThumb";
+import type { Album, Place } from "@/lib/types";
 
-export default function AtlasPage() {
+export default function AlbumsPage() {
+  const router = useRouter();
+  const [albums, setAlbums] = useState<Album[] | null>(null);
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [error, setError] = useState(!isFirebaseConfigured);
+  const [showNewAlbum, setShowNewAlbum] = useState(false);
 
+  useEffect(() => {
+    if (!isFirebaseConfigured) return;
+    return subscribeToAlbums(setAlbums, () => setError(true));
+  }, []);
   useEffect(() => {
     if (!isFirebaseConfigured) return;
     return subscribeToPlaces(setPlaces, () => setError(true));
   }, []);
 
+  const placeById = useMemo(
+    () => new Map((places ?? []).map((p) => [p.id, p])),
+    [places],
+  );
+
+  const loading = !error && (albums === null || places === null);
+
   return (
-    <main className="min-h-screen bg-black px-6 py-12 text-white">
-      <header className="mx-auto max-w-5xl">
-        <h1 className="text-3xl font-semibold">A spatial memory atlas</h1>
-        <p className="mt-2 max-w-xl text-neutral-400">
-          Places you can walk through, with voices left where they happened.
-          Every visitor can add one.
-        </p>
-        <Link
-          href="/capture"
-          className="mt-4 inline-block rounded-full bg-sky-500 px-5 py-2 text-sm font-medium"
-        >
-          Capture a place
-        </Link>
-      </header>
+    <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
+      <nav className="sticky top-0 z-20 border-b border-black/10 bg-white/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-13 max-w-5xl items-center justify-between px-6 py-3">
+          <span className="text-sm font-semibold tracking-tight">Photos</span>
+          <button
+            onClick={() => setShowNewAlbum(true)}
+            aria-label="New Album"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-xl leading-none text-[#0071e3] transition hover:bg-neutral-200"
+          >
+            +
+          </button>
+        </div>
+      </nav>
 
-      <section className="mx-auto mt-10 max-w-5xl">
+      <div className="mx-auto max-w-5xl px-6">
+        <h1 className="mt-8 text-[34px] font-bold tracking-tight">Albums</h1>
+
         {error && (
-          <p className="text-sm text-amber-400">
-            The atlas isn&apos;t connected. Copy{" "}
-            <code className="text-neutral-300">.env.local.example</code> to{" "}
-            <code className="text-neutral-300">.env.local</code> and fill in the
-            Firebase keys, then restart the dev server.
+          <p className="mt-6 text-sm text-amber-600">
+            Not connected. Copy <code>.env.local.example</code> to{" "}
+            <code>.env.local</code>, fill in the Firebase keys, and restart the
+            dev server.
           </p>
         )}
 
-        {!error && places === null && (
-          <p className="text-neutral-500">Loading the atlas…</p>
-        )}
+        {loading && <p className="mt-6 text-neutral-500">Loading…</p>}
 
-        {!error && places?.length === 0 && (
-          <p className="text-neutral-500">
-            No places yet. Capture one to start the atlas.
-          </p>
-        )}
+        {!error && !loading && (
+          <>
+            <h2 className="mt-6 text-[22px] font-bold tracking-tight">
+              My Albums
+            </h2>
+            <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
+              <RecentsCard places={places ?? []} />
+              {albums?.map((album) => (
+                <AlbumCard
+                  key={album.id}
+                  album={album}
+                  cover={coverFor(album, placeById)}
+                />
+              ))}
+            </ul>
 
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {places?.map((place) => (
-            <li key={place.id}>
-              <Link
-                href={`/place/${place.id}`}
-                className="block overflow-hidden rounded-xl bg-neutral-900 transition hover:bg-neutral-800"
-              >
-                <div className="aspect-video bg-neutral-800">
-                  {place.thumbnailUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={place.thumbnailUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  )}
-                </div>
-                <div className="p-4">
-                  <h2 className="font-medium">{place.name}</h2>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+            {albums?.length === 0 && (
+              <p className="mt-10 text-sm text-neutral-500">
+                Create an album with the{" "}
+                <span className="font-medium text-[#0071e3]">+</span> button
+                and start collecting environments — for example, a “Summer
+                Hacks” album for the whole journey.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {showNewAlbum && (
+        <NewAlbumDialog
+          onCancel={() => setShowNewAlbum(false)}
+          onCreate={async (name) => {
+            const id = await createAlbum(name);
+            setShowNewAlbum(false);
+            router.push(`/album/${id}`);
+          }}
+        />
+      )}
     </main>
+  );
+}
+
+function coverFor(album: Album, placeById: Map<string, Place>) {
+  for (const id of album.placeIds ?? []) {
+    const place = placeById.get(id);
+    if (place) return place;
+  }
+  return null;
+}
+
+function AlbumCard({ album, cover }: { album: Album; cover: Place | null }) {
+  return (
+    <li>
+      <Link href={`/album/${album.id}`} className="group block">
+        <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
+          {cover ? <PlaceThumb place={cover} /> : <EmptyCover />}
+        </div>
+        <p className="mt-2 truncate text-[15px] font-medium">{album.name}</p>
+        <p className="text-sm text-neutral-500">
+          {album.placeIds?.length ?? 0}
+        </p>
+      </Link>
+    </li>
+  );
+}
+
+function RecentsCard({ places }: { places: Place[] }) {
+  const cover = places[0] ?? null;
+  return (
+    <li>
+      <Link href="/album/recents" className="group block">
+        <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
+          {cover ? <PlaceThumb place={cover} /> : <EmptyCover />}
+        </div>
+        <p className="mt-2 truncate text-[15px] font-medium">Recents</p>
+        <p className="text-sm text-neutral-500">{places.length}</p>
+      </Link>
+    </li>
+  );
+}
+
+function EmptyCover() {
+  return (
+    <div className="flex h-full w-full items-center justify-center text-neutral-300">
+      <svg
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        className="h-10 w-10"
+        aria-hidden
+      >
+        <path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm-9.5 3A1.5 1.5 0 1 1 8 9.5 1.5 1.5 0 0 1 9.5 8Zm9.5 9H5l4-5 2.5 3 3.5-4.5Z" />
+      </svg>
+    </div>
+  );
+}
+
+function NewAlbumDialog({
+  onCancel,
+  onCreate,
+}: {
+  onCancel: () => void;
+  onCreate: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    await onCreate(name.trim());
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6">
+      <div className="w-full max-w-xs overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="px-5 pt-5 pb-4 text-center">
+          <h3 className="text-[17px] font-semibold">New Album</h3>
+          <p className="mt-1 text-[13px] text-neutral-500">
+            Enter a name for this album.
+          </p>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && save()}
+            placeholder="Title"
+            className="mt-3 w-full rounded-lg border border-black/10 bg-neutral-50 px-3 py-1.5 text-[15px] outline-none focus:border-[#0071e3]"
+          />
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-black/10 border-t border-black/10 text-[17px]">
+          <button
+            onClick={onCancel}
+            className="py-2.5 text-[#0071e3] transition hover:bg-neutral-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={!name.trim() || saving}
+            className="py-2.5 font-semibold text-[#0071e3] transition hover:bg-neutral-50 disabled:opacity-40"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -41,9 +41,9 @@ export default function PlacePage({
   if (place === null) {
     return (
       <main className="flex h-screen flex-col items-center justify-center gap-3 bg-black text-white">
-        <p>That place doesn&apos;t exist.</p>
+        <p>That environment doesn&apos;t exist.</p>
         <Link href="/" className="text-sky-400 underline">
-          Back to the atlas
+          Back to Albums
         </Link>
       </main>
     );
