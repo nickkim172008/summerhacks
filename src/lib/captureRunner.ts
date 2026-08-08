@@ -134,8 +134,6 @@ export interface CaptureItem {
    * reload — which holds no File and no samples — can still say what it carries.
    */
   audioSeconds: number | null;
-  /** Firebase Storage URL of the source walkthrough, once it is archived. */
-  videoUrl: string | null;
 }
 
 export interface CaptureQueueState {
@@ -175,10 +173,9 @@ export type CaptureEvent =
       id: string;
       serialize: string;
       startedAt: number;
-      videoUrl: string | null;
     }
   | { type: "upload-failed"; id: string; message: string }
-  | { type: "demo-queued"; id: string; startedAt: number; videoUrl: string | null }
+  | { type: "demo-queued"; id: string; startedAt: number }
   | { type: "status-polled"; id: string; report: StatusReport; message: string }
   | { type: "poll-errored"; id: string; message: string }
   | { type: "download-succeeded"; id: string; splat: SplatHandle }
@@ -219,7 +216,6 @@ function blankItem(id: string, name: string): CaptureItem {
     locationName: "",
     audio: undefined,
     audioSeconds: null,
-    videoUrl: null,
   };
 }
 
@@ -251,7 +247,6 @@ export function resumedItem(id: string, job: CaptureJob): CaptureItem {
     // undefined so nothing here reads as a lift still to come.
     audio: null,
     audioSeconds: job.audioSeconds ?? null,
-    videoUrl: job.videoUrl ?? null,
     // whenLocal and whenFrom stay blank: they exist for the editor, and a row
     // resumed from storage has already spent its answers on the job.
   };
@@ -421,7 +416,6 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
         phase: "waiting",
         serialize: event.serialize,
         startedAt: event.startedAt,
-        videoUrl: event.videoUrl,
         uploadFraction: 1,
         file: null,
         error: null,
@@ -440,7 +434,6 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
         phase: "waiting",
         demo: true,
         startedAt: event.startedAt,
-        videoUrl: event.videoUrl,
         uploadFraction: 1,
         file: null,
       };

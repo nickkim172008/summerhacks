@@ -42,31 +42,6 @@ export async function uploadSplat(
 }
 
 /**
- * Upload the source walkthrough video to Firebase Storage.
- * Kept separately from the KIRI reconstruction upload.
- */
-export async function uploadVideoFile(
-  pathKey: string,
-  video: Blob & { name?: string },
-): Promise<string> {
-  const ext = extensionFor(video) || "mp4";
-  const videoRef = ref(storage, `videos/${pathKey}/walkthrough.${ext}`);
-  try {
-    await uploadBytes(videoRef, video, {
-      contentType: video.type || "video/mp4",
-    });
-  } catch (error) {
-    // storage/unauthorized is the rules refusing the write, which is a different
-    // problem from the bucket not existing and has a different fix — saying
-    // "enable Storage" for it sends you to a console page that already looks
-    // fine. storage/unknown is the one that means no bucket: a project without
-    // one answers 404, which the SDK reports opaquely.
-    throw new Error(explainStorageError(error, "Video"), { cause: error });
-  }
-  return getDownloadURL(videoRef);
-}
-
-/**
  * Upload the audio lifted off the walkthrough. A place has only ever one such
  * track, so the name is fixed rather than taken from the file.
  */

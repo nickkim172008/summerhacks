@@ -18,8 +18,6 @@ export interface CaptureJob {
   name: string;
   startedAt: number;
   albumId?: string;
-  /** Firebase Storage URL for the source walkthrough, if uploaded. */
-  videoUrl?: string;
   /**
    * When and where the walkthrough was filmed, read out of the video or typed
    * in when it carried neither. The form is long gone by the time the splat
@@ -137,7 +135,6 @@ function toJob(value: unknown): CaptureJob | null {
   // list is what silently drops a field the moment a new one is added.
   const job: CaptureJob = { serialize, name, startedAt };
   if (typeof record.albumId === "string") job.albumId = record.albumId;
-  if (typeof record.videoUrl === "string") job.videoUrl = record.videoUrl;
   if (typeof record.capturedAt === "string") job.capturedAt = record.capturedAt;
   if (typeof record.locationName === "string") {
     job.locationName = record.locationName;

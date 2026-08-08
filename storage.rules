@@ -20,17 +20,6 @@ service firebase.storage {
       allow write: if signedIn();
     }
 
-    // A walkthrough is archived before there is a place to hang it on, so it is
-    // filed under the uploader and the moment: videos/{uid}/{ts}/walkthrough.mp4.
-    // That is a segment deeper than the others, and a {fileName} match would
-    // have covered only videos/{x}/{y} — one segment short, so every upload
-    // fell through to deny. The recursive wildcard covers both that shape and
-    // the videos/{placeId}/... one that createPlace still writes.
-    match /videos/{prefix}/{allPaths=**} {
-      allow read: if true;
-      allow write: if signedIn();
-    }
-
     match /audio/{placeId}/{fileName} {
       allow read: if true;
       allow write: if signedIn();

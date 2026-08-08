@@ -12,7 +12,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { uploadAudio, uploadSplat, uploadVideoFile } from "./splatStore";
+import { uploadAudio, uploadSplat } from "./splatStore";
 import type { Place, Vec3 } from "./types";
 
 function sortByCreatedDesc(places: Place[]) {
@@ -76,9 +76,6 @@ export async function createPlace(
     /** The walkthrough's own audio, lifted off it at capture time. */
     audioFile?: (Blob & { name?: string }) | null;
     audioSeconds?: number;
-    videoFile?: (Blob & { name?: string }) | null;
-    /** Already-uploaded walkthrough URL (from capture submit). */
-    videoUrl?: string | null;
   },
 ) {
   const placeRef = doc(collection(db, "places"));
@@ -87,11 +84,6 @@ export async function createPlace(
   const audioUrl = options?.audioFile
     ? await uploadAudio(placeRef.id, options.audioFile)
     : undefined;
-  const videoUrl =
-    options?.videoUrl ||
-    (options?.videoFile
-      ? await uploadVideoFile(placeRef.id, options.videoFile)
-      : undefined);
 
   await setDoc(placeRef, {
     name,
@@ -106,7 +98,6 @@ export async function createPlace(
       ? { audioSeconds: options.audioSeconds }
       : {}),
     ...(options?.capturedAt ? { capturedAt: options.capturedAt } : {}),
-    ...(videoUrl ? { videoUrl } : {}),
     ...(options?.location ? { location: options.location } : {}),
     ...(options?.locationName ? { locationName: options.locationName } : {}),
   });

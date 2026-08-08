@@ -69,7 +69,6 @@ import { isFirebaseConfigured } from "@/lib/firebase";
 import CaptureQueue from "@/components/CaptureQueue";
 import { useAuth } from "@/lib/auth";
 import { getLiveLocation } from "@/lib/geolocation";
-import { uploadVideoFile } from "@/lib/splatStore";
 
 const SplatViewer = dynamic(() => import("@/components/SplatViewer"), {
   ssr: false,
@@ -84,14 +83,8 @@ const POLL_INTERVAL_MS = 20_000;
 const POLL_STAGGER_MS = 1_500;
 const CLOCK_INTERVAL_MS = 30_000;
 
-/** Pitch mode: upload video to Firebase Storage, skip the KIRI wait. */
+/** Pitch mode: accept the walkthrough without calling KIRI or waiting on it. */
 const DEMO_CAPTURE = process.env.NEXT_PUBLIC_DEMO_CAPTURE === "true";
-/**
- * uploadBytes reports no progress of its own, so the archive upload is given a
- * flat slice of the bar and KIRI's upload drives what is left.
- */
-const VIDEO_UPLOAD_FRACTION = 0.15;
-
 /** The server has no localStorage, so it renders as if nothing were queued. */
 const emptySnapshot = () => "{}";
 
@@ -102,8 +95,8 @@ function nextRowId() {
   return `row-${rowCounter}`;
 }
 /**
- * Pitch mode has no KIRI job to wait on, so the bar is walked through a few
- * steps to show the archive upload actually going somewhere.
+ * Pitch mode has no upload and no KIRI job to wait on, so the bar is walked
+ * through a few steps rather than sitting frozen, which reads as broken.
  */
 const DEMO_UPLOAD_STEPS = [0.2, 0.55, 0.85, 1];
 const DEMO_STEP_MS = 220;
@@ -251,66 +244,30 @@ function CaptureFlow() {
       const file = item.file;
       if (!file) return;
 
-      // The walkthrough is archived in Firebase first, then a copy goes to
-      // KIRI: the source video outlives the reconstruction that consumes it.
-      const archive = () =>
-        isFirebaseConfigured
-          ? uploadVideoFile(storageKeyFor(user?.uid), file)
-          : Promise.resolve(null);
-
       if (DEMO_CAPTURE) {
         // No KIRI call, but the progress bar still moves — a frozen one reads as
         // broken on a projector.
-        try {
-          for (const fraction of DEMO_UPLOAD_STEPS) {
-            await sleep(DEMO_STEP_MS);
-            if (!mountedRef.current) return;
-            dispatch({ type: "upload-progress", id: item.id, fraction });
-          }
-          const videoUrl = await uploadLimit(archive);
-          dispatch({
-            type: "demo-queued",
-            id: item.id,
-            startedAt: Date.now(),
-            videoUrl,
-          });
-        } catch (err) {
-          dispatch({
-            type: "upload-failed",
-            id: item.id,
-            message: messageOf(err, "Video upload failed"),
-          });
-          claimedRef.current.delete(`upload:${item.id}`);
+        for (const fraction of DEMO_UPLOAD_STEPS) {
+          await sleep(DEMO_STEP_MS);
+          if (!mountedRef.current) return;
+          dispatch({ type: "upload-progress", id: item.id, fraction });
         }
+        dispatch({ type: "demo-queued", id: item.id, startedAt: Date.now() });
         return;
       }
 
       try {
-        const { serialize, videoUrl } = await uploadLimit(async () => {
-          const archived = await archive();
-          dispatch({
-            type: "upload-progress",
-            id: item.id,
-            fraction: VIDEO_UPLOAD_FRACTION,
-          });
-          const id = await uploadVideo(file, (fraction) =>
-            dispatch({
-              type: "upload-progress",
-              id: item.id,
-              fraction:
-                VIDEO_UPLOAD_FRACTION + fraction * (1 - VIDEO_UPLOAD_FRACTION),
-            }),
-          );
-          return { serialize: id, videoUrl: archived };
-        });
+        // The walkthrough goes to KIRI and nowhere else. Reconstruction is the
+        // only thing that reads it, and what survives afterwards is the splat,
+        // the details, and the sound — a few megabytes rather than the several
+        // hundred a copy of every source video would cost to keep unread.
+        const serialize = await uploadLimit(() =>
+          uploadVideo(file, (fraction) =>
+            dispatch({ type: "upload-progress", id: item.id, fraction }),
+          ),
+        );
         const startedAt = Date.now();
-        dispatch({
-          type: "upload-succeeded",
-          id: item.id,
-          serialize,
-          startedAt,
-          videoUrl,
-        });
+        dispatch({ type: "upload-succeeded", id: item.id, serialize, startedAt });
         // A row dropped mid-upload must not come back from the dead: persisting
         // the job now would have the next reconcile read it as one to resume.
         if (!discardedRef.current.has(item.id)) {
@@ -319,7 +276,6 @@ function CaptureFlow() {
             name: item.name.trim() || "Untitled",
             startedAt,
             albumId: item.albumId ?? undefined,
-            videoUrl: videoUrl ?? undefined,
             capturedAt: item.capturedAt ?? undefined,
             location: item.location ?? undefined,
             locationName: item.locationName.trim() || undefined,
@@ -335,7 +291,7 @@ function CaptureFlow() {
         claimedRef.current.delete(`upload:${item.id}`);
       }
     },
-    [uploadLimit, user?.uid],
+    [uploadLimit],
   );
 
   const runDownload = useCallback(
@@ -392,8 +348,6 @@ function CaptureFlow() {
               capturedAt: item.capturedAt ?? undefined,
               audioFile: wav && wavFile(wav, splat.name),
               audioSeconds: item.audioSeconds ?? undefined,
-              videoFile: item.file,
-              videoUrl: item.videoUrl,
             },
           );
           const album = item.albumId ?? albumId;
@@ -773,14 +727,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-
-/**
- * The video is archived before there is a place to hang it on, so it is filed
- * under whoever uploaded it and when, not under a place id.
- */
-function storageKeyFor(uid: string | undefined) {
-  return `${uid ?? "anonymous"}/${Date.now()}`;
-}
 
 /**
  * A datetime-local input speaks wall clock and carries no offset, so the

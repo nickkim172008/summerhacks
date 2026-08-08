@@ -63,11 +63,12 @@ anything is uploaded:
 1. Duration and frame size, checked against KIRI's limits so a bad file never
    costs credits; where and when it was filmed, read out of the container; and
    the audio track, lifted off in parallel with the upload
-2. The walkthrough is archived to Firebase Storage, then a copy goes to
-   `POST /api/capture/submit` → KIRI `/3dgs/video`, which returns a `serialize`
-   job id
-3. The job id, the metadata and the archive URL go to `localStorage`; the WAV
-   goes to Cache Storage under the same serialize
+2. The walkthrough goes to `POST /api/capture/submit` → KIRI `/3dgs/video`,
+   which returns a `serialize` job id. It is not kept anywhere else:
+   reconstruction is the only thing that reads it, and what outlives it is the
+   splat, the details and the sound
+3. The job id and the metadata go to `localStorage`; the WAV goes to Cache
+   Storage under the same serialize
 4. `GET /api/capture/status` polls KIRI every 20s until status `2` (successful)
 5. `GET /api/capture/model` downloads the result zip server-side and extracts
    the `.ply`. The browser renders it immediately from an object URL and keeps
@@ -96,9 +97,10 @@ metadata and nothing else (documents cap at 1 MiB).
 
 - `splats/{placeId}/{name}.spz` — walkable Gaussian splat
 - `audio/{placeId}/walkthrough.wav` — the audio lifted off the video
-- `videos/{uid}/{timestamp}/walkthrough.*` — the original walkthrough, filed
-  under who uploaded it and when, because it is archived before there is a
-  place to hang it on
+
+Source videos are not stored. They are uploaded to KIRI, reconstructed, and
+that is the end of them — a few megabytes of splat, details and audio survive
+per capture instead of the several hundred a copy of every walkthrough costs.
 
 Enable Storage on the Firebase project (Blaze is required for new buckets).
 
