@@ -79,9 +79,17 @@ export default function AlbumsPage() {
                 Finish setup
               </Link>
             ) : (
-              <Link href="/signin" className="text-[13px] text-[#0071e3]">
-                Sign In
-              </Link>
+              <>
+                <Link href="/signin" className="text-[13px] text-[#0071e3]">
+                  Sign In
+                </Link>
+                <Link
+                  href="/signup"
+                  className="rounded-full bg-[#0071e3] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#0077ed]"
+                >
+                  Sign Up
+                </Link>
+              </>
             )}
             <button
               onClick={() => {
@@ -144,8 +152,12 @@ export default function AlbumsPage() {
 
             {!user && (
               <p className="mt-10 text-sm text-neutral-500">
+                <Link href="/signup" className="text-[#0071e3]">
+                  Sign up
+                </Link>{" "}
+                or{" "}
                 <Link href="/signin" className="text-[#0071e3]">
-                  Sign in
+                  sign in
                 </Link>{" "}
                 to create albums and claim a public profile.
               </p>
