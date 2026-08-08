@@ -171,6 +171,10 @@ export default function MapPage() {
                   <Link href="/signin" className="text-[#0071e3]">
                     Sign in
                   </Link>{" "}
+                  or{" "}
+                  <Link href="/signup" className="text-[#0071e3]">
+                    sign up
+                  </Link>{" "}
                   to filter by your albums.
                 </p>
               )}
