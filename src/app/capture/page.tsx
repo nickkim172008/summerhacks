@@ -47,6 +47,11 @@ const POLL_INTERVAL_MS = 20_000;
 const CLOCK_INTERVAL_MS = 30_000;
 const FAILURES_BEFORE_REPORTING = 3;
 
+/** Pitch mode: show the upload UX without waiting 30–90 min for a splat. */
+const DEMO_CAPTURE = process.env.NEXT_PUBLIC_DEMO_CAPTURE === "true";
+const DEMO_UPLOAD_STEPS = [0.35, 0.72, 1];
+const DEMO_STEP_MS = 550;
+
 type Busy = "uploading" | "downloading" | "saving" | null;
 type VideoMeta = { seconds: number; width: number; height: number };
 
@@ -86,8 +91,9 @@ function CaptureFlow() {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [demoQueued, setDemoQueued] = useState(false);
 
-  const problem = meta && describeProblem(meta);
+  const problem = !DEMO_CAPTURE && meta && describeProblem(meta);
   const canSubmit = Boolean(name.trim() && video && !problem && !busy);
   const backHref = albumId ? `/album/${albumId}` : "/";
 
@@ -202,6 +208,19 @@ function CaptureFlow() {
     setError(null);
     setBusy("uploading");
     setUploadFraction(0);
+
+    if (DEMO_CAPTURE) {
+      // No KIRI call, but the progress bar still moves — a frozen one reads as
+      // broken on a projector.
+      for (const fraction of DEMO_UPLOAD_STEPS) {
+        await sleep(DEMO_STEP_MS);
+        setUploadFraction(fraction);
+      }
+      setBusy(null);
+      setDemoQueued(true);
+      return;
+    }
+
     try {
       const serialize = await uploadVideo(video, setUploadFraction);
       saveJob({ serialize, name: name.trim(), startedAt: Date.now() });
@@ -262,7 +281,28 @@ function CaptureFlow() {
         </div>
       </nav>
 
-      {splat ? (
+      {demoQueued ? (
+        <div className="mx-auto max-w-xl px-6 pt-16 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#0071e3]/10 text-2xl text-[#0071e3]">
+            ✓
+          </div>
+          <h1 className="mt-6 text-[28px] font-bold tracking-tight">
+            Video added
+          </h1>
+          <p className="mt-2 text-sm text-neutral-500">
+            <span className="font-medium text-[#1d1d1f]">{name.trim()}</span> is
+            queued for reconstruction. In production this takes 30–90 minutes —
+            then it shows up as a walkable environment
+            {albumId ? " in this album" : ""}.
+          </p>
+          <Link
+            href={backHref}
+            className="mt-8 inline-block rounded-full bg-[#0071e3] px-6 py-2.5 font-medium text-white transition hover:bg-[#0077ed]"
+          >
+            {albumId ? "Back to Album" : "Back to Albums"}
+          </Link>
+        </div>
+      ) : splat ? (
         <div className="mx-auto max-w-5xl px-6">
           <h1 className="mt-8 text-[34px] font-bold tracking-tight">
             {splat.name}
@@ -416,7 +456,7 @@ function CaptureFlow() {
               </div>
             )}
 
-            {!isFirebaseConfigured && (
+            {!isFirebaseConfigured && !DEMO_CAPTURE && (
               <p className="text-sm text-amber-600">
                 Firebase isn&apos;t configured, so a finished environment
                 can&apos;t be saved. Capture still works — it renders here and
@@ -451,6 +491,10 @@ function describeWait(startedAt: number, now: number) {
   const minutes = Math.floor((now - startedAt) / 60_000);
   if (minutes < 1) return "Just started.";
   return `Waiting ${minutes} minute${minutes === 1 ? "" : "s"} so far.`;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function prettyName(fileName: string) {
