@@ -5,31 +5,50 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   KIRI_STATUS_LABEL,
   MAX_VIDEO_HEIGHT,
   MAX_VIDEO_SECONDS,
   MAX_VIDEO_WIDTH,
-  type KiriStatus,
 } from "@/lib/kiri";
+import { fetchSplat, fetchStatus, uploadVideo } from "@/lib/captureJob";
 import {
-  clearJob,
-  fetchSplat,
-  fetchStatus,
-  parseJob,
-  readJobSnapshot,
+  parseJobs,
+  readJobsSnapshot,
+  removeJob,
   saveJob,
-  subscribeToJob,
-  uploadVideo,
-  type CaptureJob,
-} from "@/lib/captureJob";
+  subscribeToJobs,
+} from "@/lib/captureQueue";
+import {
+  createLimiter,
+  DOWNLOAD_LIMIT,
+  SAVE_LIMIT,
+  UPLOAD_LIMIT,
+} from "@/lib/limiter";
+import {
+  activeCount,
+  canStart,
+  checkTargets,
+  createQueue,
+  downloadTargets,
+  pickedItem,
+  pollTargets,
+  reduceQueue,
+  resumedItem,
+  saveTargets,
+  uploadTargets,
+  type CaptureItem,
+  type SplatHandle,
+  type VideoMeta,
+} from "@/lib/captureRunner";
 import {
   dropCachedSplat,
   readCachedSplat,
@@ -38,22 +57,35 @@ import {
 import { createPlace } from "@/lib/places";
 import { addPlacesToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
+import CaptureQueue from "@/components/CaptureQueue";
 
 const SplatViewer = dynamic(() => import("@/components/SplatViewer"), {
   ssr: false,
 });
 
 const POLL_INTERVAL_MS = 20_000;
+/**
+ * A gap between the status checks of one sweep. They already go one at a time,
+ * but firing N of them back to back still buys nothing and spends the connection
+ * budget the downloads need.
+ */
+const POLL_STAGGER_MS = 1_500;
 const CLOCK_INTERVAL_MS = 30_000;
-const FAILURES_BEFORE_REPORTING = 3;
 
 /** Pitch mode: show the upload UX without waiting 30–90 min for a splat. */
 const DEMO_CAPTURE = process.env.NEXT_PUBLIC_DEMO_CAPTURE === "true";
 const DEMO_UPLOAD_STEPS = [0.35, 0.72, 1];
 const DEMO_STEP_MS = 550;
 
-type Busy = "uploading" | "downloading" | "saving" | null;
-type VideoMeta = { seconds: number; width: number; height: number };
+/** The server has no localStorage, so it renders as if nothing were queued. */
+const emptySnapshot = () => "{}";
+
+let rowCounter = 0;
+/** React's key. Deliberately not the KIRI task id — a picked video has none. */
+function nextRowId() {
+  rowCounter += 1;
+  return `row-${rowCounter}`;
+}
 
 export default function CapturePage() {
   return (
@@ -64,216 +96,359 @@ export default function CapturePage() {
 }
 
 function CaptureFlow() {
-  const router = useRouter();
   const params = useSearchParams();
   const albumId = params.get("album");
-  // "Capture New Environment" asks for a blank form. Without this, /capture
-  // resumes the saved job and the entry point shows the last render instead.
+  // "Capture New Environment" asks for a blank form. The queue still lists what
+  // is in flight — losing sight of a running job would be worse — but nothing
+  // opens itself over the form.
   const startingNew = params.get("new") === "1";
-  const [name, setName] = useState("");
-  const [video, setVideo] = useState<File | null>(null);
-  const [meta, setMeta] = useState<VideoMeta | null>(null);
+
+  const [queue, dispatch] = useReducer(reduceQueue, !startingNew, createQueue);
   const [formKey, setFormKey] = useState(0);
-
-  // The job lives in localStorage, not in state: reconstruction outlasts the
-  // tab, so a reload — or a second tab — has to find the same job waiting.
-  const storedJob = useSyncExternalStore(
-    subscribeToJob,
-    readJobSnapshot,
-    () => null,
-  );
-  const job = useMemo(() => parseJob(storedJob), [storedJob]);
-
-  const [status, setStatus] = useState<KiriStatus | null>(null);
-  const [uploadFraction, setUploadFraction] = useState(0);
-  // Carries the name so the result view survives clearing the job on save.
-  const [splat, setSplat] = useState<{
-    url: string;
-    file: File;
-    name: string;
-  } | null>(null);
-  const [busy, setBusy] = useState<Busy>(null);
-  const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const [demoQueued, setDemoQueued] = useState(false);
 
-  const problem = !DEMO_CAPTURE && meta && describeProblem(meta);
-  const canSubmit = Boolean(name.trim() && video && !problem && !busy);
-  const backHref = albumId ? `/album/${albumId}` : "/";
-  const resumeHref = albumId ? `/capture?album=${albumId}` : "/capture";
+  // The jobs live in localStorage, not in state: reconstruction outlasts the
+  // tab, so a reload — or a second tab — has to find them still waiting.
+  const storedJobs = useSyncExternalStore(
+    subscribeToJobs,
+    readJobsSnapshot,
+    emptySnapshot,
+  );
+  // Storage hands back the newest first; the queue reads chronologically.
+  const jobs = useMemo(
+    () => parseJobs(storedJobs).slice().reverse(),
+    [storedJobs],
+  );
 
-  // An object URL pins its blob — a hundred-odd megabytes here — until it is
-  // revoked, so the live one is tracked in a ref and released when it is
-  // replaced, when the page goes away, or when a download lands too late.
-  const splatUrlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
-  const showSplat = useCallback((file: File, label: string) => {
-    if (splatUrlRef.current) URL.revokeObjectURL(splatUrlRef.current);
-    splatUrlRef.current = null;
-    if (!mountedRef.current) return;
-    const url = URL.createObjectURL(file);
-    splatUrlRef.current = url;
-    setSplat({ url, file, name: label });
-  }, []);
+  const urlsRef = useRef<Map<string, string>>(new Map());
+  /**
+   * Which rows already have their stage running. Phases alone would nearly do
+   * it, but an effect re-runs before its dispatch has been rendered, and a
+   * second upload of the same video is not a mistake worth risking.
+   */
+  const claimedRef = useRef<Set<string>>(new Set());
+  /** Rows dropped while their upload was still in the air. */
+  const discardedRef = useRef<Set<string>>(new Set());
+  const itemsRef = useRef<CaptureItem[]>(queue.items);
+
+  const uploadLimit = useMemo(() => createLimiter(UPLOAD_LIMIT), []);
+  const downloadLimit = useMemo(() => createLimiter(DOWNLOAD_LIMIT), []);
+  const saveLimit = useMemo(() => createLimiter(SAVE_LIMIT), []);
+
+  useEffect(() => {
+    // The poll loop is mounted once and never restarted — resetting its timer on
+    // every state change would push the next status check out for as long as
+    // anything kept changing — so it reads its targets from here instead.
+    itemsRef.current = queue.items;
+  });
+
   useEffect(() => {
     mountedRef.current = true;
+    const urls = urlsRef.current;
     return () => {
       mountedRef.current = false;
-      if (splatUrlRef.current) URL.revokeObjectURL(splatUrlRef.current);
+      for (const url of urls.values()) URL.revokeObjectURL(url);
+      urls.clear();
     };
   }, []);
 
-  const download = useCallback(
-    async (target: CaptureJob) => {
-      setBusy("downloading");
-      setError(null);
+  /**
+   * Every row owns its object URL and revokes only that one. Releasing the
+   * previous URL on each new capture — which is what a single shared handle
+   * amounts to — would blank a splat another row still has on screen.
+   */
+  const attachSplat = useCallback(
+    (id: string, file: File, name: string): SplatHandle | null => {
+      // A transfer that lands after its row was dropped, or after the page went
+      // away, would otherwise pin its blob with nothing left to revoke it.
+      if (!mountedRef.current || discardedRef.current.has(id)) return null;
+      const previous = urlsRef.current.get(id);
+      if (previous) URL.revokeObjectURL(previous);
+      const url = URL.createObjectURL(file);
+      urlsRef.current.set(id, url);
+      return { url, file, name };
+    },
+    [],
+  );
+
+  const releaseSplat = useCallback((id: string) => {
+    const url = urlsRef.current.get(id);
+    if (url) URL.revokeObjectURL(url);
+    urlsRef.current.delete(id);
+  }, []);
+
+  // Storage into the queue. This is how a reload picks its jobs back up, and how
+  // a job started in another tab turns up here.
+  useEffect(() => {
+    dispatch({
+      type: "added",
+      items: jobs.map((job) => resumedItem(nextRowId(), job)),
+    });
+  }, [jobs]);
+
+  const runCheck = useCallback(
+    async (item: CaptureItem) => {
+      if (item.file) {
+        const meta = await readVideoMeta(item.file);
+        if (!mountedRef.current) return;
+        dispatch({
+          type: "meta-read",
+          id: item.id,
+          meta,
+          // Demo mode never reaches KIRI, so KIRI's limits are not this row's
+          // problem. An unreadable file is let through as it always was: the
+          // server rejects what it must.
+          problem: DEMO_CAPTURE || !meta ? null : describeProblem(meta),
+        });
+        return;
+      }
+      if (!item.serialize) return;
+      const cached = await readCachedSplat(item.serialize);
+      if (!mountedRef.current) return;
+      dispatch({
+        type: "cache-checked",
+        id: item.id,
+        splat: cached
+          ? attachSplat(item.id, splatFile(cached, item.name), item.name)
+          : null,
+      });
+    },
+    [attachSplat],
+  );
+
+  const runUpload = useCallback(
+    async (item: CaptureItem) => {
+      const file = item.file;
+      if (!file) return;
+
+      if (DEMO_CAPTURE) {
+        // No KIRI call, but the progress bar still moves — a frozen one reads as
+        // broken on a projector.
+        for (const fraction of DEMO_UPLOAD_STEPS) {
+          await sleep(DEMO_STEP_MS);
+          if (!mountedRef.current) return;
+          dispatch({ type: "upload-progress", id: item.id, fraction });
+        }
+        dispatch({ type: "demo-queued", id: item.id, startedAt: Date.now() });
+        return;
+      }
+
       try {
-        const blob = await fetchSplat(target.serialize);
-        showSplat(splatFile(blob, target.name), target.name);
-        // After the render, so keeping a copy never delays first paint.
-        void writeCachedSplat(target.serialize, blob);
+        const serialize = await uploadLimit(() =>
+          uploadVideo(file, (fraction) =>
+            dispatch({ type: "upload-progress", id: item.id, fraction }),
+          ),
+        );
+        const startedAt = Date.now();
+        dispatch({ type: "upload-succeeded", id: item.id, serialize, startedAt });
+        // A row dropped mid-upload must not come back from the dead: persisting
+        // the job now would have the next reconcile read it as one to resume.
+        if (!discardedRef.current.has(item.id)) {
+          saveJob({
+            serialize,
+            name: item.name.trim() || "Untitled",
+            startedAt,
+            albumId: item.albumId ?? undefined,
+          });
+        }
       } catch (err) {
-        setError(messageOf(err, "Could not download the finished capture"));
-      } finally {
-        setBusy(null);
+        dispatch({
+          type: "upload-failed",
+          id: item.id,
+          message: messageOf(err, "Upload failed"),
+        });
+        claimedRef.current.delete(`upload:${item.id}`);
       }
     },
-    [showSplat],
+    [uploadLimit],
+  );
+
+  const runDownload = useCallback(
+    async (item: CaptureItem) => {
+      const serialize = item.serialize;
+      if (!serialize) return;
+      try {
+        const blob = await downloadLimit(() => fetchSplat(serialize));
+        const splat = attachSplat(
+          item.id,
+          splatFile(blob, item.name),
+          item.name,
+        );
+        if (!splat) return;
+        dispatch({ type: "download-succeeded", id: item.id, splat });
+        // After the render, so keeping a copy never delays first paint.
+        void writeCachedSplat(serialize, blob);
+      } catch (err) {
+        dispatch({
+          type: "download-failed",
+          id: item.id,
+          message: messageOf(err, "Could not download the finished capture"),
+        });
+      } finally {
+        claimedRef.current.delete(`download:${item.id}`);
+      }
+    },
+    [downloadLimit, attachSplat],
+  );
+
+  const runSave = useCallback(
+    async (item: CaptureItem) => {
+      const splat = item.splat;
+      if (!splat) return;
+      try {
+        await saveLimit(async () => {
+          const placeId = await createPlace(
+            splat.name,
+            await toSpz(splat),
+            "anonymous",
+          );
+          const album = item.albumId ?? albumId;
+          if (album) await addPlacesToAlbum(album, [placeId]);
+          // It serves from Storage now, so the local copy and the resume record
+          // are both dead weight.
+          if (item.serialize) {
+            await dropCachedSplat(item.serialize);
+            removeJob(item.serialize);
+          }
+          // No navigation: leaving this page would unmount every other capture
+          // still uploading, reconstructing or downloading beside this one.
+          dispatch({ type: "save-succeeded", id: item.id, placeId });
+        });
+      } catch (err) {
+        dispatch({
+          type: "save-failed",
+          id: item.id,
+          message: messageOf(err, "Could not save this environment"),
+        });
+      } finally {
+        claimedRef.current.delete(`save:${item.id}`);
+      }
+    },
+    [saveLimit, albumId],
   );
 
   useEffect(() => {
-    if (!job || splat || startingNew) return;
+    const claimed = claimedRef.current;
+    for (const item of checkTargets(queue.items)) {
+      if (claimed.has(`check:${item.id}`)) continue;
+      claimed.add(`check:${item.id}`);
+      void runCheck(item);
+    }
+  }, [queue.items, runCheck]);
+
+  useEffect(() => {
+    const claimed = claimedRef.current;
+    for (const item of uploadTargets(queue.items)) {
+      if (claimed.has(`upload:${item.id}`)) continue;
+      claimed.add(`upload:${item.id}`);
+      void runUpload(item);
+    }
+  }, [queue.items, runUpload]);
+
+  useEffect(() => {
+    const claimed = claimedRef.current;
+    for (const item of downloadTargets(queue.items)) {
+      if (claimed.has(`download:${item.id}`)) continue;
+      claimed.add(`download:${item.id}`);
+      void runDownload(item);
+    }
+  }, [queue.items, runDownload]);
+
+  useEffect(() => {
+    const claimed = claimedRef.current;
+    for (const item of saveTargets(queue.items)) {
+      if (claimed.has(`save:${item.id}`)) continue;
+      claimed.add(`save:${item.id}`);
+      void runSave(item);
+    }
+  }, [queue.items, runSave]);
+
+  // One loop for every waiting job, self-rescheduling so the interval is
+  // measured between sweeps rather than started against them.
+  useEffect(() => {
     let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    async function poll(target: CaptureJob) {
+    async function check(target: CaptureItem) {
       try {
-        const report = await fetchStatus(target.serialize);
+        const report = await fetchStatus(target.serialize as string);
         if (stopped) return;
-        failures = 0;
-        setError((shown) => (shown ? null : shown));
-        setStatus(report.status);
-        if (report.failed) {
-          setError(KIRI_STATUS_LABEL[report.status]);
-          clearJob();
-          return;
-        }
-        if (report.ready) {
-          await download(target);
-          return;
-        }
+        dispatch({
+          type: "status-polled",
+          id: target.id,
+          report,
+          message: KIRI_STATUS_LABEL[report.status],
+        });
       } catch (err) {
-        // A blip during a 90-minute job is not a failure, so polling continues
-        // either way — but a bad key or a dead task id looks identical to a
-        // blip, so say something once the failures stop looking transient.
-        failures += 1;
-        if (failures >= FAILURES_BEFORE_REPORTING) {
-          setError(messageOf(err, "Lost contact with KIRI"));
-        }
+        dispatch({
+          type: "poll-errored",
+          id: target.id,
+          message: messageOf(err, "Lost contact with KIRI"),
+        });
       }
-      if (!stopped) timer = setTimeout(() => poll(target), POLL_INTERVAL_MS);
     }
 
-    // A capture already downloaded once needs neither the status check nor the
-    // transfer — it renders straight from disk.
-    async function start(target: CaptureJob) {
-      const cached = await readCachedSplat(target.serialize);
-      if (stopped) return;
-      if (cached) {
-        showSplat(splatFile(cached, target.name), target.name);
-        return;
+    async function sweep() {
+      const targets = pollTargets(itemsRef.current);
+      for (let i = 0; i < targets.length; i += 1) {
+        if (stopped) return;
+        // A browser allows about six connections per origin, and the downloads
+        // are the ones that cannot wait: KIRI's signed URL expires an hour after
+        // a job goes ready. So the checks go one at a time, spaced out, instead
+        // of N of them landing in the same instant and crowding the transfers.
+        if (i > 0) await sleep(POLL_STAGGER_MS);
+        if (stopped) return;
+        await check(targets[i]);
       }
-      poll(target);
+      if (!stopped) timer = setTimeout(sweep, POLL_INTERVAL_MS);
     }
 
-    start(job);
+    timer = setTimeout(sweep, 0);
     return () => {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [job, splat, startingNew, download, showSplat]);
+  }, []);
 
-  // Drives the "waiting for N minutes" readout.
+  const waiting = queue.items.some((item) => item.phase === "waiting");
   useEffect(() => {
-    if (!job || splat || startingNew) return;
+    if (!waiting) return;
     const id = setInterval(() => setNow(Date.now()), CLOCK_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [job, splat, startingNew]);
+  }, [waiting]);
 
-  async function handleFile(file: File | undefined) {
-    setVideo(file ?? null);
-    setMeta(file ? await readVideoMeta(file) : null);
-    // The file is usually named after the place; save the typing.
-    if (file && !name.trim()) setName(prettyName(file.name));
-  }
-
-  async function submit() {
-    if (!video) return;
-    setError(null);
-    setBusy("uploading");
-    setUploadFraction(0);
-
-    if (DEMO_CAPTURE) {
-      // No KIRI call, but the progress bar still moves — a frozen one reads as
-      // broken on a projector.
-      for (const fraction of DEMO_UPLOAD_STEPS) {
-        await sleep(DEMO_STEP_MS);
-        setUploadFraction(fraction);
-      }
-      setBusy(null);
-      setDemoQueued(true);
-      return;
-    }
-
-    try {
-      const serialize = await uploadVideo(video, setUploadFraction);
-      saveJob({ serialize, name: name.trim(), startedAt: Date.now() });
-      if (startingNew) router.replace(resumeHref);
-    } catch (err) {
-      setError(messageOf(err, "Upload failed"));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function save() {
-    if (!splat) return;
-    setBusy("saving");
-    setError(null);
-    try {
-      const placeId = await createPlace(
-        splat.name,
-        await toSpz(splat),
-        "anonymous",
-      );
-      if (albumId) await addPlacesToAlbum(albumId, [placeId]);
-      // It serves from Storage now, so the local copy is dead weight.
-      if (job) await dropCachedSplat(job.serialize);
-      clearJob();
-      router.push(`/place/${placeId}`);
-    } catch (err) {
-      setError(messageOf(err, "Could not save this environment"));
-      setBusy(null);
-    }
-  }
-
-  function startOver() {
-    if (job) void dropCachedSplat(job.serialize);
-    clearJob();
-    if (splatUrlRef.current) {
-      URL.revokeObjectURL(splatUrlRef.current);
-      splatUrlRef.current = null;
-    }
-    setSplat(null);
-    setStatus(null);
-    setError(null);
-    setName("");
-    setVideo(null);
-    setMeta(null);
-    setUploadFraction(0);
+  function addVideos(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    dispatch({
+      type: "added",
+      items: Array.from(files).map((file) =>
+        pickedItem(nextRowId(), file, prettyName(file.name), albumId),
+      ),
+    });
+    // The input holds on to its selection, so re-picking a file that was just
+    // dropped would not fire onChange. Remounting it clears that.
     setFormKey((key) => key + 1);
   }
+
+  function remove(id: string) {
+    const item = queue.items.find((entry) => entry.id === id);
+    discardedRef.current.add(id);
+    releaseSplat(id);
+    // Whatever is already in flight for this row cannot be recalled; its result
+    // lands on a row the reducer no longer knows, which is where it stops.
+    if (item?.serialize) {
+      void dropCachedSplat(item.serialize);
+      removeJob(item.serialize);
+    }
+    dispatch({ type: "removed", id });
+  }
+
+  const previewed =
+    queue.items.find((item) => item.id === queue.previewId && item.splat) ??
+    null;
+  const running = activeCount(queue.items);
+  const backHref = albumId ? `/album/${albumId}` : "/";
 
   return (
     <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
@@ -291,208 +466,112 @@ function CaptureFlow() {
         </div>
       </nav>
 
-      {demoQueued ? (
-        <div className="mx-auto max-w-xl px-6 pt-16 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#0071e3]/10 text-2xl text-[#0071e3]">
-            ✓
-          </div>
-          <h1 className="mt-6 text-[28px] font-bold tracking-tight">
-            Video added
-          </h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            <span className="font-medium text-[#1d1d1f]">{name.trim()}</span> is
-            queued for reconstruction. In production this takes 30–90 minutes —
-            then it shows up as a walkable environment
-            {albumId ? " in this album" : ""}.
-          </p>
-          <Link
-            href={backHref}
-            className="mt-8 inline-block rounded-full bg-[#0071e3] px-6 py-2.5 font-medium text-white transition hover:bg-[#0077ed]"
-          >
-            {albumId ? "Back to Album" : "Back to Albums"}
-          </Link>
-        </div>
-      ) : splat ? (
-        <div className="mx-auto max-w-5xl px-6">
-          <h1 className="mt-8 text-[34px] font-bold tracking-tight">
-            {splat.name}
-          </h1>
-          <p className="text-neutral-500">
-            Drag to look around, scroll to zoom.
-          </p>
+      <div className="mx-auto max-w-3xl px-6">
+        <h1 className="mt-8 text-[34px] font-bold tracking-tight">
+          New Environments
+        </h1>
+        <p className="mt-2 text-sm text-neutral-500">
+          Pick one slow walkthrough video per space — each under{" "}
+          {MAX_VIDEO_SECONDS / 60} minutes, {MAX_VIDEO_WIDTH}×{MAX_VIDEO_HEIGHT}{" "}
+          or smaller. They reconstruct in parallel, and each one saves on its own.
+          {albumId && " Everything you save here joins this album."}
+        </p>
 
-          <div className="mt-6 h-[65vh] overflow-hidden rounded-2xl bg-black ring-1 ring-black/10">
-            <SplatViewer
-              splatUrl={splat.url}
-              pins={[]}
-              placementMode={false}
-              onPlacePoint={() => {}}
+        <div className="mt-8 flex flex-col gap-4">
+          <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed border-black/20 bg-neutral-50 px-4 py-8 text-center transition hover:border-[#0071e3]">
+            <span className="text-[15px] font-medium text-[#0071e3]">
+              Choose Videos
+            </span>
+            <span className="text-xs text-neutral-500">
+              One continuous walkthrough per environment
+            </span>
+            <input
+              key={formKey}
+              type="file"
+              accept="video/*"
+              multiple
+              onChange={(e) => addVideos(e.target.files)}
+              className="hidden"
             />
-          </div>
+          </label>
 
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <button
-              onClick={save}
-              disabled={!isFirebaseConfigured || busy === "saving"}
-              className="rounded-full bg-[#0071e3] px-6 py-2.5 font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
-            >
-              {busy === "saving"
-                ? "Saving…"
-                : albumId
-                  ? "Add to Album"
-                  : "Save to Photos"}
-            </button>
-            <a
-              href={splat.url}
-              download={splat.file.name}
-              className="rounded-full border border-black/10 px-6 py-2.5 text-[15px] transition hover:bg-neutral-50"
-            >
-              Download .ply
-            </a>
-            <button
-              onClick={startOver}
-              className="px-2 text-[15px] text-[#0071e3]"
-            >
-              Capture Another
-            </button>
-          </div>
+          <button
+            onClick={() => dispatch({ type: "start-requested" })}
+            disabled={!canStart(queue.items)}
+            className="rounded-full bg-[#0071e3] px-6 py-2.5 font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
+          >
+            Start Capture
+          </button>
 
-          {!isFirebaseConfigured && (
-            <p className="mt-4 text-sm text-amber-600">
-              Firebase isn&apos;t configured, so this can&apos;t be saved yet —
-              what you see is rendering straight from the finished capture.
+          {!isFirebaseConfigured && !DEMO_CAPTURE && (
+            <p className="text-sm text-amber-600">
+              Firebase isn&apos;t configured, so finished environments can&apos;t
+              be saved. Capture still works — each one renders here and can be
+              downloaded.
             </p>
           )}
-          {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
         </div>
-      ) : job && !startingNew ? (
-        <div className="mx-auto max-w-xl px-6">
-          <h1 className="mt-8 text-[34px] font-bold tracking-tight">
-            {job.name}
-          </h1>
-          <p className="mt-2 text-neutral-500">
-            {busy === "downloading"
-              ? "Downloading your environment…"
-              : status === null
-                ? "Checking on it…"
-                : `${KIRI_STATUS_LABEL[status]}.`}
-          </p>
 
-          <div className="mt-8 overflow-hidden rounded-full bg-neutral-100">
-            <div className="h-1.5 w-1/3 animate-pulse rounded-full bg-[#0071e3]" />
-          </div>
-
-          <p className="mt-4 text-sm text-neutral-500">
-            {describeWait(job.startedAt, now)} Reconstruction takes 30–90
-            minutes and keeps going without you — close this tab and come back,
-            and your environment will be waiting here.
-          </p>
-
-          <div className="mt-6 flex items-center gap-4">
-            {error && !busy && (
-              <button
-                onClick={() => download(job)}
-                className="rounded-full bg-[#0071e3] px-5 py-2 text-[15px] font-medium text-white transition hover:bg-[#0077ed]"
-              >
-                Try Again
-              </button>
-            )}
-            <button onClick={startOver} className="text-[15px] text-[#0071e3]">
-              Cancel
-            </button>
-          </div>
-          {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
-        </div>
-      ) : (
-        <div className="mx-auto max-w-xl px-6">
-          <h1 className="mt-8 text-[34px] font-bold tracking-tight">
-            New Environment
-          </h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            Upload one slow walkthrough video of the space — under{" "}
-            {MAX_VIDEO_SECONDS / 60} minutes, {MAX_VIDEO_WIDTH}×
-            {MAX_VIDEO_HEIGHT} or smaller. Move steadily and cover it from
-            several angles and heights.
-            {albumId && " It will be added to this album when it's ready."}
-          </p>
-
-          {job && (
-            <div className="mt-6 flex items-center justify-between gap-4 rounded-xl border border-black/10 bg-neutral-50 px-4 py-3">
-              <p className="text-sm text-neutral-500">
-                <span className="font-medium text-[#1d1d1f]">{job.name}</span>{" "}
-                is already captured on this device. Starting a new one replaces
-                it.
-              </p>
-              <Link
-                href={resumeHref}
-                className="shrink-0 text-[15px] text-[#0071e3]"
-              >
-                Open
-              </Link>
-            </div>
-          )}
-
-          <div className="mt-8 flex flex-col gap-4">
-            <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed border-black/20 bg-neutral-50 px-4 py-8 text-center transition hover:border-[#0071e3]">
-              <span className="text-[15px] font-medium text-[#0071e3]">
-                {video ? video.name : "Choose a Video"}
-              </span>
-              <span className="text-xs text-neutral-500">
-                One continuous walkthrough works best
-              </span>
-              <input
-                key={formKey}
-                type="file"
-                accept="video/*"
-                onChange={(e) => handleFile(e.target.files?.[0])}
-                className="hidden"
-              />
-            </label>
-
-            {meta && (
-              <p
-                className={`text-sm ${problem ? "text-amber-600" : "text-neutral-500"}`}
-              >
-                {meta.width}×{meta.height}, {meta.seconds.toFixed(0)}s
-                {problem && ` — ${problem}`}
-              </p>
-            )}
-
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="What is this place called?"
-              className="rounded-xl border border-black/10 bg-neutral-50 px-4 py-2.5 text-[15px] outline-none focus:border-[#0071e3]"
-            />
-
-            <button
-              onClick={submit}
-              disabled={!canSubmit}
-              className="rounded-full bg-[#0071e3] px-6 py-2.5 font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
-            >
-              {busy === "uploading" ? "Uploading…" : "Start Capture"}
-            </button>
-
-            {busy === "uploading" && (
-              <div className="overflow-hidden rounded-full bg-neutral-100">
-                <div
-                  className="h-1.5 rounded-full bg-[#0071e3] transition-[width]"
-                  style={{ width: `${Math.round(uploadFraction * 100)}%` }}
-                />
+        {previewed?.splat && (
+          <section className="mt-10">
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <div>
+                <h2 className="text-[22px] font-semibold tracking-tight">
+                  {previewed.splat.name}
+                </h2>
+                <p className="text-sm text-neutral-500">
+                  Drag to look around, scroll to zoom.
+                </p>
               </div>
-            )}
+              <button
+                onClick={() => dispatch({ type: "previewed", id: null })}
+                className="text-[15px] text-[#0071e3]"
+              >
+                Close Preview
+              </button>
+            </div>
+            {/* One viewer for the whole queue: each is a WebGL2 context, which is
+                costly enough that this repo turns StrictMode off to avoid a
+                second. Keyed by row so switching previews rebuilds the scene. */}
+            <div className="mt-4 h-[60vh] overflow-hidden rounded-2xl bg-black ring-1 ring-black/10">
+              <SplatViewer
+                key={previewed.id}
+                splatUrl={previewed.splat.url}
+                pins={[]}
+                placementMode={false}
+                onPlacePoint={() => {}}
+              />
+            </div>
+          </section>
+        )}
 
-            {!isFirebaseConfigured && !DEMO_CAPTURE && (
-              <p className="text-sm text-amber-600">
-                Firebase isn&apos;t configured, so a finished environment
-                can&apos;t be saved. Capture still works — it renders here and
-                can be downloaded.
-              </p>
-            )}
-            {error && <p className="text-sm text-red-500">{error}</p>}
-          </div>
-        </div>
-      )}
+        <CaptureQueue
+          items={queue.items}
+          previewId={queue.previewId}
+          now={now}
+          albumId={albumId}
+          canSave={isFirebaseConfigured}
+          onRename={(id, name) => dispatch({ type: "renamed", id, name })}
+          onPreview={(id) => dispatch({ type: "previewed", id })}
+          onSave={(id) => dispatch({ type: "save-requested", id })}
+          onRetry={(id) => dispatch({ type: "retried", id })}
+          onRemove={remove}
+        />
+
+        {waiting && (
+          <p className="mt-6 text-sm text-neutral-500">
+            Reconstruction takes 30–90 minutes and keeps going without you —
+            close this tab and come back, and these will still be here.
+          </p>
+        )}
+        {running > 0 && (
+          <p className="mt-2 text-sm text-neutral-500">
+            {running === 1
+              ? "1 capture is transferring right now — leave this tab open until it finishes."
+              : `${running} captures are transferring right now — leave this tab open until they finish.`}
+          </p>
+        )}
+      </div>
     </main>
   );
 }
@@ -513,12 +592,6 @@ function describeProblem({ seconds, width, height }: VideoMeta) {
   return null;
 }
 
-function describeWait(startedAt: number, now: number) {
-  const minutes = Math.floor((now - startedAt) / 60_000);
-  if (minutes < 1) return "Just started.";
-  return `Waiting ${minutes} minute${minutes === 1 ? "" : "s"} so far.`;
-}
-
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -534,6 +607,7 @@ function prettyName(fileName: string) {
  * so only the compressed copy is ever uploaded or served.
  *
  * Spark is imported lazily: the form and progress views have no use for it.
+ * Saves run one at a time — this holds the whole capture in memory, decoded.
  */
 async function toSpz({ file, name }: { file: File; name: string }) {
   const { transcodeSpz } = await import("@sparkjsdev/spark");

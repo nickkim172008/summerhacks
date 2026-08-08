@@ -1,0 +1,456 @@
+/**
+ * The per-video state machine behind the capture queue. It is deliberately free
+ * of React and of the DOM: the page does the uploading, polling, transcoding and
+ * object-URL bookkeeping, then reports what happened as an event, and every
+ * phase change in the feature is `reduceQueue(state, event)`.
+ *
+ * Keeping it separate is what makes "one video failing must not disturb the
+ * others" checkable rather than hopeful — a reducer only ever rewrites the item
+ * an event names, and hands back the same state object when it names none.
+ *
+ * Nothing here may import a *value* from another module. The tests run this file
+ * under Node's type stripping, which erases `import type` outright but would
+ * have to resolve a real import, and the repo's specifiers are extensionless.
+ */
+import type { StatusReport } from "./captureJob";
+import type { CaptureJob } from "./captureQueue";
+import type { KiriStatus } from "./kiri";
+
+/**
+ * A blip during a 90-minute job is not a failure, so polling rides them out —
+ * but a bad key or a dead task id looks identical to a blip from here, so the
+ * row speaks up once the failures stop looking transient.
+ */
+export const FAILURES_BEFORE_REPORTING = 3;
+
+/**
+ * A row's whole life. `checking` covers both of the questions an item can open
+ * with — "is this video inside KIRI's limits" for a picked file, "is the result
+ * already on disk" for a job resumed from storage — because to the queue they
+ * are the same beat: the row cannot move until it has an answer.
+ */
+export type CapturePhase =
+  | "checking"
+  | "ready-to-upload"
+  | "blocked"
+  | "uploading"
+  | "waiting"
+  | "downloading"
+  | "previewable"
+  | "saving"
+  | "saved"
+  | "failed";
+
+export interface VideoMeta {
+  seconds: number;
+  width: number;
+  height: number;
+}
+
+/** A downloaded capture plus the object URL the page minted for it. */
+export interface SplatHandle {
+  url: string;
+  file: File;
+  name: string;
+}
+
+export interface CaptureItem {
+  /**
+   * React's key, and the id every event addresses. Not the KIRI task id: a
+   * freshly picked video has no task id until its upload lands, and two rows
+   * would collide on `undefined` in the meantime.
+   */
+  id: string;
+  name: string;
+  phase: CapturePhase;
+  /**
+   * A picked video arrives with a File and no task id; a job resumed from
+   * storage arrives with a task id and no File. Once an upload lands the File is
+   * dropped — it is hundreds of megabytes that nothing downstream reads.
+   */
+  file: File | null;
+  serialize: string | null;
+  /** Remembered per item so a resumed job still knows the album it belongs to. */
+  albumId: string | null;
+  meta: VideoMeta | null;
+  /** Which KIRI limit this video breaks, in words, or null if it breaks none. */
+  problem: string | null;
+  startedAt: number | null;
+  uploadFraction: number;
+  status: KiriStatus | null;
+  pollFailures: number;
+  error: string | null;
+  /**
+   * Where a retry picks up. A failed upload still holds its File; a failed
+   * download already has a finished job at KIRI, and sending it back to
+   * `waiting` would cost a whole poll interval before it tried again.
+   */
+  failedFrom: CapturePhase | null;
+  /** KIRI rejected the walkthrough itself, so there is nothing to try again. */
+  fatal: boolean;
+  splat: SplatHandle | null;
+  placeId: string | null;
+  /** Pitch mode: the row was accepted without a KIRI job behind it. */
+  demo: boolean;
+}
+
+export interface CaptureQueueState {
+  items: CaptureItem[];
+  /**
+   * At most one row may be previewed: each viewer is a WebGL2 context, which is
+   * expensive enough that this repo turns off StrictMode to avoid a second one.
+   */
+  previewId: string | null;
+  /**
+   * `?new=1` means the user asked for a blank form, so a capture that finishes
+   * while they are there must not open itself over the top of it.
+   */
+  autoPreview: boolean;
+}
+
+export type CaptureEvent =
+  | { type: "added"; items: CaptureItem[] }
+  | { type: "removed"; id: string }
+  | { type: "previewed"; id: string | null }
+  | { type: "renamed"; id: string; name: string }
+  | { type: "start-requested" }
+  | { type: "meta-read"; id: string; meta: VideoMeta | null; problem: string | null }
+  | { type: "cache-checked"; id: string; splat: SplatHandle | null }
+  | { type: "upload-progress"; id: string; fraction: number }
+  | { type: "upload-succeeded"; id: string; serialize: string; startedAt: number }
+  | { type: "upload-failed"; id: string; message: string }
+  | { type: "demo-queued"; id: string; startedAt: number }
+  | { type: "status-polled"; id: string; report: StatusReport; message: string }
+  | { type: "poll-errored"; id: string; message: string }
+  | { type: "download-succeeded"; id: string; splat: SplatHandle }
+  | { type: "download-failed"; id: string; message: string }
+  | { type: "save-succeeded"; id: string; placeId: string }
+  | { type: "save-failed"; id: string; message: string }
+  | { type: "save-requested"; id: string }
+  | { type: "retried"; id: string };
+
+export function createQueue(autoPreview = true): CaptureQueueState {
+  return { items: [], previewId: null, autoPreview };
+}
+
+function blankItem(id: string, name: string): CaptureItem {
+  return {
+    id,
+    name,
+    phase: "checking",
+    file: null,
+    serialize: null,
+    albumId: null,
+    meta: null,
+    problem: null,
+    startedAt: null,
+    uploadFraction: 0,
+    status: null,
+    pollFailures: 0,
+    error: null,
+    failedFrom: null,
+    fatal: false,
+    splat: null,
+    placeId: null,
+    demo: false,
+  };
+}
+
+/**
+ * The two constructors are the only way into the queue, which is what keeps
+ * "has a File xor has a task id" true for every row without a guard on each
+ * transition that leans on it.
+ */
+export function pickedItem(
+  id: string,
+  file: File,
+  name: string,
+  albumId: string | null = null,
+): CaptureItem {
+  return { ...blankItem(id, name), file, albumId };
+}
+
+export function resumedItem(id: string, job: CaptureJob): CaptureItem {
+  return {
+    ...blankItem(id, job.name),
+    serialize: job.serialize,
+    startedAt: job.startedAt,
+    albumId: job.albumId ?? null,
+  };
+}
+
+export function reduceQueue(
+  state: CaptureQueueState,
+  event: CaptureEvent,
+): CaptureQueueState {
+  switch (event.type) {
+    case "added":
+      return addItems(state, event.items);
+
+    case "removed": {
+      const items = state.items.filter((item) => item.id !== event.id);
+      if (items.length === state.items.length) return state;
+      return {
+        ...state,
+        items,
+        previewId: state.previewId === event.id ? null : state.previewId,
+      };
+    }
+
+    case "previewed": {
+      if (event.id === null) {
+        return state.previewId === null ? state : { ...state, previewId: null };
+      }
+      // Previewing a row with nothing to show would mount a viewer over a blank
+      // URL, so the request is simply dropped.
+      const target = state.items.find((item) => item.id === event.id);
+      if (!target?.splat || state.previewId === event.id) return state;
+      return { ...state, previewId: event.id };
+    }
+
+    case "start-requested": {
+      let changed = false;
+      const items = state.items.map((item) => {
+        if (item.phase !== "ready-to-upload") return item;
+        changed = true;
+        return { ...item, phase: "uploading" as const, uploadFraction: 0, error: null };
+      });
+      return changed ? { ...state, items } : state;
+    }
+
+    default:
+      return updateItem(state, event.id, (item) => stepItem(item, event));
+  }
+}
+
+function addItems(state: CaptureQueueState, incoming: CaptureItem[]) {
+  const knownIds = new Set(state.items.map((item) => item.id));
+  const knownJobs = new Set(
+    state.items.map((item) => item.serialize).filter(Boolean),
+  );
+  // Storage replays every job it holds on each change, so the rows already on
+  // screen have to be recognised by their task id and skipped.
+  const fresh = incoming.filter(
+    (item) =>
+      !knownIds.has(item.id) &&
+      !(item.serialize !== null && knownJobs.has(item.serialize)),
+  );
+  if (fresh.length === 0) return state;
+  return { ...state, items: [...state.items, ...fresh] };
+}
+
+function updateItem(
+  state: CaptureQueueState,
+  id: string,
+  step: (item: CaptureItem) => CaptureItem,
+): CaptureQueueState {
+  const index = state.items.findIndex((item) => item.id === id);
+  // An event for a row the user already dropped: in-flight work cannot be
+  // aborted, so its result lands here and is meant to go nowhere.
+  if (index === -1) return state;
+
+  const before = state.items[index];
+  const after = step(before);
+  if (after === before) return state;
+
+  const items = state.items.slice();
+  items[index] = after;
+  // The first capture to arrive opens itself, whether it came off KIRI or
+  // straight out of the cache — anything later waits to be asked for, so a
+  // finishing job never yanks the viewer off what is on screen.
+  const opens =
+    state.autoPreview && state.previewId === null && before.splat === null && after.splat !== null;
+  return { ...state, items, previewId: opens ? after.id : state.previewId };
+}
+
+/**
+ * Every transition is guarded by the phase it belongs to, so an event that
+ * arrives late — a poll that resolves after its row was saved, an upload
+ * callback firing past a failure — returns the item untouched instead of
+ * dragging it backwards.
+ */
+function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
+  switch (event.type) {
+    case "renamed": {
+      // Only until the name is committed: it goes to KIRI with the upload and
+      // becomes the Place's name, and a row mid-flight has already spent it.
+      if (!isNameable(item.phase) || event.name === item.name) return item;
+      return { ...item, name: event.name };
+    }
+
+    case "meta-read": {
+      if (item.phase !== "checking" || item.file === null) return item;
+      return {
+        ...item,
+        meta: event.meta,
+        problem: event.problem,
+        phase: event.problem ? "blocked" : "ready-to-upload",
+      };
+    }
+
+    case "cache-checked": {
+      if (item.phase !== "checking" || item.serialize === null) return item;
+      // A capture downloaded once needs neither the status check nor the
+      // transfer; it renders straight off disk.
+      if (event.splat) return { ...item, phase: "previewable", splat: event.splat };
+      return { ...item, phase: "waiting" };
+    }
+
+    case "upload-progress": {
+      if (item.phase !== "uploading" || item.uploadFraction === event.fraction) {
+        return item;
+      }
+      return { ...item, uploadFraction: event.fraction };
+    }
+
+    case "upload-succeeded": {
+      if (item.phase !== "uploading") return item;
+      return {
+        ...item,
+        phase: "waiting",
+        serialize: event.serialize,
+        startedAt: event.startedAt,
+        uploadFraction: 1,
+        file: null,
+        error: null,
+      };
+    }
+
+    case "upload-failed": {
+      if (item.phase !== "uploading") return item;
+      return { ...item, phase: "failed", failedFrom: "uploading", error: event.message };
+    }
+
+    case "demo-queued": {
+      if (item.phase !== "uploading") return item;
+      return {
+        ...item,
+        phase: "waiting",
+        demo: true,
+        startedAt: event.startedAt,
+        uploadFraction: 1,
+        file: null,
+      };
+    }
+
+    case "status-polled": {
+      // A demo row waits without a task id behind it, so there is no report that
+      // could be about it — and letting one through would send it to download a
+      // capture that was never made.
+      if (item.phase !== "waiting" || item.serialize === null) return item;
+      const settled: CaptureItem = {
+        ...item,
+        status: event.report.status,
+        pollFailures: 0,
+        error: null,
+      };
+      if (event.report.failed) {
+        // KIRI could not reconstruct this walkthrough. Retrying the same task id
+        // asks the same question and gets the same answer.
+        return { ...settled, phase: "failed", failedFrom: "waiting", fatal: true, error: event.message };
+      }
+      if (event.report.ready) return { ...settled, phase: "downloading" };
+      return settled;
+    }
+
+    case "poll-errored": {
+      if (item.phase !== "waiting") return item;
+      const pollFailures = item.pollFailures + 1;
+      return {
+        ...item,
+        pollFailures,
+        error: pollFailures >= FAILURES_BEFORE_REPORTING ? event.message : item.error,
+      };
+    }
+
+    case "download-succeeded": {
+      if (item.phase !== "downloading") return item;
+      return { ...item, phase: "previewable", splat: event.splat, error: null };
+    }
+
+    case "download-failed": {
+      if (item.phase !== "downloading") return item;
+      return { ...item, phase: "failed", failedFrom: "downloading", error: event.message };
+    }
+
+    case "save-requested": {
+      if (item.phase !== "previewable") return item;
+      return { ...item, phase: "saving", error: null };
+    }
+
+    case "save-succeeded": {
+      if (item.phase !== "saving") return item;
+      // The splat stays: the row keeps its preview and its .ply link, and the
+      // queue behind it keeps running rather than following the new Place.
+      return { ...item, phase: "saved", placeId: event.placeId, error: null };
+    }
+
+    case "save-failed": {
+      if (item.phase !== "saving") return item;
+      // Back to previewable rather than failed — the capture is still in hand,
+      // and only the write to Firebase came apart.
+      return { ...item, phase: "previewable", error: event.message };
+    }
+
+    case "retried": {
+      if (item.phase !== "failed" || item.fatal || item.failedFrom === null) return item;
+      return {
+        ...item,
+        phase: item.failedFrom,
+        failedFrom: null,
+        error: null,
+        pollFailures: 0,
+        uploadFraction: item.failedFrom === "uploading" ? 0 : item.uploadFraction,
+      };
+    }
+
+    default:
+      return item;
+  }
+}
+
+function isNameable(phase: CapturePhase) {
+  return phase === "checking" || phase === "ready-to-upload" || phase === "blocked";
+}
+
+/* Selectors. The page drives every side effect off these, so what a phase means
+ * in practice is stated once, here, instead of in each effect's filter. */
+
+/** Picked videos still to be measured, and resumed jobs still to be looked up. */
+export function checkTargets(items: CaptureItem[]) {
+  return items.filter((item) => item.phase === "checking");
+}
+
+export function uploadTargets(items: CaptureItem[]) {
+  return items.filter((item) => item.phase === "uploading" && item.file !== null);
+}
+
+/** Demo rows sit in `waiting` with no task id, so they are never asked after. */
+export function pollTargets(items: CaptureItem[]) {
+  return items.filter(
+    (item) => item.phase === "waiting" && !item.demo && item.serialize !== null,
+  );
+}
+
+export function downloadTargets(items: CaptureItem[]) {
+  return items.filter((item) => item.phase === "downloading" && item.serialize !== null);
+}
+
+export function saveTargets(items: CaptureItem[]) {
+  return items.filter((item) => item.phase === "saving" && item.splat !== null);
+}
+
+export function canStart(items: CaptureItem[]) {
+  return items.some((item) => item.phase === "ready-to-upload");
+}
+
+/** Rows whose work would be lost by closing the tab, for the warning copy. */
+export function activeCount(items: CaptureItem[]) {
+  return items.filter(
+    (item) => item.phase === "uploading" || item.phase === "downloading" || item.phase === "saving",
+  ).length;
+}
+
+export function isRetryable(item: CaptureItem) {
+  return item.phase === "failed" && !item.fatal && item.failedFrom !== null;
+}

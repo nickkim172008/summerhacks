@@ -1,69 +1,7 @@
 import type { KiriStatus } from "./kiri";
 
-/**
- * Reconstruction runs 30-90 minutes — far longer than anyone leaves a tab open
- * — so the job id is written to localStorage the moment KIRI accepts the upload
- * and the capture page picks it back up on the next visit.
- */
-export interface CaptureJob {
-  serialize: string;
-  name: string;
-  startedAt: number;
-}
-
-const STORAGE_KEY = "atlas:capture-job";
-
-/**
- * Storage is the single source of truth for the running job, read through
- * useSyncExternalStore. The snapshot stays the raw string so repeated reads are
- * referentially stable, and `storage` events keep a second tab in step.
- */
-const listeners = new Set<() => void>();
-
-export function subscribeToJob(listener: () => void) {
-  listeners.add(listener);
-  window.addEventListener("storage", listener);
-  return () => {
-    listeners.delete(listener);
-    window.removeEventListener("storage", listener);
-  };
-}
-
-export function readJobSnapshot(): string | null {
-  try {
-    return localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null; // Storage denied — capture still works, it just can't resume.
-  }
-}
-
-export function parseJob(raw: string | null): CaptureJob | null {
-  if (!raw) return null;
-  try {
-    const job = JSON.parse(raw) as CaptureJob;
-    return job?.serialize ? job : null;
-  } catch {
-    return null; // Corrupt entry; start clean rather than blocking capture.
-  }
-}
-
-export function saveJob(job: CaptureJob) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(job));
-  } catch {
-    // Private-mode failure only costs resumability, not the job itself.
-  }
-  listeners.forEach((listener) => listener());
-}
-
-export function clearJob() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing to recover from; the page is already moving on.
-  }
-  listeners.forEach((listener) => listener());
-}
+/** One definition of the job shape, declared next to the storage that owns it. */
+export type { CaptureJob } from "./captureQueue";
 
 /**
  * XHR rather than fetch: a walkthrough video is hundreds of megabytes and fetch
