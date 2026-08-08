@@ -73,7 +73,7 @@ export default function MapPage() {
 
   const filtered = useMemo((): LocatedPlace[] => {
     const real = placesWithLocation(allPlaces ?? []);
-    // Seed Toronto demo points so the heatmap isn't empty before real users.
+    // Seed Toronto demo points so the heatmap isn’t empty before real GPS data.
     const publicPool = mergePlaces(real, placesWithLocation(DEMO_MAP_PLACES));
 
     if (scope.kind === "public") return publicPool;
@@ -89,7 +89,6 @@ export default function MapPage() {
     if (!album) return [];
     const ids = new Set(album.placeIds ?? []);
     const inAlbum = real.filter((p) => ids.has(p.id));
-    // Albums with no geotagged places still show a small demo cluster.
     return inAlbum.length > 0
       ? inAlbum
       : placesWithLocation(DEMO_MAP_PLACES).filter((p) =>
@@ -141,7 +140,7 @@ export default function MapPage() {
             <div className="border-b border-black/5 px-4 py-3">
               <p className="text-[13px] font-semibold">Heatmap scope</p>
               <p className="mt-0.5 text-[12px] text-neutral-500">
-                Live GPS + demo Toronto heat until real captures land.
+                Live GPS · Toronto demo pins until real captures arrive.
               </p>
             </div>
             <div className="flex-1 overflow-y-auto px-2 py-2">

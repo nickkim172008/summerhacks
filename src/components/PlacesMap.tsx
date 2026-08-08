@@ -1,32 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import {
-  GeolocateControl,
-  LngLatBounds,
-  Map as MapLibreMap,
-  Marker,
-  NavigationControl,
-  Popup,
-  type GeoJSONSource,
-  type MapLayerMouseEvent,
-} from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
+import Link from "next/link";
+import { createCanvasHeatmap } from "@/lib/canvasHeatmap";
 import {
   CITY_ZOOM,
   DEFAULT_MAP_CENTER,
-  MAP_STYLE,
-  placesToGeoJSON,
+  isGoogleMapsConfigured,
+  loadGoogleMaps,
+  placesToHeatPoints,
+  type GoogleMapsLibs,
 } from "@/lib/maps";
 import type { LatLng } from "@/lib/geolocation";
 import type { Place } from "@/lib/types";
 
 type LocatedPlace = Place & { location: { lat: number; lng: number } };
 
-const SOURCE_ID = "places";
-const HEAT_LAYER = "places-heat";
-const GLOW_LAYER = "places-glow";
-const POINT_LAYER = "places-points";
+type HeatHandle = {
+  setMap: (map: google.maps.Map | null) => void;
+  setData: (points: ReturnType<typeof placesToHeatPoints>) => void;
+};
 
 export default function PlacesMap({
   places,
@@ -38,141 +31,138 @@ export default function PlacesMap({
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<MapLibreMap | null>(null);
-  const liveMarkerRef = useRef<Marker | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const libsRef = useRef<GoogleMapsLibs | null>(null);
+  const heatRef = useRef<HeatHandle | null>(null);
+  const liveMarkerRef = useRef<google.maps.Marker | null>(null);
   const placesRef = useRef(places);
   const liveRef = useRef(liveLocation);
+  const didCenterRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const [spotCount, setSpotCount] = useState(places.length);
   placesRef.current = places;
   liveRef.current = liveLocation;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-
-    const start = liveRef.current ?? DEFAULT_MAP_CENTER;
-    let map: MapLibreMap;
-    try {
-      map = new MapLibreMap({
-        container: containerRef.current,
-        style: MAP_STYLE,
-        center: [start.lng, start.lat],
-        zoom: CITY_ZOOM,
-        attributionControl: { compact: true },
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start the map");
+    if (!isGoogleMapsConfigured()) {
+      setError("missing-key");
       return;
     }
 
-    map.addControl(new NavigationControl({ showCompass: false }), "top-right");
-    map.addControl(
-      new GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: true,
-        showAccuracyCircle: true,
-        showUserLocation: false,
-      }),
-      "top-right",
-    );
-    mapRef.current = map;
+    let cancelled = false;
 
-    const resize = () => map.resize();
-    requestAnimationFrame(resize);
-    const ro = new ResizeObserver(resize);
-    ro.observe(containerRef.current);
-
-    map.on("error", (e) => {
-      const message = e.error?.message ?? "Map failed to load";
-      if (!/abort|cancel/i.test(message)) setError(message);
-    });
-
-    map.on("load", () => {
+    async function init() {
       try {
-        ensureHeatLayers(map, placesRef.current);
-        setSpotCount(placesRef.current.length);
-        setReady(true);
-        setError(null);
-        resize();
-        fitToPlaces(map, placesRef.current);
+        const libs = await loadGoogleMaps();
+        if (cancelled || !containerRef.current) return;
+        libsRef.current = libs;
 
-        map.on("mouseenter", POINT_LAYER, () => {
-          map.getCanvas().style.cursor = "pointer";
+        const start = liveRef.current ?? DEFAULT_MAP_CENTER;
+        const map = new libs.Map(containerRef.current, {
+          center: start,
+          zoom: CITY_ZOOM,
+          mapTypeControl: false,
+          streetViewControl: true,
+          fullscreenControl: false,
+          clickableIcons: false,
+          gestureHandling: "greedy",
         });
-        map.on("mouseleave", POINT_LAYER, () => {
-          map.getCanvas().style.cursor = "";
-        });
-        map.on("click", POINT_LAYER, (e: MapLayerMouseEvent) => {
-          const feature = e.features?.[0];
-          if (!feature || feature.geometry.type !== "Point") return;
-          const [lng, lat] = feature.geometry.coordinates as [number, number];
-          const name = String(feature.properties?.name ?? "Environment");
-          const id = String(feature.properties?.id ?? "");
-          const isDemo = id.startsWith("demo-map-");
-          // The popup navigates in place, so hand the place page this map as
-          // the way back.
-          const from = encodeURIComponent(
-            window.location.pathname + window.location.search,
-          );
-          new Popup({ offset: 12 })
-            .setLngLat([lng, lat])
-            .setHTML(
-              `<div style="font:14px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;padding:2px 4px">
-                <strong>${escapeHtml(name)}</strong><br/>
-                ${
-                  isDemo
-                    ? `<span style="color:#86868b">Demo pin</span>`
-                    : `<a href="/place/${escapeHtml(id)}?from=${from}" style="color:#0071e3;text-decoration:none">Open environment →</a>`
-                }
-              </div>`,
-            )
-            .addTo(map);
-        });
+        mapRef.current = map;
+
+        const heat = createCanvasHeatmap(libs.OverlayView);
+        heat.setData(placesToHeatPoints(placesRef.current));
+        heat.setMap(map);
+        heatRef.current = heat;
+
+        fitMap(libs, map, placesRef.current, liveRef.current, didCenterRef);
 
         if (liveRef.current) {
-          ensureLiveMarker(map, liveRef.current, liveMarkerRef);
+          ensureLiveMarker(libs, map, liveRef.current, liveMarkerRef);
         }
+
+        setReady(true);
+        setError(null);
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Could not add heatmap layers",
+          err instanceof Error ? err.message : "Could not load Google Maps",
         );
       }
-    });
+    }
+
+    void init();
 
     return () => {
-      ro.disconnect();
-      liveMarkerRef.current?.remove();
+      cancelled = true;
+      heatRef.current?.setMap(null);
+      heatRef.current = null;
+      liveMarkerRef.current?.setMap(null);
       liveMarkerRef.current = null;
-      map.remove();
       mapRef.current = null;
+      libsRef.current = null;
+      didCenterRef.current = false;
       setReady(false);
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready) return;
-    ensureHeatLayers(map, places);
-    setSpotCount(places.length);
+    const libs = libsRef.current;
+    if (!map || !libs || !ready) return;
+
+    heatRef.current?.setData(placesToHeatPoints(places));
+    if (!didCenterRef.current) {
+      fitMap(libs, map, places, liveRef.current, didCenterRef);
+    }
   }, [places, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || !liveLocation) return;
-    ensureLiveMarker(map, liveLocation, liveMarkerRef);
+    const libs = libsRef.current;
+    if (!map || !libs || !ready || !liveLocation) return;
+    ensureLiveMarker(libs, map, liveLocation, liveMarkerRef);
+    if (!didCenterRef.current) {
+      fitMap(libs, map, placesRef.current, liveLocation, didCenterRef);
+    }
   }, [liveLocation, ready]);
+
+  if (error === "missing-key") {
+    return (
+      <div
+        className={`flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-neutral-500 ${className}`}
+      >
+        <p>Add your Google Maps key to show the map + heatmap.</p>
+        <p>
+          Set{" "}
+          <code className="text-[#1d1d1f]">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>{" "}
+          in <code className="text-[#1d1d1f]">.env.local</code>, enable{" "}
+          <strong className="font-medium text-[#1d1d1f]">
+            Maps JavaScript API
+          </strong>
+          , and restart the server.
+        </p>
+        <Link
+          href="https://console.cloud.google.com/google/maps-apis"
+          className="text-[#0071e3]"
+        >
+          Google Cloud Maps APIs →
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className={`relative h-full w-full ${className}`}>
-      <div
-        ref={containerRef}
-        className="places-map absolute inset-0 h-full w-full"
-      />
+      <div ref={containerRef} className="absolute inset-0 h-full w-full" />
       <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-white/95 px-3 py-1 text-[11px] font-medium text-[#1d1d1f] shadow ring-1 ring-black/10">
-        Heatmap · {spotCount} spots
+        Heatmap on · {places.length} spots
       </div>
-      {error && (
+      {ready && places.length === 0 && (
+        <div className="pointer-events-none absolute inset-x-4 top-14 z-10 rounded-xl bg-white/95 px-4 py-3 text-center text-sm text-neutral-600 shadow ring-1 ring-black/10">
+          No geotagged places yet — capture with location to fill the heatmap.
+        </div>
+      )}
+      {error && error !== "missing-key" && (
         <div className="absolute inset-x-4 bottom-24 z-10 rounded-xl bg-white/95 px-4 py-3 text-center text-sm text-red-600 shadow-lg ring-1 ring-black/10">
           Map error: {error}
         </div>
@@ -181,144 +171,51 @@ export default function PlacesMap({
   );
 }
 
-/** Source + heat/glow/point layers. Safe to call repeatedly. */
-function ensureHeatLayers(map: MapLibreMap, places: LocatedPlace[]) {
-  const data = placesToGeoJSON(places);
-
-  if (!map.getSource(SOURCE_ID)) {
-    map.addSource(SOURCE_ID, { type: "geojson", data });
-  } else {
-    (map.getSource(SOURCE_ID) as GeoJSONSource).setData(data);
-  }
-
-  // Soft glow — always visible even if native heatmap fails on a GPU.
-  if (!map.getLayer(GLOW_LAYER)) {
-    map.addLayer({
-      id: GLOW_LAYER,
-      type: "circle",
-      source: SOURCE_ID,
-      paint: {
-        "circle-radius": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          10,
-          28,
-          14,
-          55,
-        ],
-        "circle-color": "#ff3b30",
-        "circle-opacity": 0.28,
-        "circle-blur": 0.95,
-      },
-    });
-  }
-
-  // Native heatmap on top of the glow.
-  if (!map.getLayer(HEAT_LAYER)) {
-    map.addLayer({
-      id: HEAT_LAYER,
-      type: "heatmap",
-      source: SOURCE_ID,
-      maxzoom: 20,
-      paint: {
-        "heatmap-weight": 1,
-        "heatmap-intensity": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          10,
-          1.5,
-          15,
-          3,
-        ],
-        "heatmap-radius": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          10,
-          20,
-          15,
-          40,
-        ],
-        "heatmap-opacity": 0.85,
-        "heatmap-color": [
-          "interpolate",
-          ["linear"],
-          ["heatmap-density"],
-          0,
-          "rgba(33,102,172,0)",
-          0.2,
-          "rgb(103,169,207)",
-          0.4,
-          "rgb(209,229,240)",
-          0.6,
-          "rgb(253,219,199)",
-          0.8,
-          "rgb(239,138,98)",
-          1,
-          "rgb(178,24,43)",
-        ],
-      },
-    });
-  }
-
-  if (!map.getLayer(POINT_LAYER)) {
-    map.addLayer({
-      id: POINT_LAYER,
-      type: "circle",
-      source: SOURCE_ID,
-      paint: {
-        "circle-radius": 5,
-        "circle-color": "#0071e3",
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 1.5,
-        "circle-opacity": 0.95,
-      },
-    });
-  }
-}
-
 function ensureLiveMarker(
-  map: MapLibreMap,
+  libs: GoogleMapsLibs,
+  map: google.maps.Map,
   location: LatLng,
-  markerRef: MutableRefObject<Marker | null>,
+  markerRef: MutableRefObject<google.maps.Marker | null>,
 ) {
   if (!markerRef.current) {
-    const el = document.createElement("div");
-    el.className = "live-location-dot";
-    el.innerHTML = `<span class="live-location-pulse"></span><span class="live-location-core"></span>`;
-    markerRef.current = new Marker({ element: el, anchor: "center" })
-      .setLngLat([location.lng, location.lat])
-      .addTo(map);
+    markerRef.current = new libs.Marker({
+      map,
+      position: location,
+      title: "You are here",
+      zIndex: 999,
+      icon: {
+        path: libs.SymbolPath.CIRCLE,
+        scale: 9,
+        fillColor: "#0071e3",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 3,
+      },
+    });
   } else {
-    markerRef.current.setLngLat([location.lng, location.lat]);
+    markerRef.current.setPosition(location);
   }
 }
 
-function fitToPlaces(map: MapLibreMap, places: LocatedPlace[]) {
+function fitMap(
+  libs: GoogleMapsLibs,
+  map: google.maps.Map,
+  places: LocatedPlace[],
+  live: LatLng | null | undefined,
+  didCenterRef: MutableRefObject<boolean>,
+) {
+  if (didCenterRef.current) return;
+
   if (places.length === 0) {
-    map.jumpTo({
-      center: [DEFAULT_MAP_CENTER.lng, DEFAULT_MAP_CENTER.lat],
-      zoom: CITY_ZOOM,
-    });
+    map.setCenter(live ?? DEFAULT_MAP_CENTER);
+    map.setZoom(CITY_ZOOM);
+    didCenterRef.current = true;
     return;
   }
-  const bounds = new LngLatBounds();
-  for (const place of places) {
-    bounds.extend([place.location.lng, place.location.lat]);
-  }
-  map.fitBounds(bounds, {
-    padding: 80,
-    maxZoom: CITY_ZOOM,
-    duration: 600,
-  });
-}
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  const bounds = new libs.LatLngBounds();
+  for (const place of places) bounds.extend(place.location);
+  if (live) bounds.extend(live);
+  map.fitBounds(bounds, 72);
+  didCenterRef.current = true;
 }

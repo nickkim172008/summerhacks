@@ -1,4 +1,4 @@
-import type { StyleSpecification } from "maplibre-gl";
+import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 
 /** Fallback before GPS resolves (downtown Toronto). */
 export const DEFAULT_MAP_CENTER = {
@@ -8,28 +8,56 @@ export const DEFAULT_MAP_CENTER = {
 
 export const CITY_ZOOM = 13;
 
-/** Streets only — heat layers are added in JS after load (more reliable). */
-export const MAP_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {
-    streets: {
-      type: "raster",
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
-      ],
-      tileSize: 256,
-      attribution: "Tiles © Esri",
-      maxzoom: 19,
-    },
-  },
-  layers: [
-    {
-      id: "streets",
-      type: "raster",
-      source: "streets",
-    },
-  ],
+export type GoogleMapsLibs = {
+  Map: typeof google.maps.Map;
+  LatLng: typeof google.maps.LatLng;
+  LatLngBounds: typeof google.maps.LatLngBounds;
+  Marker: typeof google.maps.Marker;
+  InfoWindow: typeof google.maps.InfoWindow;
+  OverlayView: typeof google.maps.OverlayView;
+  SymbolPath: typeof google.maps.SymbolPath;
 };
+
+export function getGoogleMapsApiKey() {
+  return process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ?? "";
+}
+
+export function isGoogleMapsConfigured() {
+  return Boolean(getGoogleMapsApiKey());
+}
+
+let libsPromise: Promise<GoogleMapsLibs> | null = null;
+
+/**
+ * Load current Maps JS. Native HeatmapLayer was removed in 3.65 —
+ * we render heat via canvas OverlayView instead.
+ */
+export function loadGoogleMaps(): Promise<GoogleMapsLibs> {
+  if (!libsPromise) {
+    const key = getGoogleMapsApiKey();
+    if (!key) {
+      libsPromise = Promise.reject(
+        new Error("Missing NEXT_PUBLIC_GOOGLE_MAPS_API_KEY"),
+      );
+    } else {
+      setOptions({ key, v: "weekly" });
+      libsPromise = (async () => {
+        const maps = await importLibrary("maps");
+        await importLibrary("marker");
+        return {
+          Map: maps.Map,
+          LatLng: google.maps.LatLng,
+          LatLngBounds: google.maps.LatLngBounds,
+          Marker: google.maps.Marker,
+          InfoWindow: maps.InfoWindow,
+          OverlayView: google.maps.OverlayView,
+          SymbolPath: google.maps.SymbolPath,
+        };
+      })();
+    }
+  }
+  return libsPromise;
+}
 
 export function placesWithLocation<
   T extends { location?: { lat: number; lng: number } },
@@ -44,46 +72,19 @@ export function placesWithLocation<
   );
 }
 
-/**
- * Build GeoJSON for the heat layer. Duplicates each point with slight jitter
- * so sparse demo pins still read as a dense heat cloud.
- */
-export function placesToGeoJSON(
-  places: { id: string; name: string; location: { lat: number; lng: number } }[],
-): GeoJSON.FeatureCollection {
-  const features: GeoJSON.Feature[] = [];
-  for (const place of places) {
-    const copies = place.id.startsWith("demo-map-") ? 6 : 1;
-    for (let i = 0; i < copies; i++) {
-      // Deterministic jitter so setData doesn't reshuffle every render.
-      const seed = hashStr(`${place.id}:${i}`);
-      const jitterLat = i === 0 ? 0 : ((seed % 1000) / 1000 - 0.5) * 0.014;
-      const jitterLng =
-        i === 0 ? 0 : (((seed >>> 10) % 1000) / 1000 - 0.5) * 0.014;
-      features.push({
-        type: "Feature",
-        properties: {
-          id: place.id,
-          name: place.name,
-          mag: 3,
-        },
-        geometry: {
-          type: "Point",
-          coordinates: [
-            place.location.lng + jitterLng,
-            place.location.lat + jitterLat,
-          ],
-        },
-      });
-    }
-  }
-  return { type: "FeatureCollection", features };
-}
+export type HeatPoint = {
+  lat: number;
+  lng: number;
+  weight: number;
+};
 
-function hashStr(value: string) {
-  let h = 0;
-  for (let i = 0; i < value.length; i++) {
-    h = (h * 31 + value.charCodeAt(i)) >>> 0;
-  }
-  return h;
+/** One heat point per place (demo + real); density drives the colour. */
+export function placesToHeatPoints(
+  places: { location: { lat: number; lng: number } }[],
+): HeatPoint[] {
+  return places.map((place) => ({
+    lat: place.location.lat,
+    lng: place.location.lng,
+    weight: 1,
+  }));
 }
