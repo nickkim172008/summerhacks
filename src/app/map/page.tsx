@@ -141,7 +141,7 @@ export default function MapPage() {
             <div className="border-b border-black/5 px-4 py-3">
               <p className="text-[13px] font-semibold">Heatmap scope</p>
               <p className="mt-0.5 text-[12px] text-neutral-500">
-                Live GPS + demo Toronto heat until real captures land.
+                Google Maps heatmap · live GPS + Toronto demo pins.
               </p>
             </div>
             <div className="flex-1 overflow-y-auto px-2 py-2">

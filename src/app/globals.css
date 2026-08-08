@@ -22,15 +22,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* MapLibre must fill its parent or you get a blank white box */
-.places-map,
-.places-map .maplibregl-map,
-.places-map .maplibregl-canvas,
-.places-map .maplibregl-canvas-container {
-  width: 100% !important;
-  height: 100% !important;
-}
-
 /* Browser GPS “you are here” marker on the Map tab */
 .live-location-dot {
   position: relative;
