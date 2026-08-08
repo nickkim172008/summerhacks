@@ -53,3 +53,117 @@ body {
     opacity: 0;
   }
 }
+
+/* Sign-in / sign-up atmosphere */
+.auth-shell {
+  background:
+    radial-gradient(120% 80% at 10% -10%, #dce9ff 0%, transparent 55%),
+    radial-gradient(90% 70% at 100% 0%, #ffe8d6 0%, transparent 50%),
+    linear-gradient(180deg, #f7f8fb 0%, #eef2f7 45%, #f8f6f2 100%);
+}
+
+.auth-glow {
+  pointer-events: none;
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(60px);
+  opacity: 0.55;
+  animation: auth-drift 14s ease-in-out infinite alternate;
+}
+
+.auth-glow-a {
+  top: 12%;
+  left: -8%;
+  width: min(48vw, 28rem);
+  height: min(48vw, 28rem);
+  background: rgba(0, 113, 227, 0.18);
+}
+
+.auth-glow-b {
+  right: -10%;
+  bottom: 8%;
+  width: min(55vw, 32rem);
+  height: min(55vw, 32rem);
+  background: rgba(255, 176, 120, 0.22);
+  animation-delay: -6s;
+}
+
+.auth-grain {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+}
+
+.auth-brand {
+  background: linear-gradient(120deg, #1d1d1f 20%, #3a4a63 55%, #0071e3 100%);
+  background-size: 180% 180%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: auth-brand-shift 10s ease-in-out infinite alternate;
+}
+
+.auth-rise,
+.auth-rise-delay {
+  animation: auth-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-rise-delay {
+  animation-delay: 120ms;
+}
+
+.auth-cta {
+  box-shadow: 0 12px 30px rgba(29, 29, 31, 0.16);
+}
+
+.auth-cta:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 36px rgba(29, 29, 31, 0.2);
+}
+
+.auth-cta:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+@keyframes auth-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4%, -3%, 0) scale(1.08);
+  }
+}
+
+@keyframes auth-brand-shift {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes auth-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-glow,
+  .auth-brand,
+  .auth-rise,
+  .auth-rise-delay,
+  .auth-cta {
+    animation: none !important;
+    transition: none !important;
+  }
+}
