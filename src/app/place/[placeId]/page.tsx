@@ -22,13 +22,20 @@ export default function PlacePage({
 function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
   const { placeId } = use(params);
   const router = useRouter();
-  // Set when the visitor arrived from an album, so leaving returns them there.
-  const albumId = useSearchParams().get("album");
-  const exitHref = albumId ? `/album/${albumId}` : "/";
+  const search = useSearchParams();
+  // An album scopes the whole visit — jumps stay inside it — while ?from only
+  // names the page that sent the visitor here so leaving returns them to it.
+  const albumId = search.get("album");
+  const from = sitePath(search.get("from"));
+  const exitHref = albumId ? `/album/${albumId}` : (from ?? "/");
+  const originQuery = albumId
+    ? `?album=${albumId}`
+    : from
+      ? `?from=${encodeURIComponent(from)}`
+      : "";
   // undefined while loading, null once we know it isn't there.
   const [place, setPlace] = useState<Place | null | undefined>();
   const [allPlaces, setAllPlaces] = useState<Place[]>([]);
-  const [missingFile, setMissingFile] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -41,21 +48,6 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
   }, [placeId]);
 
   useEffect(() => subscribeToPlaces(setAllPlaces), []);
-
-  // Firestore is shared but an app-served splat is not: the doc lists fine on
-  // every machine while the file exists on exactly one. Check before handing
-  // the URL to Spark, which would otherwise fail silently into an empty scene.
-  useEffect(() => {
-    const url = place?.splatUrl;
-    if (!url?.startsWith("/")) return;
-    let active = true;
-    fetch(url, { method: "HEAD" })
-      .then((res) => active && setMissingFile(!res.ok))
-      .catch(() => active && setMissingFile(true));
-    return () => {
-      active = false;
-    };
-  }, [place?.splatUrl]);
 
   if (place === null) {
     return (
@@ -76,26 +68,6 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
     );
   }
 
-  if (missingFile) {
-    return (
-      <main className="flex h-screen flex-col items-center justify-center gap-3 bg-black px-6 text-center text-white">
-        <p className="text-lg font-medium">
-          {place.name} isn&apos;t on this computer.
-        </p>
-        <p className="max-w-md text-sm text-neutral-400">
-          Its splat was saved by the app that captured it, and this one serves
-          files from its own <code>public/splats</code>. Open it on the machine
-          that captured it, or commit{" "}
-          <code className="text-neutral-300">{place.splatUrl}</code> to the repo
-          so every clone has it.
-        </p>
-        <Link href={exitHref} className="text-sky-400 underline">
-          Back
-        </Link>
-      </main>
-    );
-  }
-
   return (
     <main className="h-screen w-screen">
       <PlaceExperience
@@ -103,11 +75,7 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
         linkTargets={allPlaces
           .filter((p) => p.id !== placeId)
           .map((p) => ({ id: p.id, name: p.name }))}
-        onJump={(id) =>
-          router.push(
-            albumId ? `/place/${id}?album=${albumId}` : `/place/${id}`,
-          )
-        }
+        onJump={(id) => router.push(`/place/${id}${originQuery}`)}
         onExit={() => router.push(exitHref)}
         onAddHotspot={async (point, linksToPlaceId) => {
           await addHotspot(placeId, point, linksToPlaceId);
@@ -116,4 +84,10 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
       />
     </main>
   );
+}
+
+// Only a path on this site may aim the exit; anything else in ?from would let a
+// shared link send the visitor to another origin.
+function sitePath(value: string | null) {
+  return value && /^\/(?![/\\])/.test(value) ? value : null;
 }

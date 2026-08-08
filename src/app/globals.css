@@ -21,3 +21,44 @@ body {
     "Helvetica Neue", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* MapLibre must fill its parent or you get a blank white box */
+.places-map,
+.places-map .maplibregl-map,
+.places-map .maplibregl-canvas,
+.places-map .maplibregl-canvas-container {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Browser GPS “you are here” marker on the Map tab */
+.live-location-dot {
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+.live-location-core {
+  position: absolute;
+  inset: 3px;
+  border-radius: 999px;
+  background: #0071e3;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.live-location-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: rgba(0, 113, 227, 0.35);
+  animation: live-pulse 1.8s ease-out infinite;
+}
+@keyframes live-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}

@@ -58,35 +58,34 @@ need no Firebase — without it the splat still renders and can be downloaded.
 (`--video` to start, `--serialize` to resume). Paste the task id it prints into
 `/capture` to render that job's splat in the app.
 
-## Where saved splats live
+## Where media lives
 
-`NEXT_PUBLIC_SPLAT_STORE` picks the backend; Firestore only ever holds the URL,
-since a document caps at 1 MiB.
+Splats and walkthrough videos upload to **Firebase Storage**. Firestore only
+holds the download URLs (documents cap at 1 MiB).
 
-- `local` (default) POSTs to `/api/places/splat`, which writes
-  `public/splats/<placeId>.spz` and returns that relative path. No bucket, no
-  billing — but **the file lives on the machine that saved it while Firestore
-  is shared**, so another computer lists the environment and cannot load it.
-  `.spz` files under `public/splats/` are deliberately not gitignored: commit
-  one and every clone can serve it. Needs a writable filesystem, so this is a
-  laptop/LAN setup, not a serverless deploy.
-- `firebase` uploads to Cloud Storage and stores an absolute download URL,
-  which resolves from anywhere. Requires Storage to be enabled on the project;
-  an unprovisioned bucket answers 404, which the SDK reports as
-  `storage/unknown`.
+- `splats/{placeId}/scene.spz` — walkable Gaussian splat
+- `videos/{…}/walkthrough.*` — original capture video
+- `audio/{placeId}/{pinId}` — voice memories
 
-Voice pins still go to Cloud Storage either way.
+Enable Storage on the Firebase project (Blaze is required for new buckets).
 
 ## Data model
 
 ```
 places/{placeId}
   name, uploaderId, createdAt, splatUrl, thumbnailUrl
+  videoUrl?, location?: { lat, lng }
   hotspots?: [{ x, y, z, linksToPlaceId }]
   entryPoint?: { position: {x,y,z}, target: {x,y,z} }
 
 places/{placeId}/audioPins/{pinId}
   x, y, z, audioUrl, duration, createdAt, caption?
+
+albums/{albumId}
+  name, ownerId, placeIds, createdAt
+
+profiles/{uid}
+  username, displayName, photoURL, createdAt
 ```
 
 ## Implementation notes

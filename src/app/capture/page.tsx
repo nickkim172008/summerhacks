@@ -43,6 +43,9 @@ import { readVideoCapture, type VideoCapture } from "@/lib/videoMeta";
 import { createPlace } from "@/lib/places";
 import { addPlacesToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth";
+import { getLiveLocation } from "@/lib/geolocation";
+import { uploadVideoFile } from "@/lib/splatStore";
 
 const SplatViewer = dynamic(() => import("@/components/SplatViewer"), {
   ssr: false,
@@ -52,13 +55,18 @@ const POLL_INTERVAL_MS = 20_000;
 const CLOCK_INTERVAL_MS = 30_000;
 const FAILURES_BEFORE_REPORTING = 3;
 
-/** Pitch mode: show the upload UX without waiting 30–90 min for a splat. */
+/** Pitch mode: upload video to Firebase Storage, skip the KIRI wait. */
 const DEMO_CAPTURE = process.env.NEXT_PUBLIC_DEMO_CAPTURE === "true";
-const DEMO_UPLOAD_STEPS = [0.35, 0.72, 1];
-const DEMO_STEP_MS = 550;
+/**
+ * uploadBytes reports no progress of its own, so the archive upload is given a
+ * flat slice of the bar and KIRI's upload drives what is left.
+ */
+const VIDEO_UPLOAD_FRACTION = 0.15;
 
 type Busy = "uploading" | "downloading" | "saving" | null;
 type VideoMeta = { seconds: number; width: number; height: number };
+/** Where a prefilled answer came from, which decides how much to trust it. */
+type Provenance = "video" | "file" | "none";
 
 export default function CapturePage() {
   return (
@@ -70,6 +78,7 @@ export default function CapturePage() {
 
 function CaptureFlow() {
   const router = useRouter();
+  const { user } = useAuth();
   const params = useSearchParams();
   const albumId = params.get("album");
   // "Capture New Environment" asks for a blank form. Without this, /capture
@@ -80,6 +89,7 @@ function CaptureFlow() {
   const [meta, setMeta] = useState<VideoMeta | null>(null);
   const [capture, setCapture] = useState<VideoCapture | null>(null);
   const [whenLocal, setWhenLocal] = useState("");
+  const [whenFrom, setWhenFrom] = useState<Provenance>("none");
   const [locationName, setLocationName] = useState("");
   // undefined while the track is still being lifted, null when there is none.
   const [audio, setAudio] = useState<ExtractedAudio | null | undefined>(
@@ -231,55 +241,89 @@ function CaptureFlow() {
    */
   async function handleFile(file: File | undefined) {
     const pick = (pickRef.current += 1);
-    // Started before the first await: the form is submittable the moment the
-    // video lands in state, and submit has to find this promise waiting.
-    const lifting = file ? liftAudio(file) : null;
-    liftRef.current = lifting;
+    const current = () => pickRef.current === pick;
+    // Whatever the last pick started is now about a video nobody chose.
+    liftRef.current = null;
 
     setVideo(file ?? null);
+    setMeta(null);
     setCapture(null);
     setWhenLocal("");
+    setWhenFrom("none");
     setLocationName("");
     setAudio(undefined);
-
-    const nextMeta = file ? await readVideoMeta(file) : null;
-    if (pickRef.current !== pick) return;
-    setMeta(nextMeta);
     if (!file) return;
+
+    const nextMeta = await readVideoMeta(file);
+    if (!current()) return;
+    setMeta(nextMeta);
 
     // The file is usually named after the place; save the typing.
     if (!name.trim()) setName(prettyName(file.name));
 
     const found = await readVideoCapture(file);
-    if (pickRef.current !== pick) return;
+    if (!current()) return;
     setCapture(found);
-    setWhenLocal(found.capturedAt ? toLocalInput(found.capturedAt) : "");
+    const when = found.capturedAt ?? fileDate(file);
+    setWhenLocal(when ? toLocalInput(when) : "");
+    setWhenFrom(found.capturedAt ? "video" : when ? "file" : "none");
+
+    // Only now, and never for a video the gate has already refused: extractAudio
+    // pulls the entire file through memory and decodes it, which on the 4K
+    // twelve-minute recording being turned away is gigabytes spent on nothing.
+    if (!DEMO_CAPTURE && nextMeta && describeProblem(nextMeta)) return;
+    const lifting = liftAudio(file);
+    // Assigned before yielding, so a submit fired the moment the form unlocks
+    // finds this promise rather than nothing.
+    liftRef.current = lifting;
 
     const track = await lifting;
-    if (pickRef.current === pick) setAudio(track);
+    if (current()) setAudio(track);
   }
 
   async function submit() {
     if (!video) return;
+    // Taken before the first await: the ref answers for whichever video is
+    // chosen now, and this job wants the sound of the one it is uploading.
+    const lifting = liftRef.current;
     setError(null);
     setBusy("uploading");
     setUploadFraction(0);
 
     if (DEMO_CAPTURE) {
-      // No KIRI call, but the progress bar still moves — a frozen one reads as
-      // broken on a projector.
-      for (const fraction of DEMO_UPLOAD_STEPS) {
-        await sleep(DEMO_STEP_MS);
-        setUploadFraction(fraction);
+      try {
+        // Pitch path: put the walkthrough in Firebase Storage, no KIRI wait.
+        if (!isFirebaseConfigured) {
+          throw new Error(
+            "Firebase isn't configured — add Storage keys to .env.local.",
+          );
+        }
+        setUploadFraction(0.2);
+        await uploadVideoFile(storageKeyFor(user?.uid), video);
+        setUploadFraction(1);
+        setDemoQueued(true);
+      } catch (err) {
+        setError(messageOf(err, "Video upload failed"));
+      } finally {
+        setBusy(null);
       }
-      setBusy(null);
-      setDemoQueued(true);
       return;
     }
 
     try {
-      const serialize = await uploadVideo(video, setUploadFraction);
-      const track = await liftRef.current;
+      // The walkthrough is archived in Firebase first, then a copy goes to
+      // KIRI: the source video outlives the reconstruction that consumes it.
+      setUploadFraction(0.05);
+      const videoUrl = isFirebaseConfigured
+        ? await uploadVideoFile(storageKeyFor(user?.uid), video)
+        : undefined;
+      setUploadFraction(VIDEO_UPLOAD_FRACTION);
+      const serialize = await uploadVideo(video, (fraction) =>
+        setUploadFraction(
+          VIDEO_UPLOAD_FRACTION + fraction * (1 - VIDEO_UPLOAD_FRACTION),
+        ),
+      );
+      const track = await lifting;
       // Megabytes of samples cannot go in localStorage beside the job, so the
       // job carries their length and Cache Storage carries the bytes, both
       // under the serialize that will still be here after a reload.
@@ -288,6 +332,7 @@ function CaptureFlow() {
         serialize,
         name: name.trim(),
         startedAt: Date.now(),
+        videoUrl,
         capturedAt: toIso(whenLocal),
         location: capture?.location ?? undefined,
         locationName: locationName.trim() || undefined,
@@ -309,16 +354,25 @@ function CaptureFlow() {
       // Both the audio and the details were put aside at upload time; this is
       // the first moment there is a place to attach them to.
       const wav = job ? await readCachedAudio(job.serialize) : null;
-      const placeId = await createPlace({
-        name: splat.name,
-        uploaderId: "anonymous",
-        splatFile: await toSpz(splat),
-        audioFile: wav && wavFile(wav, splat.name),
-        audioSeconds: job?.audioSeconds,
-        capturedAt: job?.capturedAt,
-        location: job?.location ?? null,
-        locationName: job?.locationName,
-      });
+      // Where the video says it was filmed is the true answer. The device's own
+      // position only stands in for a walkthrough that carried no GPS — which
+      // is what puts the place on the Map tab either way.
+      const location =
+        job?.location ?? (await getLiveLocation().catch(() => null));
+      const placeId = await createPlace(
+        splat.name,
+        await toSpz(splat),
+        user?.uid ?? "anonymous",
+        {
+          location,
+          locationName: job?.locationName,
+          capturedAt: job?.capturedAt,
+          audioFile: wav && wavFile(wav, splat.name),
+          audioSeconds: job?.audioSeconds,
+          videoFile: video,
+          videoUrl: job?.videoUrl,
+        },
+      );
       if (albumId) await addPlacesToAlbum(albumId, [placeId]);
       // They serve from the place now, so the local copies are dead weight.
       if (job) {
@@ -326,7 +380,11 @@ function CaptureFlow() {
         await dropCachedAudio(job.serialize);
       }
       clearJob();
-      router.push(`/place/${placeId}`);
+      // The place page reads ?album= to know where its Back button goes, so a
+      // capture made into an album has to leave with the album still in hand.
+      router.push(
+        albumId ? `/place/${placeId}?album=${albumId}` : `/place/${placeId}`,
+      );
     } catch (err) {
       setError(messageOf(err, "Could not save this environment"));
       setBusy(null);
@@ -351,6 +409,7 @@ function CaptureFlow() {
     setMeta(null);
     setCapture(null);
     setWhenLocal("");
+    setWhenFrom("none");
     setLocationName("");
     setAudio(undefined);
     // A lift still running belongs to a video that is no longer chosen.
@@ -382,12 +441,12 @@ function CaptureFlow() {
             ✓
           </div>
           <h1 className="mt-6 text-[28px] font-bold tracking-tight">
-            Video added
+            Video uploaded
           </h1>
           <p className="mt-2 text-sm text-neutral-500">
             <span className="font-medium text-[#1d1d1f]">{name.trim()}</span> is
-            queued for reconstruction. In production this takes 30–90 minutes —
-            then it shows up as a walkable environment
+            in Firebase Storage. In production it would reconstruct for 30–90
+            minutes, then show up as a walkable environment
             {albumId ? " in this album" : ""}.
           </p>
           <Link
@@ -526,17 +585,27 @@ function CaptureFlow() {
           )}
 
           <div className="mt-8 flex flex-col gap-4">
-            <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed border-black/20 bg-neutral-50 px-4 py-8 text-center transition hover:border-[#0071e3]">
+            <label
+              className={`flex flex-col items-center gap-1 rounded-xl border border-dashed border-black/20 bg-neutral-50 px-4 py-8 text-center transition ${
+                busy ? "opacity-50" : "cursor-pointer hover:border-[#0071e3]"
+              }`}
+            >
               <span className="text-[15px] font-medium text-[#0071e3]">
                 {video ? video.name : "Choose a Video"}
               </span>
               <span className="text-xs text-neutral-500">
-                One continuous walkthrough works best
+                {busy
+                  ? "Choose another once this one is on its way"
+                  : "One continuous walkthrough works best"}
               </span>
               <input
                 key={formKey}
                 type="file"
                 accept="video/*"
+                // An upload runs for minutes. A second video picked partway
+                // through would hand its own sound and GPS to the job already
+                // carrying the first one.
+                disabled={Boolean(busy)}
                 onChange={(e) => handleFile(e.target.files?.[0])}
                 className="hidden"
               />
@@ -551,7 +620,8 @@ function CaptureFlow() {
               </p>
             )}
 
-            {video && (
+            {/* A refused video is never listened to, so it has nothing to say. */}
+            {video && !problem && (
               <p className="text-sm text-neutral-500">{describeAudio(audio)}</p>
             )}
 
@@ -568,14 +638,14 @@ function CaptureFlow() {
                   <h2 className="text-[15px] font-medium">Where and when</h2>
                   <p className="text-xs text-neutral-500">
                     Kept with the environment. Anything the video did not carry
-                    is yours to fill in, or to leave blank.
+                    is yours to correct, fill in, or leave blank.
                   </p>
                 </div>
 
                 <label className="flex flex-col gap-1.5">
                   <span className="flex items-center gap-2 text-[13px] text-neutral-500">
                     Filmed
-                    <Source known={Boolean(capture.capturedAt)} />
+                    <Source from={whenFrom} />
                   </span>
                   <input
                     type="datetime-local"
@@ -588,7 +658,7 @@ function CaptureFlow() {
                 <label className="flex flex-col gap-1.5">
                   <span className="flex items-center gap-2 text-[13px] text-neutral-500">
                     Location
-                    <Source known={Boolean(capture.location)} />
+                    <Source from={capture.location ? "video" : "none"} />
                   </span>
                   {capture.location && (
                     <span className="text-[15px] tabular-nums">
@@ -641,17 +711,42 @@ function CaptureFlow() {
   );
 }
 
-/** Which of the two answers came off the video and which the user owes us. */
-function Source({ known }: { known: boolean }) {
-  return known ? (
-    <span className="rounded-full bg-[#0071e3]/10 px-2 py-0.5 text-[11px] font-medium text-[#0071e3]">
-      From the video
-    </span>
-  ) : (
+/**
+ * Which answers came off the video, which are only a guess, and which the user
+ * owes us. The middle one is the one worth being loud about: it looks filled in
+ * whether or not it is right.
+ */
+function Source({ from }: { from: Provenance }) {
+  if (from === "video") {
+    return (
+      <span className="rounded-full bg-[#0071e3]/10 px-2 py-0.5 text-[11px] font-medium text-[#0071e3]">
+        From the video
+      </span>
+    );
+  }
+  if (from === "file") {
+    return (
+      <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+        Guessed from the file — please check
+      </span>
+    );
+  }
+  return (
     <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
       Not in the video
     </span>
   );
+}
+
+/**
+ * The last resort once the container carried no date of its own. It is the
+ * file's timestamp, not the shoot's — a download, an AirDrop or an export all
+ * rewrite it, and a browser that cannot read one is allowed to hand back the
+ * current time — so it is offered as something to correct, never as an answer.
+ */
+function fileDate(file: File) {
+  const ms = file.lastModified;
+  return Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : null;
 }
 
 /**
@@ -708,8 +803,12 @@ function describeWait(startedAt: number, now: number) {
   return `Waiting ${minutes} minute${minutes === 1 ? "" : "s"} so far.`;
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * The video is archived before there is a place to hang it on, so it is filed
+ * under whoever uploaded it and when, not under a place id.
+ */
+function storageKeyFor(uid: string | undefined) {
+  return `${uid ?? "anonymous"}/${Date.now()}`;
 }
 
 /**

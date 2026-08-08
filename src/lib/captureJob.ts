@@ -4,11 +4,17 @@ import type { KiriStatus } from "./kiri";
  * Reconstruction runs 30-90 minutes — far longer than anyone leaves a tab open
  * — so the job id is written to localStorage the moment KIRI accepts the upload
  * and the capture page picks it back up on the next visit.
+ *
+ * Everything past startedAt is optional and stays that way: a job written
+ * before those fields existed is already sitting in someone's localStorage,
+ * and it still has a splat coming.
  */
 export interface CaptureJob {
   serialize: string;
   name: string;
   startedAt: number;
+  /** Firebase Storage URL for the source walkthrough, if uploaded. */
+  videoUrl?: string;
   /**
    * When and where the walkthrough was filmed, read out of the video or typed
    * in when it carried neither. The form is long gone by the time the splat

@@ -7,6 +7,7 @@ import { subscribeToPlaces, subscribeToPlacesByUploader } from "@/lib/places";
 import { createAlbum, subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { signOut, useAuthProfile } from "@/lib/auth";
+import AppTabs from "@/components/AppTabs";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Album, Place } from "@/lib/types";
 
@@ -164,6 +165,8 @@ export default function AlbumsPage() {
           }}
         />
       )}
+
+      <AppTabs active="library" />
     </main>
   );
 }
