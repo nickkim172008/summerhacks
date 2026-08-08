@@ -19,7 +19,7 @@ export default function SetupUsernamePage() {
       router.replace("/signin");
       return;
     }
-    if (profile) router.replace(`/u/${profile.username}`);
+    if (profile) router.replace("/");
   }, [user, profile, loading, router]);
 
   async function save() {
@@ -32,11 +32,11 @@ export default function SetupUsernamePage() {
     setSaving(true);
     setError(null);
     try {
-      const created = await claimUsername(user.uid, username, {
+      await claimUsername(user.uid, username, {
         displayName: user.displayName,
         photoURL: user.photoURL,
       });
-      router.replace(`/u/${created.username}`);
+      router.replace("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save username");
       setSaving(false);

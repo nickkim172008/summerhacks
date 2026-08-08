@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { subscribeToPlaces, subscribeToPlacesByUploader } from "@/lib/places";
+import { subscribeToPlacesByUploader } from "@/lib/places";
 import { createAlbum, subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { signOut, useAuthProfile } from "@/lib/auth";
@@ -21,25 +21,23 @@ export default function AlbumsPage() {
   const [showNewAlbum, setShowNewAlbum] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && needsUsername) router.replace("/setup");
-  }, [authLoading, needsUsername, router]);
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/signin");
+      return;
+    }
+    if (needsUsername) router.replace("/setup");
+  }, [authLoading, needsUsername, router, user]);
 
   useEffect(() => {
-    if (!isFirebaseConfigured) return;
-    if (!user) {
-      // Signed out: show everything so the library still works for browsing.
-      return subscribeToPlaces(setPlaces, () => setError(true));
-    }
+    if (!isFirebaseConfigured || authLoading || !user) return;
     return subscribeToPlacesByUploader(user.uid, setPlaces, () =>
       setError(true),
     );
-  }, [user]);
+  }, [authLoading, user]);
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !user) {
-      setAlbums(user === null || user === undefined ? [] : null);
-      return;
-    }
+    if (!isFirebaseConfigured || !user) return;
     return subscribeToAlbumsByOwner(user.uid, setAlbums, () => setError(true));
   }, [user]);
 
@@ -51,8 +49,9 @@ export default function AlbumsPage() {
   const loading =
     !error &&
     (authLoading ||
+      !user ||
       places === null ||
-      (Boolean(user) && albums === null));
+      albums === null);
 
   return (
     <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
@@ -80,9 +79,17 @@ export default function AlbumsPage() {
                 Finish setup
               </Link>
             ) : (
-              <Link href="/signin" className="text-[13px] text-[#0071e3]">
-                Sign In
-              </Link>
+              <>
+                <Link href="/signin" className="text-[13px] text-[#0071e3]">
+                  Sign In
+                </Link>
+                <Link
+                  href="/signup"
+                  className="rounded-full bg-[#0071e3] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#0077ed]"
+                >
+                  Sign Up
+                </Link>
+              </>
             )}
             <button
               onClick={() => {
@@ -145,8 +152,12 @@ export default function AlbumsPage() {
 
             {!user && (
               <p className="mt-10 text-sm text-neutral-500">
+                <Link href="/signup" className="text-[#0071e3]">
+                  Sign up
+                </Link>{" "}
+                or{" "}
                 <Link href="/signin" className="text-[#0071e3]">
-                  Sign in
+                  sign in
                 </Link>{" "}
                 to create albums and claim a public profile.
               </p>

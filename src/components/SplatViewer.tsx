@@ -14,8 +14,6 @@ export interface SplatViewerProps {
   placementMode: boolean;
   onPlacePoint: (point: Vec3) => void;
   onHotspotClick?: (linksToPlaceId: string) => void;
-  onCameraFrame?: (camera: THREE.PerspectiveCamera) => void;
-  onSceneReady?: (radius: number) => void;
 }
 
 const FALLBACK_PLACE_DISTANCE = 3;
@@ -37,8 +35,6 @@ export default function SplatViewer({
   placementMode,
   onPlacePoint,
   onHotspotClick,
-  onCameraFrame,
-  onSceneReady,
 }: SplatViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const hotspotGroupRef = useRef<THREE.Group | null>(null);
@@ -49,15 +45,11 @@ export default function SplatViewer({
   const placementModeRef = useRef(placementMode);
   const onPlacePointRef = useRef(onPlacePoint);
   const onHotspotClickRef = useRef(onHotspotClick);
-  const onCameraFrameRef = useRef(onCameraFrame);
-  const onSceneReadyRef = useRef(onSceneReady);
   const entryPointRef = useRef(entryPoint);
   useEffect(() => {
     placementModeRef.current = placementMode;
     onPlacePointRef.current = onPlacePoint;
     onHotspotClickRef.current = onHotspotClick;
-    onCameraFrameRef.current = onCameraFrame;
-    onSceneReadyRef.current = onSceneReady;
     entryPointRef.current = entryPoint;
   });
 
@@ -119,7 +111,6 @@ export default function SplatViewer({
         floorPlane.set(FLOOR_NORMAL, -framing.floorY);
         bounds = { box: framing.box, center, radius };
         setSceneRadius(radius);
-        onSceneReadyRef.current?.(radius);
       },
     });
     // Splat captures (SPZ/PLY) come in Y-down relative to three.js convention.
@@ -220,7 +211,6 @@ export default function SplatViewer({
       const deltaTime = (time - lastFrame) / 1000;
       lastFrame = time;
       controls.update(deltaTime);
-      onCameraFrameRef.current?.(camera);
       renderer.render(scene, camera);
     });
 
