@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+import { frameCapture } from "@/lib/splatFraming";
 import type { AudioPin, EntryPoint, Hotspot, Vec3 } from "@/lib/types";
 
 export interface SplatViewerProps {
@@ -99,30 +100,37 @@ export default function SplatViewer({
     const splat = new SplatMesh({
       url: splatUrl,
       onLoad: (mesh) => {
-        // Captures arrive at arbitrary scale and centering, so frame the camera
-        // and drop the pin-placement proxy at the scene's floor.
-        const box = mesh.getBoundingBox(true).applyMatrix4(mesh.matrixWorld);
-        if (box.isEmpty()) return;
-        const center = box.getCenter(new THREE.Vector3());
-        const radius = box.getSize(new THREE.Vector3()).length() / 2;
+        // Captures arrive at arbitrary scale and centering, so work out where the
+        // place actually is before standing the camera in it and dropping the
+        // pin-placement proxy at its floor.
+        const framing = frameCapture(mesh);
+        if (!framing) return;
+        const { center, radius } = framing;
 
         const entry = entryPointRef.current;
         if (entry) {
           camera.position.copy(entry.position);
           controls.target.copy(entry.target);
         } else {
-          controls.target.copy(center);
-          camera.position
-            .copy(center)
-            .add(new THREE.Vector3(0, radius * 0.3, radius * 2));
+          camera.position.copy(framing.eye);
+          controls.target
+            .copy(framing.eye)
+            .addScaledVector(framing.forward, framing.pivotDistance);
         }
         camera.near = Math.max(radius / 1000, 0.001);
         camera.far = radius * 100;
         camera.updateProjectionMatrix();
+        // Standing inside, the pivot is close enough that an unclamped dolly
+        // would either land on it or shove the camera out through a wall. Widen
+        // the limits to admit the opening shot rather than snapping it, since an
+        // authored entry point is free to sit outside them.
+        const opening = camera.position.distanceTo(controls.target);
+        controls.minDistance = Math.min(radius * 0.05, opening);
+        controls.maxDistance = Math.max(radius * 4, opening);
         controls.update();
 
-        floorPlane.set(FLOOR_NORMAL, -box.min.y);
-        bounds = { box, center, radius };
+        floorPlane.set(FLOOR_NORMAL, -framing.floorY);
+        bounds = { box: framing.box, center, radius };
         setSceneRadius(radius);
         onSceneReadyRef.current?.(radius);
       },
