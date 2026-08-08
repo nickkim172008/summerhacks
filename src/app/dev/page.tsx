@@ -32,9 +32,10 @@ const PLACES: Record<string, Place> = {
 
 export default function DevPage() {
   const [placeId, setPlaceId] = useState("butterfly");
+  const [places, setPlaces] = useState(PLACES);
   const [pinsByPlace, setPinsByPlace] = useState<Record<string, AudioPin[]>>({});
 
-  const place = PLACES[placeId];
+  const place = places[placeId];
   const pins = pinsByPlace[placeId] ?? [];
 
   return (
@@ -42,7 +43,22 @@ export default function DevPage() {
       <PlaceExperience
         place={place}
         pins={pins}
+        linkTargets={Object.values(places)
+          .filter((p) => p.id !== placeId)
+          .map((p) => ({ id: p.id, name: p.name }))}
         onJump={setPlaceId}
+        onAddHotspot={async (point, linksToPlaceId) => {
+          setPlaces((prev) => ({
+            ...prev,
+            [placeId]: {
+              ...prev[placeId],
+              hotspots: [
+                ...(prev[placeId].hotspots ?? []),
+                { ...point, linksToPlaceId },
+              ],
+            },
+          }));
+        }}
         onSubmitPin={async (point, recording, caption) => {
           const pin: AudioPin = {
             id: crypto.randomUUID(),

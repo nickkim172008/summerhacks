@@ -1,4 +1,5 @@
 import {
+  arrayUnion,
   collection,
   doc,
   getDoc,
@@ -7,10 +8,11 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "./firebase";
-import type { AudioPin, Place } from "./types";
+import type { AudioPin, Place, Vec3 } from "./types";
 
 export function subscribeToPlaces(
   onChange: (places: Place[]) => void,
@@ -64,6 +66,16 @@ export async function createPlace(
     thumbnailUrl: "",
   });
   return placeRef.id;
+}
+
+export async function addHotspot(
+  placeId: string,
+  point: Vec3,
+  linksToPlaceId: string,
+) {
+  await updateDoc(doc(db, "places", placeId), {
+    hotspots: arrayUnion({ ...point, linksToPlaceId }),
+  });
 }
 
 export async function addAudioPin(

@@ -4,7 +4,13 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import PlaceExperience from "@/components/PlaceExperience";
-import { addAudioPin, getPlace, subscribeToPins } from "@/lib/places";
+import {
+  addAudioPin,
+  addHotspot,
+  getPlace,
+  subscribeToPins,
+  subscribeToPlaces,
+} from "@/lib/places";
 import type { AudioPin, Place } from "@/lib/types";
 
 export default function PlacePage({
@@ -17,6 +23,7 @@ export default function PlacePage({
   // undefined while loading, null once we know it isn't there.
   const [place, setPlace] = useState<Place | null | undefined>();
   const [pins, setPins] = useState<AudioPin[]>([]);
+  const [allPlaces, setAllPlaces] = useState<Place[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -29,6 +36,7 @@ export default function PlacePage({
   }, [placeId]);
 
   useEffect(() => subscribeToPins(placeId, setPins), [placeId]);
+  useEffect(() => subscribeToPlaces(setAllPlaces), []);
 
   if (place === null) {
     return (
@@ -54,10 +62,17 @@ export default function PlacePage({
       <PlaceExperience
         place={place}
         pins={pins}
+        linkTargets={allPlaces
+          .filter((p) => p.id !== placeId)
+          .map((p) => ({ id: p.id, name: p.name }))}
         onJump={(id) => router.push(`/place/${id}`)}
         onSubmitPin={(point, recording, caption) =>
           addAudioPin(placeId, point, recording, caption)
         }
+        onAddHotspot={async (point, linksToPlaceId) => {
+          await addHotspot(placeId, point, linksToPlaceId);
+          setPlace(await getPlace(placeId));
+        }}
       />
     </main>
   );
