@@ -38,6 +38,8 @@ import {
 import { createPlace } from "@/lib/places";
 import { addPlacesToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
+import { useAuth } from "@/lib/auth";
+import { getLiveLocation } from "@/lib/geolocation";
 
 const SplatViewer = dynamic(() => import("@/components/SplatViewer"), {
   ssr: false,
@@ -65,6 +67,7 @@ export default function CapturePage() {
 
 function CaptureFlow() {
   const router = useRouter();
+  const { user } = useAuth();
   const params = useSearchParams();
   const albumId = params.get("album");
   // "Capture New Environment" asks for a blank form. Without this, /capture
@@ -242,10 +245,13 @@ function CaptureFlow() {
     setBusy("saving");
     setError(null);
     try {
+      // Stamp the place with wherever you are right now — feeds the Map tab.
+      const location = await getLiveLocation().catch(() => null);
       const placeId = await createPlace(
         splat.name,
         await toSpz(splat),
-        "anonymous",
+        user?.uid ?? "anonymous",
+        location,
       );
       if (albumId) await addPlacesToAlbum(albumId, [placeId]);
       // It serves from Storage now, so the local copy is dead weight.

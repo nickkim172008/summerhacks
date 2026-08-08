@@ -82,6 +82,7 @@ export async function createPlace(
   name: string,
   splatFile: Blob & { name?: string },
   uploaderId: string,
+  location?: { lat: number; lng: number } | null,
 ) {
   const placeRef = doc(collection(db, "places"));
   // The bytes go wherever splatStore points; the doc only ever holds the URL.
@@ -93,6 +94,7 @@ export async function createPlace(
     createdAt: serverTimestamp(),
     splatUrl,
     thumbnailUrl: "",
+    ...(location ? { location } : {}),
   });
   return placeRef.id;
 }
