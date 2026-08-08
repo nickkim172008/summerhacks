@@ -1,24 +1,8 @@
 import "server-only";
 import { unzipSync } from "fflate";
+import type { KiriStatus } from "./kiri";
 
 const BASE = "https://api.kiriengine.app/api/v1/open";
-
-/** https://docs.kiriengine.app/3dgs-scan/video-upload */
-export const MAX_VIDEO_SECONDS = 180;
-export const MAX_VIDEO_WIDTH = 1920;
-export const MAX_VIDEO_HEIGHT = 1080;
-
-/** https://docs.kiriengine.app/model/retrieve-3d-model-status */
-export const KIRI_STATUS = {
-  uploading: -1,
-  processing: 0,
-  failed: 1,
-  successful: 2,
-  queuing: 3,
-  expired: 4,
-} as const;
-
-export type KiriStatus = (typeof KIRI_STATUS)[keyof typeof KIRI_STATUS];
 
 type KiriEnvelope<T> = { code: number; msg: string; data: T; ok: boolean };
 
@@ -44,6 +28,10 @@ async function kiriFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export async function submitVideo(video: File): Promise<string> {
   const form = new FormData();
   form.append("videoFile", video, video.name);
+  // Both flags are documented as required. We only want the splat, and masking
+  // would need per-frame subject selection this flow does not collect.
+  form.append("isMesh", "0");
+  form.append("isMask", "0");
 
   const data = await kiriFetch<{ serialize: string; calculateType: number }>(
     "/3dgs/video",

@@ -1,4 +1,5 @@
-import { KIRI_STATUS, getStatus } from "@/lib/kiri.server";
+import { KIRI_STATUS } from "@/lib/kiri";
+import { getStatus } from "@/lib/kiri.server";
 
 export async function GET(req: Request) {
   const serialize = new URL(req.url).searchParams.get("serialize");
