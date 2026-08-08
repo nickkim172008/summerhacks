@@ -25,6 +25,8 @@ export interface Place {
   createdAt: Timestamp;
   splatUrl: string;
   thumbnailUrl: string;
+  /** Original walkthrough video in Firebase Storage, when uploaded. */
+  videoUrl?: string;
   hotspots?: Hotspot[];
   entryPoint?: EntryPoint;
   location?: { lat: number; lng: number };

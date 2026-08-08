@@ -9,6 +9,8 @@ export interface CaptureJob {
   serialize: string;
   name: string;
   startedAt: number;
+  /** Firebase Storage URL for the source walkthrough, if uploaded. */
+  videoUrl?: string;
 }
 
 const STORAGE_KEY = "atlas:capture-job";

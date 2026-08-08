@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "./firebase";
-import { uploadSplat } from "./splatStore";
+import { uploadSplat, uploadVideoFile } from "./splatStore";
 import type { AudioPin, Place, Vec3 } from "./types";
 
 function sortByCreatedDesc(places: Place[]) {
@@ -82,11 +82,21 @@ export async function createPlace(
   name: string,
   splatFile: Blob & { name?: string },
   uploaderId: string,
-  location?: { lat: number; lng: number } | null,
+  options?: {
+    location?: { lat: number; lng: number } | null;
+    videoFile?: Blob & { name?: string } | null;
+    /** Already-uploaded walkthrough URL (from capture submit). */
+    videoUrl?: string | null;
+  },
 ) {
   const placeRef = doc(collection(db, "places"));
-  // The bytes go wherever splatStore points; the doc only ever holds the URL.
+  // Bytes live in Firebase Storage; Firestore only holds the download URLs.
   const splatUrl = await uploadSplat(placeRef.id, splatFile);
+  const videoUrl =
+    options?.videoUrl ||
+    (options?.videoFile
+      ? await uploadVideoFile(placeRef.id, options.videoFile)
+      : undefined);
 
   await setDoc(placeRef, {
     name,
@@ -94,7 +104,8 @@ export async function createPlace(
     createdAt: serverTimestamp(),
     splatUrl,
     thumbnailUrl: "",
-    ...(location ? { location } : {}),
+    ...(videoUrl ? { videoUrl } : {}),
+    ...(options?.location ? { location: options.location } : {}),
   });
   return placeRef.id;
 }

@@ -40,6 +40,7 @@ import { addPlacesToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth";
 import { getLiveLocation } from "@/lib/geolocation";
+import { uploadVideoFile } from "@/lib/splatStore";
 
 const SplatViewer = dynamic(() => import("@/components/SplatViewer"), {
   ssr: false,
@@ -49,10 +50,8 @@ const POLL_INTERVAL_MS = 20_000;
 const CLOCK_INTERVAL_MS = 30_000;
 const FAILURES_BEFORE_REPORTING = 3;
 
-/** Pitch mode: show the upload UX without waiting 30–90 min for a splat. */
+/** Pitch mode: upload video to Firebase Storage, skip the KIRI wait. */
 const DEMO_CAPTURE = process.env.NEXT_PUBLIC_DEMO_CAPTURE === "true";
-const DEMO_UPLOAD_STEPS = [0.35, 0.72, 1];
-const DEMO_STEP_MS = 550;
 
 type Busy = "uploading" | "downloading" | "saving" | null;
 type VideoMeta = { seconds: number; width: number; height: number };
@@ -218,20 +217,43 @@ function CaptureFlow() {
     setUploadFraction(0);
 
     if (DEMO_CAPTURE) {
-      // No KIRI call, but the progress bar still moves — a frozen one reads as
-      // broken on a projector.
-      for (const fraction of DEMO_UPLOAD_STEPS) {
-        await sleep(DEMO_STEP_MS);
-        setUploadFraction(fraction);
+      try {
+        // Pitch path: put the walkthrough in Firebase Storage (no KIRI wait).
+        if (!isFirebaseConfigured) {
+          throw new Error(
+            "Firebase isn’t configured — add Storage keys to .env.local.",
+          );
+        }
+        setUploadFraction(0.2);
+        const key = `${user?.uid ?? "anonymous"}/${Date.now()}`;
+        await uploadVideoFile(key, video);
+        setUploadFraction(1);
+        setDemoQueued(true);
+      } catch (err) {
+        setError(messageOf(err, "Video upload failed"));
+      } finally {
+        setBusy(null);
       }
-      setBusy(null);
-      setDemoQueued(true);
       return;
     }
 
     try {
-      const serialize = await uploadVideo(video, setUploadFraction);
-      saveJob({ serialize, name: name.trim(), startedAt: Date.now() });
+      // Archive the walkthrough in Firebase, then send a copy to KIRI.
+      setUploadFraction(0.05);
+      const storageKey = `${user?.uid ?? "anonymous"}/${Date.now()}`;
+      const videoUrl = isFirebaseConfigured
+        ? await uploadVideoFile(storageKey, video)
+        : undefined;
+      setUploadFraction(0.15);
+      const serialize = await uploadVideo(video, (fraction) =>
+        setUploadFraction(0.15 + fraction * 0.85),
+      );
+      saveJob({
+        serialize,
+        name: name.trim(),
+        startedAt: Date.now(),
+        ...(videoUrl ? { videoUrl } : {}),
+      });
       if (startingNew) router.replace(resumeHref);
     } catch (err) {
       setError(messageOf(err, "Upload failed"));
@@ -251,10 +273,14 @@ function CaptureFlow() {
         splat.name,
         await toSpz(splat),
         user?.uid ?? "anonymous",
-        location,
+        {
+          location,
+          videoFile: video,
+          videoUrl: job?.videoUrl,
+        },
       );
       if (albumId) await addPlacesToAlbum(albumId, [placeId]);
-      // It serves from Storage now, so the local copy is dead weight.
+      // Splat is in Firebase Storage now — drop the browser cache copy.
       if (job) await dropCachedSplat(job.serialize);
       clearJob();
       router.push(`/place/${placeId}`);
@@ -303,12 +329,12 @@ function CaptureFlow() {
             ✓
           </div>
           <h1 className="mt-6 text-[28px] font-bold tracking-tight">
-            Video added
+            Video uploaded
           </h1>
           <p className="mt-2 text-sm text-neutral-500">
-            <span className="font-medium text-[#1d1d1f]">{name.trim()}</span> is
-            queued for reconstruction. In production this takes 30–90 minutes —
-            then it shows up as a walkable environment
+            <span className="font-medium text-[#1d1d1f]">{name.trim()}</span>{" "}
+            is in Firebase Storage. In production it would reconstruct for
+            30–90 minutes, then show up as a walkable environment
             {albumId ? " in this album" : ""}.
           </p>
           <Link
