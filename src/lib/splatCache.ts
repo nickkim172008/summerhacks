@@ -24,16 +24,20 @@
 const MiB = 1024 * 1024;
 
 /**
- * What one uncompressed PLY off KIRI weighs, and how many are worth keeping. A
- * session shoots three or four videos, so that is the batch to hold whole.
- * Stating the budget as a product makes the tradeoff read as "four captures"
- * rather than as a number of megabytes. Asking for more is a bluff: Chrome
- * would likely grant a gigabyte out of free disk, but Safari's per-origin
- * allowance is far tighter, and a budget past the browser's own buys nothing
- * except a QuotaExceededError we have to swallow anyway.
+ * What one uncompressed PLY off KIRI weighs, and how many are worth keeping.
+ * Six, to match the batch a session actually queues: any capture past the limit
+ * is evicted and has to come back down from KIRI, so a cache shallower than the
+ * queue quietly re-downloads a hundred megabytes on the next reload.
+ *
+ * Stating the budget as a product makes the tradeoff read as "six captures"
+ * rather than as a number of megabytes. Six is close to the honest ceiling —
+ * Chrome grants this out of free disk, Safari's per-origin allowance is far
+ * tighter and will simply decline the tail, which costs a re-download and
+ * nothing worse. Much past this is a bluff: a budget beyond the browser's own
+ * buys only a QuotaExceededError we have to swallow anyway.
  */
 const TYPICAL_SPLAT_BYTES = 110 * MiB;
-const MAX_CACHED_SPLATS = 4;
+const MAX_CACHED_SPLATS = 6;
 
 /**
  * Audio is orders of magnitude smaller — mono 22.05 kHz for at most three
