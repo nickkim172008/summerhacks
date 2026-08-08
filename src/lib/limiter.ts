@@ -10,6 +10,12 @@
  *   Node process before it relays anything to KIRI.
  * - /api/capture/model unzips KIRI's result with fflate's synchronous
  *   unzipSync, which blocks the Node event loop for the whole decompress.
+ * - extractAudio opens two OfflineAudioContexts per video and reads the whole
+ *   file into memory to decode it. Browsers cap how many audio contexts one
+ *   document may hold — around six — and refuse the ones past that. Which is
+ *   the reason for AUDIO_LIMIT of two rather than a higher one: the refusal is
+ *   silent. extractAudio answers null, null is also what a video with no sound
+ *   answers, and the capture is saved mute with nothing said about it.
  *
  * The gate is FIFO, so the first video a user picked is also the first one that
  * finishes.
@@ -17,6 +23,7 @@
 export const UPLOAD_LIMIT = 2;
 export const DOWNLOAD_LIMIT = 2;
 export const SAVE_LIMIT = 1;
+export const AUDIO_LIMIT = 2;
 
 export function createLimiter(
   max: number,

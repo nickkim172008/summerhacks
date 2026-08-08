@@ -4,10 +4,16 @@
  * blobs that size and survives reloads, so a capture that has already been
  * downloaded once comes straight back off disk.
  *
- * Several captures now run at once, so "keep only the newest" would have every
- * finishing job delete the ones beside it. The cache instead keeps the most
- * recently written few under a total byte budget, evicting
- * least-recently-written first.
+ * The walkthrough's audio is kept here for the opposite reason: it is lifted
+ * off the source video the moment that File is in hand, which is 30-90 minutes
+ * before the splat it belongs to exists, and no File survives a reload.
+ *
+ * Each kind gets its own cache so pruning one never takes the other half of the
+ * same job with it. Within a cache, "keep only the newest" was affordable while
+ * one capture ran at a time; with several running side by side it made every
+ * finishing job delete the ones beside it. Each cache instead keeps the most
+ * recently written few under a byte budget, evicting least-recently-written
+ * first.
  *
  * Cache Storage reports neither the size nor the age of what it holds, so both
  * live in an index kept in the cache beside the blobs — same storage, so a
@@ -15,88 +21,123 @@
  * describing bytes that are gone. That index is the record of what is cached:
  * blobs it does not name are untracked, and a write sweeps them.
  */
-const CACHE_NAME = "atlas-splats-v1";
-
-/** Reserved: outside the /cached-splat/ namespace, so no id can collide with it. */
-const INDEX_KEY = "/cached-splat-index";
+const MiB = 1024 * 1024;
 
 /**
- * What one uncompressed PLY off KIRI weighs. The budget is stated in these so
- * the tradeoff reads as "four captures", not as a number of megabytes.
+ * What one uncompressed PLY off KIRI weighs, and how many are worth keeping. A
+ * session shoots three or four videos, so that is the batch to hold whole.
+ * Stating the budget as a product makes the tradeoff read as "four captures"
+ * rather than as a number of megabytes. Asking for more is a bluff: Chrome
+ * would likely grant a gigabyte out of free disk, but Safari's per-origin
+ * allowance is far tighter, and a budget past the browser's own buys nothing
+ * except a QuotaExceededError we have to swallow anyway.
  */
-const TYPICAL_SPLAT_BYTES = 110 * 1024 * 1024;
-
-/**
- * A session shoots three or four videos, so that is the batch worth keeping
- * whole. Asking for more is a bluff: Chrome would likely grant a gigabyte out
- * of free disk, but Safari's per-origin allowance is far tighter, and the only
- * thing a budget larger than the browser's own buys is a QuotaExceededError we
- * have to swallow anyway. The byte budget is the real limit — the count only
- * caps how many entries we track when captures come in unusually small.
- */
+const TYPICAL_SPLAT_BYTES = 110 * MiB;
 const MAX_CACHED_SPLATS = 4;
-const CACHE_BUDGET_BYTES = MAX_CACHED_SPLATS * TYPICAL_SPLAT_BYTES;
 
-interface SplatRecord {
+/**
+ * Audio is orders of magnitude smaller — mono 22.05 kHz for at most three
+ * minutes — so more of it is kept than splats, deliberately. A track is written
+ * when its video is picked and read when its splat lands an hour or more later,
+ * so it has to outlive a queue that may have moved well past four captures by
+ * then.
+ */
+const TYPICAL_AUDIO_BYTES = 12 * MiB;
+const MAX_CACHED_AUDIO = 8;
+
+interface CacheRecord {
   bytes: number;
-  /** A write counter, not a clock: ties under concurrent writes would make
-   * "least recently written" ambiguous, and a clock that jumps would too. */
+  /**
+   * A write counter, not a clock: ties under concurrent writes would make
+   * "least recently written" ambiguous, and a clock that jumps would too.
+   */
   seq: number;
 }
 
-interface SplatIndex {
+interface CacheIndex {
   seq: number;
-  entries: Record<string, SplatRecord>;
+  entries: Record<string, CacheRecord>;
 }
+
+interface Store {
+  cacheName: string;
+  keyPrefix: string;
+  /** Reserved: outside the entry prefix, so no id can collide with it. */
+  indexKey: string;
+  budgetBytes: number;
+  maxEntries: number;
+  /**
+   * Every mutation on a store runs to completion before the next one starts.
+   * Choosing what to evict is a read of the index and cache.keys() followed by
+   * deletes, and two of those interleaved would each drop what the other had
+   * just put — the race that used to lose a capture outright. Awaiting the
+   * previous mutation makes the whole read-decide-delete-put sequence
+   * indivisible within this tab. The chain is per store because a 100 MB splat
+   * write has no reason to hold up a two-megabyte audio one.
+   *
+   * A second tab can still interleave, since Cache Storage offers no lock. The
+   * worst that costs is a re-download: the index only ever names entries some
+   * tab did write, a missing entry reads as a miss, and untracked bytes get
+   * swept.
+   */
+  mutations: Promise<unknown>;
+}
+
+const SPLATS: Store = {
+  cacheName: "atlas-splats-v1",
+  keyPrefix: "/cached-splat/",
+  indexKey: "/cached-splat-index",
+  budgetBytes: MAX_CACHED_SPLATS * TYPICAL_SPLAT_BYTES,
+  maxEntries: MAX_CACHED_SPLATS,
+  mutations: Promise.resolve(),
+};
+
+const AUDIO: Store = {
+  cacheName: "atlas-capture-audio-v1",
+  keyPrefix: "/cached-audio/",
+  indexKey: "/cached-audio-index",
+  budgetBytes: MAX_CACHED_AUDIO * TYPICAL_AUDIO_BYTES,
+  maxEntries: MAX_CACHED_AUDIO,
+  mutations: Promise.resolve(),
+};
 
 /** Cache Storage needs a secure context; localhost counts as one. */
 function unavailable() {
   return typeof caches === "undefined";
 }
 
-function cacheKey(serialize: string) {
-  return `/cached-splat/${encodeURIComponent(serialize)}`;
+/** encodeURIComponent escapes "/", so no id can forge the index key. */
+function entryKey(store: Store, serialize: string) {
+  return `${store.keyPrefix}${encodeURIComponent(serialize)}`;
 }
 
-function emptyIndex(): SplatIndex {
+function emptyIndex(): CacheIndex {
   return { seq: 0, entries: {} };
 }
 
-/**
- * Every mutation runs to completion before the next one starts. Choosing what
- * to evict is a read of the index and cache.keys() followed by deletes, and two
- * of those interleaved would each drop what the other had just put — the race
- * that used to lose a capture outright. Awaiting the previous mutation makes
- * the whole read-decide-delete-put sequence indivisible within this tab.
- *
- * A second tab can still interleave, since Cache Storage offers no lock. The
- * worst that costs is a re-download: the index only ever names entries some tab
- * did write, a missing entry reads as a miss, and untracked bytes get swept.
- */
-let mutations: Promise<unknown> = Promise.resolve();
-
-function queued<T>(work: () => Promise<T>): Promise<T> {
+function queued<T>(store: Store, work: () => Promise<T>): Promise<T> {
   // then(work, work): one rejected mutation must not stall every later one.
-  const done = mutations.then(work, work);
-  mutations = done.catch(() => undefined);
+  const done = store.mutations.then(work, work);
+  store.mutations = done.catch(() => undefined);
   return done;
 }
 
 /**
  * Anything unexpected reads as "nothing is cached", which costs at most a
- * re-download. Trusting a damaged index would cost more: the budget is arithmetic
- * over these numbers, so one bad size either hoards disk or evicts everything.
+ * re-download. Trusting a damaged index would cost more: the budget is
+ * arithmetic over these numbers, so one bad size either hoards disk or evicts
+ * everything.
  */
-function parseIndex(raw: unknown): SplatIndex {
+function parseIndex(raw: unknown): CacheIndex {
   if (!raw || typeof raw !== "object") return emptyIndex();
-  const { seq, entries } = raw as Partial<SplatIndex>;
+  const { seq, entries } = raw as Partial<CacheIndex>;
   if (!entries || typeof entries !== "object") return emptyIndex();
 
   const index = emptyIndex();
   index.seq = Number.isFinite(seq) ? Number(seq) : 0;
   for (const [serialize, record] of Object.entries(entries)) {
-    const bytes = (record as Partial<SplatRecord> | null)?.bytes;
-    const at = (record as Partial<SplatRecord> | null)?.seq;
+    const bytes = (record as Partial<CacheRecord> | null)?.bytes;
+    const at = (record as Partial<CacheRecord> | null)?.seq;
     // A record with no size can never be budgeted, so it is not worth keeping.
     if (!Number.isFinite(bytes) || !Number.isFinite(at)) continue;
     if (Number(bytes) < 0) continue;
@@ -106,18 +147,18 @@ function parseIndex(raw: unknown): SplatIndex {
   return index;
 }
 
-async function readIndex(cache: Cache): Promise<SplatIndex> {
+async function readIndex(store: Store, cache: Cache): Promise<CacheIndex> {
   try {
-    const hit = await cache.match(INDEX_KEY);
+    const hit = await cache.match(store.indexKey);
     return hit ? parseIndex(await hit.json()) : emptyIndex();
   } catch {
     return emptyIndex(); // Unreadable index, so nothing is known to be cached.
   }
 }
 
-async function writeIndex(cache: Cache, index: SplatIndex) {
+async function writeIndex(store: Store, cache: Cache, index: CacheIndex) {
   await cache.put(
-    INDEX_KEY,
+    store.indexKey,
     new Response(JSON.stringify(index), {
       headers: { "Content-Type": "application/json" },
     }),
@@ -126,25 +167,31 @@ async function writeIndex(cache: Cache, index: SplatIndex) {
 
 /**
  * Least-recently-written first, until the incoming blob fits. `keep` is the
- * capture this write exists to store, so it is never a candidate however old
- * its previous copy was — evicting it would send the caller straight back to
- * KIRI for bytes it is holding in memory right now.
+ * entry this write exists to store, so it is never a candidate however old its
+ * previous copy was — evicting it would send the caller straight back to KIRI
+ * for bytes it is holding in memory right now.
  *
- * A single capture bigger than the whole budget empties the cache and stays
+ * A single entry bigger than the whole budget empties the store and stays
  * anyway: it is the one on screen, and the alternative is a cache that refuses
  * to hold anything.
  */
-function planEvictions(index: SplatIndex, keep: string, incoming: number) {
+function planEvictions(
+  store: Store,
+  index: CacheIndex,
+  keep: string,
+  incoming: number,
+) {
   const others = Object.entries(index.entries)
     .filter(([serialize]) => serialize !== keep)
     .sort(([, a], [, b]) => a.seq - b.seq);
 
-  let bytes = incoming + others.reduce((sum, [, record]) => sum + record.bytes, 0);
+  let bytes =
+    incoming + others.reduce((sum, [, record]) => sum + record.bytes, 0);
   let count = others.length + 1;
 
   const doomed: string[] = [];
   for (const [serialize, record] of others) {
-    if (bytes <= CACHE_BUDGET_BYTES && count <= MAX_CACHED_SPLATS) break;
+    if (bytes <= store.budgetBytes && count <= store.maxEntries) break;
     doomed.push(serialize);
     bytes -= record.bytes;
     count -= 1;
@@ -158,51 +205,62 @@ function planEvictions(index: SplatIndex, keep: string, incoming: number) {
  * can never be budgeted — dropping them is the only way to get the accounting
  * back in step with the disk.
  */
-async function sweepUntracked(cache: Cache, index: SplatIndex, keep: string) {
-  const live = [INDEX_KEY, cacheKey(keep), ...Object.keys(index.entries).map(cacheKey)];
+async function sweepUntracked(
+  store: Store,
+  cache: Cache,
+  index: CacheIndex,
+  keep: string,
+) {
+  const live = [
+    store.indexKey,
+    entryKey(store, keep),
+    ...Object.keys(index.entries).map((id) => entryKey(store, id)),
+  ];
   for (const request of await cache.keys()) {
-    if (!live.some((key) => request.url.endsWith(key))) await cache.delete(request);
+    if (!live.some((key) => request.url.endsWith(key))) {
+      await cache.delete(request);
+    }
   }
 }
 
 /**
  * Drops a record whose blob has gone missing. It looks again from inside the
- * queue rather than trusting the read that noticed: a write of the same capture
+ * queue rather than trusting the read that noticed: a write of the same entry
  * can land in between, and forgetting the record then would leave real bytes
  * untracked — which the next write would sweep, undoing a download nobody asked
  * to repeat.
  */
-function forgetMissing(serialize: string) {
-  return queued(async () => {
+function forgetMissing(store: Store, serialize: string) {
+  return queued(store, async () => {
     try {
-      const cache = await caches.open(CACHE_NAME);
-      if (await cache.match(cacheKey(serialize))) return;
-      const index = await readIndex(cache);
+      const cache = await caches.open(store.cacheName);
+      if (await cache.match(entryKey(store, serialize))) return;
+      const index = await readIndex(store, cache);
       if (!index.entries[serialize]) return;
       delete index.entries[serialize];
-      await writeIndex(cache, index);
+      await writeIndex(store, cache, index);
     } catch {
       // A stale record costs one wasted lookup on the next read, nothing more.
     }
   });
 }
 
-export async function readCachedSplat(serialize: string): Promise<Blob | null> {
+async function read(store: Store, serialize: string): Promise<Blob | null> {
   if (unavailable()) return null;
   try {
-    const cache = await caches.open(CACHE_NAME);
+    const cache = await caches.open(store.cacheName);
     // Reads go through the index rather than straight to the blob so there is
     // one story about what is cached: an entry with no record has no size on
     // record either, and would sit outside the budget forever. Reads do not
-    // write the index back — recency is when a capture was stored, and a read
+    // write the index back — recency is when an entry was stored, and a read
     // that took a lock would queue behind a 100 MB write for nothing.
-    const index = await readIndex(cache);
+    const index = await readIndex(store, cache);
     if (!index.entries[serialize]) return null;
 
-    const hit = await cache.match(cacheKey(serialize));
+    const hit = await cache.match(entryKey(store, serialize));
     if (!hit) {
       // Index says yes, storage says no: the browser reclaimed it underneath us.
-      void forgetMissing(serialize);
+      void forgetMissing(store, serialize);
       return null;
     }
     return await hit.blob();
@@ -211,56 +269,82 @@ export async function readCachedSplat(serialize: string): Promise<Blob | null> {
   }
 }
 
-export async function writeCachedSplat(serialize: string, blob: Blob) {
+async function write(store: Store, serialize: string, blob: Blob) {
   if (unavailable()) return;
-  return queued(async () => {
+  return queued(store, async () => {
     try {
-      const cache = await caches.open(CACHE_NAME);
-      const index = await readIndex(cache);
+      const cache = await caches.open(store.cacheName);
+      const index = await readIndex(store, cache);
 
       // Room is made before asking for it: eviction is what the budget says to
       // do whether or not the put below then succeeds.
-      for (const doomed of planEvictions(index, serialize, blob.size)) {
+      for (const doomed of planEvictions(store, index, serialize, blob.size)) {
         delete index.entries[doomed];
-        await cache.delete(cacheKey(doomed));
+        await cache.delete(entryKey(store, doomed));
       }
-      await sweepUntracked(cache, index, serialize);
+      await sweepUntracked(store, cache, index, serialize);
 
       try {
         await cache.put(
-          cacheKey(serialize),
+          entryKey(store, serialize),
           new Response(blob, {
-            headers: { "Content-Type": "application/octet-stream" },
+            headers: {
+              "Content-Type": blob.type || "application/octet-stream",
+            },
           }),
         );
         index.entries[serialize] = { bytes: blob.size, seq: ++index.seq };
       } catch {
         // QuotaExceededError: the browser is stingier than our budget. This
-        // copy is simply not cached — evicting the sibling captures to force it
-        // in is the behaviour this file just stopped doing. Drop whatever a
-        // partial put left so the index never names bytes that are not there.
+        // copy is simply not cached — evicting the siblings to force it in is
+        // the behaviour this file exists to stop. Drop whatever a partial put
+        // left so the index never names bytes that are not there.
         delete index.entries[serialize];
-        await cache.delete(cacheKey(serialize));
+        await cache.delete(entryKey(store, serialize));
       }
 
-      await writeIndex(cache, index);
+      await writeIndex(store, cache, index);
     } catch {
       // Out of quota or storage denied — caching is an optimization, not the flow.
     }
   });
 }
 
-export async function dropCachedSplat(serialize: string) {
+async function drop(store: Store, serialize: string) {
   if (unavailable()) return;
-  return queued(async () => {
+  return queued(store, async () => {
     try {
-      const cache = await caches.open(CACHE_NAME);
-      await cache.delete(cacheKey(serialize));
-      const index = await readIndex(cache);
+      const cache = await caches.open(store.cacheName);
+      await cache.delete(entryKey(store, serialize));
+      const index = await readIndex(store, cache);
       delete index.entries[serialize];
-      await writeIndex(cache, index);
+      await writeIndex(store, cache, index);
     } catch {
       // Nothing to clean up, or nothing we can do about it.
     }
   });
+}
+
+export function readCachedSplat(serialize: string) {
+  return read(SPLATS, serialize);
+}
+
+export function writeCachedSplat(serialize: string, blob: Blob) {
+  return write(SPLATS, serialize, blob);
+}
+
+export function dropCachedSplat(serialize: string) {
+  return drop(SPLATS, serialize);
+}
+
+export function readCachedAudio(serialize: string) {
+  return read(AUDIO, serialize);
+}
+
+export function writeCachedAudio(serialize: string, blob: Blob) {
+  return write(AUDIO, serialize, blob);
+}
+
+export function dropCachedAudio(serialize: string) {
+  return drop(AUDIO, serialize);
 }

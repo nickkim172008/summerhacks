@@ -28,6 +28,7 @@ import {
   subscribeToJobs,
 } from "@/lib/captureQueue";
 import {
+  AUDIO_LIMIT,
   createLimiter,
   DOWNLOAD_LIMIT,
   SAVE_LIMIT,
@@ -35,6 +36,8 @@ import {
 } from "@/lib/limiter";
 import {
   activeCount,
+  audioCacheTargets,
+  audioTargets,
   canStart,
   checkTargets,
   createQueue,
@@ -45,19 +48,28 @@ import {
   resumedItem,
   saveTargets,
   uploadTargets,
+  type CaptureDetails,
   type CaptureItem,
   type SplatHandle,
   type VideoMeta,
 } from "@/lib/captureRunner";
 import {
+  dropCachedAudio,
   dropCachedSplat,
+  readCachedAudio,
   readCachedSplat,
+  writeCachedAudio,
   writeCachedSplat,
 } from "@/lib/splatCache";
+import { extractAudio } from "@/lib/audioTrack";
+import { readVideoCapture, type VideoCapture } from "@/lib/videoMeta";
 import { createPlace } from "@/lib/places";
 import { addPlacesToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import CaptureQueue from "@/components/CaptureQueue";
+import { useAuth } from "@/lib/auth";
+import { getLiveLocation } from "@/lib/geolocation";
+import { uploadVideoFile } from "@/lib/splatStore";
 
 const SplatViewer = dynamic(() => import("@/components/SplatViewer"), {
   ssr: false,
@@ -72,10 +84,13 @@ const POLL_INTERVAL_MS = 20_000;
 const POLL_STAGGER_MS = 1_500;
 const CLOCK_INTERVAL_MS = 30_000;
 
-/** Pitch mode: show the upload UX without waiting 30–90 min for a splat. */
+/** Pitch mode: upload video to Firebase Storage, skip the KIRI wait. */
 const DEMO_CAPTURE = process.env.NEXT_PUBLIC_DEMO_CAPTURE === "true";
-const DEMO_UPLOAD_STEPS = [0.35, 0.72, 1];
-const DEMO_STEP_MS = 550;
+/**
+ * uploadBytes reports no progress of its own, so the archive upload is given a
+ * flat slice of the bar and KIRI's upload drives what is left.
+ */
+const VIDEO_UPLOAD_FRACTION = 0.15;
 
 /** The server has no localStorage, so it renders as if nothing were queued. */
 const emptySnapshot = () => "{}";
@@ -86,6 +101,12 @@ function nextRowId() {
   rowCounter += 1;
   return `row-${rowCounter}`;
 }
+/**
+ * Pitch mode has no KIRI job to wait on, so the bar is walked through a few
+ * steps to show the archive upload actually going somewhere.
+ */
+const DEMO_UPLOAD_STEPS = [0.2, 0.55, 0.85, 1];
+const DEMO_STEP_MS = 220;
 
 export default function CapturePage() {
   return (
@@ -96,6 +117,7 @@ export default function CapturePage() {
 }
 
 function CaptureFlow() {
+  const { user } = useAuth();
   const params = useSearchParams();
   const albumId = params.get("album");
   // "Capture New Environment" asks for a blank form. The queue still lists what
@@ -135,6 +157,7 @@ function CaptureFlow() {
   const uploadLimit = useMemo(() => createLimiter(UPLOAD_LIMIT), []);
   const downloadLimit = useMemo(() => createLimiter(DOWNLOAD_LIMIT), []);
   const saveLimit = useMemo(() => createLimiter(SAVE_LIMIT), []);
+  const audioLimit = useMemo(() => createLimiter(AUDIO_LIMIT), []);
 
   useEffect(() => {
     // The poll loop is mounted once and never restarted — resetting its timer on
@@ -190,8 +213,13 @@ function CaptureFlow() {
   const runCheck = useCallback(
     async (item: CaptureItem) => {
       if (item.file) {
-        const meta = await readVideoMeta(item.file);
+        const file = item.file;
+        const meta = await readVideoMeta(file);
+        // Everything only the video can answer, read while the File is in hand:
+        // after a reload there is no File left and the splat is still an hour out.
+        const found = await readVideoCapture(file);
         if (!mountedRef.current) return;
+        const when = found.capturedAt ?? fileDate(file);
         dispatch({
           type: "meta-read",
           id: item.id,
@@ -200,6 +228,7 @@ function CaptureFlow() {
           // problem. An unreadable file is let through as it always was: the
           // server rejects what it must.
           problem: DEMO_CAPTURE || !meta ? null : describeProblem(meta),
+          details: toDetails(found, when),
         });
         return;
       }
@@ -222,26 +251,66 @@ function CaptureFlow() {
       const file = item.file;
       if (!file) return;
 
+      // The walkthrough is archived in Firebase first, then a copy goes to
+      // KIRI: the source video outlives the reconstruction that consumes it.
+      const archive = () =>
+        isFirebaseConfigured
+          ? uploadVideoFile(storageKeyFor(user?.uid), file)
+          : Promise.resolve(null);
+
       if (DEMO_CAPTURE) {
         // No KIRI call, but the progress bar still moves — a frozen one reads as
         // broken on a projector.
-        for (const fraction of DEMO_UPLOAD_STEPS) {
-          await sleep(DEMO_STEP_MS);
-          if (!mountedRef.current) return;
-          dispatch({ type: "upload-progress", id: item.id, fraction });
+        try {
+          for (const fraction of DEMO_UPLOAD_STEPS) {
+            await sleep(DEMO_STEP_MS);
+            if (!mountedRef.current) return;
+            dispatch({ type: "upload-progress", id: item.id, fraction });
+          }
+          const videoUrl = await uploadLimit(archive);
+          dispatch({
+            type: "demo-queued",
+            id: item.id,
+            startedAt: Date.now(),
+            videoUrl,
+          });
+        } catch (err) {
+          dispatch({
+            type: "upload-failed",
+            id: item.id,
+            message: messageOf(err, "Video upload failed"),
+          });
+          claimedRef.current.delete(`upload:${item.id}`);
         }
-        dispatch({ type: "demo-queued", id: item.id, startedAt: Date.now() });
         return;
       }
 
       try {
-        const serialize = await uploadLimit(() =>
-          uploadVideo(file, (fraction) =>
-            dispatch({ type: "upload-progress", id: item.id, fraction }),
-          ),
-        );
+        const { serialize, videoUrl } = await uploadLimit(async () => {
+          const archived = await archive();
+          dispatch({
+            type: "upload-progress",
+            id: item.id,
+            fraction: VIDEO_UPLOAD_FRACTION,
+          });
+          const id = await uploadVideo(file, (fraction) =>
+            dispatch({
+              type: "upload-progress",
+              id: item.id,
+              fraction:
+                VIDEO_UPLOAD_FRACTION + fraction * (1 - VIDEO_UPLOAD_FRACTION),
+            }),
+          );
+          return { serialize: id, videoUrl: archived };
+        });
         const startedAt = Date.now();
-        dispatch({ type: "upload-succeeded", id: item.id, serialize, startedAt });
+        dispatch({
+          type: "upload-succeeded",
+          id: item.id,
+          serialize,
+          startedAt,
+          videoUrl,
+        });
         // A row dropped mid-upload must not come back from the dead: persisting
         // the job now would have the next reconcile read it as one to resume.
         if (!discardedRef.current.has(item.id)) {
@@ -250,6 +319,11 @@ function CaptureFlow() {
             name: item.name.trim() || "Untitled",
             startedAt,
             albumId: item.albumId ?? undefined,
+            videoUrl: videoUrl ?? undefined,
+            capturedAt: item.capturedAt ?? undefined,
+            location: item.location ?? undefined,
+            locationName: item.locationName.trim() || undefined,
+            audioSeconds: item.audio?.seconds,
           });
         }
       } catch (err) {
@@ -261,7 +335,7 @@ function CaptureFlow() {
         claimedRef.current.delete(`upload:${item.id}`);
       }
     },
-    [uploadLimit],
+    [uploadLimit, user?.uid],
   );
 
   const runDownload = useCallback(
@@ -298,17 +372,37 @@ function CaptureFlow() {
       if (!splat) return;
       try {
         await saveLimit(async () => {
+          // Both the sound and the details were put aside at upload time; this
+          // is the first moment there is a place to attach them to.
+          const wav = item.serialize
+            ? await readCachedAudio(item.serialize)
+            : null;
+          // Where the video says it was filmed is the true answer. The device's
+          // own position only stands in for a walkthrough that carried no GPS —
+          // which is what puts the place on the Map tab either way.
+          const location =
+            item.location ?? (await getLiveLocation().catch(() => null));
           const placeId = await createPlace(
             splat.name,
             await toSpz(splat),
-            "anonymous",
+            user?.uid ?? "anonymous",
+            {
+              location,
+              locationName: item.locationName.trim() || undefined,
+              capturedAt: item.capturedAt ?? undefined,
+              audioFile: wav && wavFile(wav, splat.name),
+              audioSeconds: item.audioSeconds ?? undefined,
+              videoFile: item.file,
+              videoUrl: item.videoUrl,
+            },
           );
           const album = item.albumId ?? albumId;
           if (album) await addPlacesToAlbum(album, [placeId]);
-          // It serves from Storage now, so the local copy and the resume record
-          // are both dead weight.
+          // It serves from Storage now, so the local copies and the resume
+          // record are all dead weight.
           if (item.serialize) {
             await dropCachedSplat(item.serialize);
+            await dropCachedAudio(item.serialize);
             removeJob(item.serialize);
           }
           // No navigation: leaving this page would unmount every other capture
@@ -325,8 +419,39 @@ function CaptureFlow() {
         claimedRef.current.delete(`save:${item.id}`);
       }
     },
-    [saveLimit, albumId],
+    [saveLimit, albumId, user?.uid],
   );
+
+  // The lift runs beside the upload rather than before it, so a row is never
+  // held at the gate waiting for its own sound.
+  useEffect(() => {
+    const claimed = claimedRef.current;
+    for (const item of audioTargets(queue.items)) {
+      if (claimed.has(`audio:${item.id}`)) continue;
+      claimed.add(`audio:${item.id}`);
+      const file = item.file;
+      if (!file) continue;
+      void audioLimit(() => liftAudio(file)).then((audio) => {
+        if (!mountedRef.current) return;
+        dispatch({ type: "audio-lifted", id: item.id, audio });
+      });
+    }
+  }, [queue.items, audioLimit]);
+
+  // Samples are megabytes, so they go to Cache Storage under the task id while
+  // the job beside them carries only their length.
+  useEffect(() => {
+    const claimed = claimedRef.current;
+    for (const item of audioCacheTargets(queue.items)) {
+      const key = `audio-cache:${item.serialize}`;
+      if (claimed.has(key)) continue;
+      claimed.add(key);
+      const serialize = item.serialize;
+      const audio = item.audio;
+      if (!serialize || !audio) continue;
+      void writeCachedAudio(serialize, audio.file);
+    }
+  }, [queue.items]);
 
   useEffect(() => {
     const claimed = claimedRef.current;
@@ -537,7 +662,6 @@ function CaptureFlow() {
               <SplatViewer
                 key={previewed.id}
                 splatUrl={previewed.splat.url}
-                pins={[]}
                 placementMode={false}
                 onPlacePoint={() => {}}
               />
@@ -552,6 +676,17 @@ function CaptureFlow() {
           albumId={albumId}
           canSave={isFirebaseConfigured}
           onRename={(id, name) => dispatch({ type: "renamed", id, name })}
+          onWhenChange={(id, whenLocal) =>
+            dispatch({
+              type: "when-edited",
+              id,
+              whenLocal,
+              capturedAt: toIso(whenLocal) ?? null,
+            })
+          }
+          onLocationName={(id, locationName) =>
+            dispatch({ type: "location-named", id, locationName })
+          }
           onPreview={(id) => dispatch({ type: "previewed", id })}
           onSave={(id) => dispatch({ type: "save-requested", id })}
           onRetry={(id) => dispatch({ type: "retried", id })}
@@ -576,6 +711,48 @@ function CaptureFlow() {
   );
 }
 
+
+/**
+ * The last resort once the container carried no date of its own. It is the
+ * file's timestamp, not the shoot's — a download, an AirDrop or an export all
+ * rewrite it, and a browser that cannot read one is allowed to hand back the
+ * current time — so it is offered as something to correct, never as an answer.
+ */
+/**
+ * The instant is what gets persisted and reaches the Place; the wall-clock text
+ * beside it is what a datetime-local field echoes while it is being typed, which
+ * a half-finished date has no instant for.
+ */
+function toDetails(found: VideoCapture, when: string | null): CaptureDetails {
+  return {
+    capturedAt: when,
+    whenLocal: when ? toLocalInput(when) : "",
+    whenFrom: found.capturedAt ? "video" : when ? "file" : "none",
+    location: found.location,
+  };
+}
+
+function fileDate(file: File) {
+  const ms = file.lastModified;
+  return Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : null;
+}
+
+/**
+ * A walkthrough whose audio cannot be read is still a walkthrough, so nothing
+ * that happens in here reaches the upload it runs alongside.
+ */
+async function liftAudio(file: File) {
+  try {
+    return await extractAudio(file, slug(prettyName(file.name)));
+  } catch {
+    // A container this browser cannot open, or a file that moved out from
+    // under the read. Either way the environment is saved silent.
+    return null;
+  }
+}
+
+
+
 function describeProblem({ seconds, width, height }: VideoMeta) {
   if (seconds > MAX_VIDEO_SECONDS) {
     return `too long, max ${MAX_VIDEO_SECONDS / 60} minutes`;
@@ -594,6 +771,40 @@ function describeProblem({ seconds, width, height }: VideoMeta) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+
+/**
+ * The video is archived before there is a place to hang it on, so it is filed
+ * under whoever uploaded it and when, not under a place id.
+ */
+function storageKeyFor(uid: string | undefined) {
+  return `${uid ?? "anonymous"}/${Date.now()}`;
+}
+
+/**
+ * A datetime-local input speaks wall clock and carries no offset, so the
+ * instant is shifted into the viewer's zone on the way in. Date reads an
+ * offsetless string back against that same zone, which is what toIso relies on.
+ */
+function toLocalInput(iso: string) {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  const shifted = ms - new Date(ms).getTimezoneOffset() * 60_000;
+  return new Date(shifted).toISOString().slice(0, 16);
+}
+
+/** Undefined for a field left empty, which is a legitimate answer here. */
+function toIso(local: string) {
+  const ms = Date.parse(local);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
+
+
+
+function wavFile(blob: Blob, name: string) {
+  return new File([blob], `${slug(name)}.wav`, { type: "audio/wav" });
 }
 
 function prettyName(fileName: string) {

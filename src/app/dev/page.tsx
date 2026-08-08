@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import PlaceExperience from "@/components/PlaceExperience";
-import type { AudioPin, Place } from "@/lib/types";
+import type { Place } from "@/lib/types";
 import type { Timestamp } from "firebase/firestore";
 
-// Local harness: exercises jumps, pin placement and spatial playback without
-// depending on Firebase credentials.
+// Local harness: exercises jumps and hotspot authoring without depending on
+// Firebase credentials. No sample audio ships with the app, so both places are
+// silent here — set audioUrl to a file under public/ to try the player.
 const SPLAT_BASE = "https://sparkjs.dev/assets/splats";
 
 const PLACES: Record<string, Place> = {
@@ -18,6 +19,8 @@ const PLACES: Record<string, Place> = {
     splatUrl: `${SPLAT_BASE}/butterfly.spz`,
     thumbnailUrl: "",
     hotspots: [{ x: 0.6, y: -0.4, z: 0, linksToPlaceId: "penguin" }],
+    capturedAt: "2026-05-02T18:24:00.000Z",
+    locationName: "Kyoto, Japan",
   },
   penguin: {
     id: "penguin",
@@ -33,16 +36,11 @@ const PLACES: Record<string, Place> = {
 export default function DevPage() {
   const [placeId, setPlaceId] = useState("butterfly");
   const [places, setPlaces] = useState(PLACES);
-  const [pinsByPlace, setPinsByPlace] = useState<Record<string, AudioPin[]>>({});
-
-  const place = places[placeId];
-  const pins = pinsByPlace[placeId] ?? [];
 
   return (
     <div className="h-screen w-screen">
       <PlaceExperience
-        place={place}
-        pins={pins}
+        place={places[placeId]}
         linkTargets={Object.values(places)
           .filter((p) => p.id !== placeId)
           .map((p) => ({ id: p.id, name: p.name }))}
@@ -57,20 +55,6 @@ export default function DevPage() {
                 { ...point, linksToPlaceId },
               ],
             },
-          }));
-        }}
-        onSubmitPin={async (point, recording, caption) => {
-          const pin: AudioPin = {
-            id: crypto.randomUUID(),
-            ...point,
-            audioUrl: URL.createObjectURL(recording.blob),
-            duration: recording.duration,
-            createdAt: null as unknown as Timestamp,
-            ...(caption ? { caption } : {}),
-          };
-          setPinsByPlace((prev) => ({
-            ...prev,
-            [placeId]: [...(prev[placeId] ?? []), pin],
           }));
         }}
       />

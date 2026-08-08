@@ -12,6 +12,7 @@
  * under Node's type stripping, which erases `import type` outright but would
  * have to resolve a real import, and the repo's specifiers are extensionless.
  */
+import type { ExtractedAudio } from "./audioTrack";
 import type { StatusReport } from "./captureJob";
 import type { CaptureJob } from "./captureQueue";
 import type { KiriStatus } from "./kiri";
@@ -45,6 +46,27 @@ export interface VideoMeta {
   seconds: number;
   width: number;
   height: number;
+}
+
+/** Where a prefilled answer came from, which decides how much to trust it. */
+export type Provenance = "video" | "file" | "none";
+
+/**
+ * Everything only the video can answer about itself, read while the File is in
+ * hand: after a reload there is no File left, and the splat it belongs to is
+ * still 30-90 minutes out.
+ */
+export interface CaptureDetails {
+  /**
+   * The instant, ISO 8601 — this is what is persisted and what reaches the
+   * Place — beside the same instant as the wall-clock text a datetime-local
+   * field shows. Both, because the field has to echo what is being typed
+   * character by character and a half-typed date has no instant to convert to.
+   */
+  capturedAt: string | null;
+  whenLocal: string;
+  whenFrom: Provenance;
+  location: { lat: number; lng: number } | null;
 }
 
 /** A downloaded capture plus the object URL the page minted for it. */
@@ -92,6 +114,28 @@ export interface CaptureItem {
   placeId: string | null;
   /** Pitch mode: the row was accepted without a KIRI job behind it. */
   demo: boolean;
+  /**
+   * Where and when this walkthrough was filmed. Read off the container, then
+   * the user's to correct, until the upload spends them; a resumed row gets
+   * them back off its job instead, long after the form is gone.
+   */
+  capturedAt: string | null;
+  whenLocal: string;
+  whenFrom: Provenance;
+  location: { lat: number; lng: number } | null;
+  locationName: string;
+  /**
+   * The walkthrough's own sound. `undefined` until the lift answers, null when
+   * the video carried none this browser could read.
+   */
+  audio: ExtractedAudio | null | undefined;
+  /**
+   * Its length, kept apart from the track itself so a row resumed after a
+   * reload — which holds no File and no samples — can still say what it carries.
+   */
+  audioSeconds: number | null;
+  /** Firebase Storage URL of the source walkthrough, once it is archived. */
+  videoUrl: string | null;
 }
 
 export interface CaptureQueueState {
@@ -114,12 +158,27 @@ export type CaptureEvent =
   | { type: "previewed"; id: string | null }
   | { type: "renamed"; id: string; name: string }
   | { type: "start-requested" }
-  | { type: "meta-read"; id: string; meta: VideoMeta | null; problem: string | null }
+  | {
+      type: "meta-read";
+      id: string;
+      meta: VideoMeta | null;
+      problem: string | null;
+      details: CaptureDetails;
+    }
+  | { type: "when-edited"; id: string; whenLocal: string; capturedAt: string | null }
+  | { type: "location-named"; id: string; locationName: string }
+  | { type: "audio-lifted"; id: string; audio: ExtractedAudio | null }
   | { type: "cache-checked"; id: string; splat: SplatHandle | null }
   | { type: "upload-progress"; id: string; fraction: number }
-  | { type: "upload-succeeded"; id: string; serialize: string; startedAt: number }
+  | {
+      type: "upload-succeeded";
+      id: string;
+      serialize: string;
+      startedAt: number;
+      videoUrl: string | null;
+    }
   | { type: "upload-failed"; id: string; message: string }
-  | { type: "demo-queued"; id: string; startedAt: number }
+  | { type: "demo-queued"; id: string; startedAt: number; videoUrl: string | null }
   | { type: "status-polled"; id: string; report: StatusReport; message: string }
   | { type: "poll-errored"; id: string; message: string }
   | { type: "download-succeeded"; id: string; splat: SplatHandle }
@@ -153,6 +212,14 @@ function blankItem(id: string, name: string): CaptureItem {
     splat: null,
     placeId: null,
     demo: false,
+    capturedAt: null,
+    whenLocal: "",
+    whenFrom: "none",
+    location: null,
+    locationName: "",
+    audio: undefined,
+    audioSeconds: null,
+    videoUrl: null,
   };
 }
 
@@ -176,6 +243,17 @@ export function resumedItem(id: string, job: CaptureJob): CaptureItem {
     serialize: job.serialize,
     startedAt: job.startedAt,
     albumId: job.albumId ?? null,
+    capturedAt: job.capturedAt ?? null,
+    location: job.location ?? null,
+    locationName: job.locationName ?? "",
+    // The lift for this job ran when its video was picked, hours ago; its
+    // samples are in Cache Storage under the same task id. Null rather than
+    // undefined so nothing here reads as a lift still to come.
+    audio: null,
+    audioSeconds: job.audioSeconds ?? null,
+    videoUrl: job.videoUrl ?? null,
+    // whenLocal and whenFrom stay blank: they exist for the editor, and a row
+    // resumed from storage has already spent its answers on the job.
   };
 }
 
@@ -285,6 +363,39 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
         meta: event.meta,
         problem: event.problem,
         phase: event.problem ? "blocked" : "ready-to-upload",
+        capturedAt: event.details.capturedAt,
+        whenLocal: event.details.whenLocal,
+        whenFrom: event.details.whenFrom,
+        location: event.details.location,
+      };
+    }
+
+    case "when-edited": {
+      if (!isDetailable(item.phase) || item.whenLocal === event.whenLocal) {
+        return item;
+      }
+      // whenFrom is left alone on purpose: the badge says where the prefilled
+      // answer came from, which is what makes a correction worth making, and
+      // that stays true of the value being corrected.
+      return { ...item, whenLocal: event.whenLocal, capturedAt: event.capturedAt };
+    }
+
+    case "location-named": {
+      if (!isDetailable(item.phase) || item.locationName === event.locationName) {
+        return item;
+      }
+      return { ...item, locationName: event.locationName };
+    }
+
+    case "audio-lifted": {
+      // Guarded on whether an answer is already in rather than on the phase: a
+      // row can reach KIRI well before its sound is ready, and the track is
+      // still the track this row was picked with.
+      if (item.audio !== undefined) return item;
+      return {
+        ...item,
+        audio: event.audio,
+        audioSeconds: event.audio ? event.audio.seconds : null,
       };
     }
 
@@ -310,6 +421,7 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
         phase: "waiting",
         serialize: event.serialize,
         startedAt: event.startedAt,
+        videoUrl: event.videoUrl,
         uploadFraction: 1,
         file: null,
         error: null,
@@ -328,6 +440,7 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
         phase: "waiting",
         demo: true,
         startedAt: event.startedAt,
+        videoUrl: event.videoUrl,
         uploadFraction: 1,
         file: null,
       };
@@ -413,6 +526,15 @@ function isNameable(phase: CapturePhase) {
   return phase === "checking" || phase === "ready-to-upload" || phase === "blocked";
 }
 
+/**
+ * Where and when can be corrected up to the moment the upload commits them to
+ * the job. `checking` is deliberately not one of these: the read that fills the
+ * fields in has not landed yet, and it would overwrite whatever was typed.
+ */
+export function isDetailable(phase: CapturePhase) {
+  return phase === "ready-to-upload" || phase === "blocked";
+}
+
 /* Selectors. The page drives every side effect off these, so what a phase means
  * in practice is stated once, here, instead of in each effect's filter. */
 
@@ -423,6 +545,32 @@ export function checkTargets(items: CaptureItem[]) {
 
 export function uploadTargets(items: CaptureItem[]) {
   return items.filter((item) => item.phase === "uploading" && item.file !== null);
+}
+
+/**
+ * Videos whose sound has not been lifted yet. A blocked row never appears here:
+ * extractAudio reads the whole file into memory and decodes it, which on a
+ * walkthrough already refused for being too long is gigabytes spent on nothing.
+ */
+export function audioTargets(items: CaptureItem[]) {
+  return items.filter(
+    (item) =>
+      item.audio === undefined &&
+      item.file !== null &&
+      (item.phase === "ready-to-upload" || item.phase === "uploading"),
+  );
+}
+
+/**
+ * Rows holding a lifted track that now has a task id to be filed under. The
+ * upload and the lift finish in either order, so this waits for both rather
+ * than hanging off whichever one happens to land second.
+ */
+export function audioCacheTargets(items: CaptureItem[]) {
+  return items.filter(
+    (item) =>
+      item.serialize !== null && item.startedAt !== null && item.audio != null,
+  );
 }
 
 /** Demo rows sit in `waiting` with no task id, so they are never asked after. */

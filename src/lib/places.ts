@@ -11,10 +11,9 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { db, storage } from "./firebase";
-import { uploadSplat } from "./splatStore";
-import type { AudioPin, Place, Vec3 } from "./types";
+import { db } from "./firebase";
+import { uploadAudio, uploadSplat, uploadVideoFile } from "./splatStore";
+import type { Place, Vec3 } from "./types";
 
 function sortByCreatedDesc(places: Place[]) {
   return [...places].sort((a, b) => {
@@ -60,19 +59,6 @@ export function subscribeToPlacesByUploader(
   );
 }
 
-export function subscribeToPins(
-  placeId: string,
-  onChange: (pins: AudioPin[]) => void,
-) {
-  const q = query(
-    collection(db, "places", placeId, "audioPins"),
-    orderBy("createdAt", "asc"),
-  );
-  return onSnapshot(q, (snap) => {
-    onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as AudioPin));
-  });
-}
-
 export async function getPlace(placeId: string): Promise<Place | null> {
   const snap = await getDoc(doc(db, "places", placeId));
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as Place) : null;
@@ -82,10 +68,30 @@ export async function createPlace(
   name: string,
   splatFile: Blob & { name?: string },
   uploaderId: string,
+  options?: {
+    location?: { lat: number; lng: number } | null;
+    locationName?: string;
+    /** ISO 8601, off the video or typed in when it carried no date. */
+    capturedAt?: string;
+    /** The walkthrough's own audio, lifted off it at capture time. */
+    audioFile?: (Blob & { name?: string }) | null;
+    audioSeconds?: number;
+    videoFile?: (Blob & { name?: string }) | null;
+    /** Already-uploaded walkthrough URL (from capture submit). */
+    videoUrl?: string | null;
+  },
 ) {
   const placeRef = doc(collection(db, "places"));
-  // The bytes go wherever splatStore points; the doc only ever holds the URL.
+  // Bytes live in Firebase Storage; Firestore only holds the download URLs.
   const splatUrl = await uploadSplat(placeRef.id, splatFile);
+  const audioUrl = options?.audioFile
+    ? await uploadAudio(placeRef.id, options.audioFile)
+    : undefined;
+  const videoUrl =
+    options?.videoUrl ||
+    (options?.videoFile
+      ? await uploadVideoFile(placeRef.id, options.videoFile)
+      : undefined);
 
   await setDoc(placeRef, {
     name,
@@ -93,6 +99,16 @@ export async function createPlace(
     createdAt: serverTimestamp(),
     splatUrl,
     thumbnailUrl: "",
+    // Firestore rejects undefined outright, so absent details are left off the
+    // document rather than written as blanks.
+    ...(audioUrl ? { audioUrl } : {}),
+    ...(audioUrl && options?.audioSeconds !== undefined
+      ? { audioSeconds: options.audioSeconds }
+      : {}),
+    ...(options?.capturedAt ? { capturedAt: options.capturedAt } : {}),
+    ...(videoUrl ? { videoUrl } : {}),
+    ...(options?.location ? { location: options.location } : {}),
+    ...(options?.locationName ? { locationName: options.locationName } : {}),
   });
   return placeRef.id;
 }
@@ -104,26 +120,5 @@ export async function addHotspot(
 ) {
   await updateDoc(doc(db, "places", placeId), {
     hotspots: arrayUnion({ ...point, linksToPlaceId }),
-  });
-}
-
-export async function addAudioPin(
-  placeId: string,
-  point: { x: number; y: number; z: number },
-  recording: { blob: Blob; duration: number },
-  caption?: string,
-) {
-  const pinRef = doc(collection(db, "places", placeId, "audioPins"));
-  const audioRef = ref(storage, `audio/${placeId}/${pinRef.id}`);
-  await uploadBytes(audioRef, recording.blob, {
-    contentType: recording.blob.type,
-  });
-
-  await setDoc(pinRef, {
-    ...point,
-    audioUrl: await getDownloadURL(audioRef),
-    duration: recording.duration,
-    createdAt: serverTimestamp(),
-    ...(caption ? { caption } : {}),
   });
 }

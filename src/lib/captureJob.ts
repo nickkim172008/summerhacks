@@ -30,7 +30,8 @@ export function uploadVideo(
         reject(new Error(body.error ?? `Upload failed (${xhr.status})`));
       }
     };
-    xhr.onerror = () => reject(new Error("Upload failed — check your connection"));
+    xhr.onerror = () =>
+      reject(new Error("Upload failed — check your connection"));
     xhr.send(form);
   });
 }

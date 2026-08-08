@@ -147,7 +147,7 @@ export default function AlbumPage({
             {albumPlaces.map((place) => (
               <li key={place.id}>
                 <Link
-                  href={`/place/${place.id}`}
+                  href={`/place/${place.id}?album=${albumId}`}
                   className="group relative block aspect-square overflow-hidden bg-neutral-100"
                 >
                   <PlaceThumb place={place} />

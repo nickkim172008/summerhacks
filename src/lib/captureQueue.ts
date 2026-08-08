@@ -8,11 +8,31 @@
  * every read and re-render forever, so callers parse it in a useMemo instead.
  * `storage` events keep a second tab in step.
  */
+/**
+ * Everything past startedAt is optional and stays that way: a job written
+ * before those fields existed is already sitting in someone's localStorage,
+ * and it still has a splat coming.
+ */
 export interface CaptureJob {
   serialize: string;
   name: string;
   startedAt: number;
   albumId?: string;
+  /** Firebase Storage URL for the source walkthrough, if uploaded. */
+  videoUrl?: string;
+  /**
+   * When and where the walkthrough was filmed, read out of the video or typed
+   * in when it carried neither. The form is long gone by the time the splat
+   * lands, so the answers wait here with the job.
+   */
+  capturedAt?: string;
+  location?: { lat: number; lng: number };
+  locationName?: string;
+  /**
+   * Length of the audio lifted off the video. The samples themselves are
+   * megabytes and live in Cache Storage under the same serialize.
+   */
+  audioSeconds?: number;
 }
 
 const STORAGE_KEY = "atlas:capture-jobs";
@@ -104,16 +124,41 @@ function migrateLegacyJob(): string {
  */
 function toJob(value: unknown): CaptureJob | null {
   if (!value || typeof value !== "object") return null;
-  const { serialize, name, startedAt, albumId } = value as Record<
-    string,
-    unknown
-  >;
+  const record = value as Record<string, unknown>;
+  const { serialize, name, startedAt } = record;
   if (typeof serialize !== "string" || !serialize) return null;
   if (typeof name !== "string") return null;
   if (typeof startedAt !== "number" || !Number.isFinite(startedAt)) return null;
-  return typeof albumId === "string"
-    ? { serialize, name, startedAt, albumId }
-    : { serialize, name, startedAt };
+
+  // Only the three identifying fields can void a job. The rest carry what the
+  // capture form collected — where it was filmed, how long its audio runs —
+  // which the splat still needs on arrival, hours after that form is gone. They
+  // are copied across one at a time because rebuilding the object from a fixed
+  // list is what silently drops a field the moment a new one is added.
+  const job: CaptureJob = { serialize, name, startedAt };
+  if (typeof record.albumId === "string") job.albumId = record.albumId;
+  if (typeof record.videoUrl === "string") job.videoUrl = record.videoUrl;
+  if (typeof record.capturedAt === "string") job.capturedAt = record.capturedAt;
+  if (typeof record.locationName === "string") {
+    job.locationName = record.locationName;
+  }
+  if (
+    typeof record.audioSeconds === "number" &&
+    Number.isFinite(record.audioSeconds)
+  ) {
+    job.audioSeconds = record.audioSeconds;
+  }
+  const location = toLocation(record.location);
+  if (location) job.location = location;
+  return job;
+}
+
+function toLocation(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const { lat, lng } = value as Record<string, unknown>;
+  if (typeof lat !== "number" || !Number.isFinite(lat)) return null;
+  if (typeof lng !== "number" || !Number.isFinite(lng)) return null;
+  return { lat, lng };
 }
 
 function safeParse(raw: string): unknown {

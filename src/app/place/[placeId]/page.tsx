@@ -1,30 +1,41 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, use, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PlaceExperience from "@/components/PlaceExperience";
-import {
-  addAudioPin,
-  addHotspot,
-  getPlace,
-  subscribeToPins,
-  subscribeToPlaces,
-} from "@/lib/places";
-import type { AudioPin, Place } from "@/lib/types";
+import { addHotspot, getPlace, subscribeToPlaces } from "@/lib/places";
+import type { Place } from "@/lib/types";
 
 export default function PlacePage({
   params,
 }: {
   params: Promise<{ placeId: string }>;
 }) {
+  return (
+    <Suspense fallback={null}>
+      <PlaceView params={params} />
+    </Suspense>
+  );
+}
+
+function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
   const { placeId } = use(params);
   const router = useRouter();
+  const search = useSearchParams();
+  // An album scopes the whole visit — jumps stay inside it — while ?from only
+  // names the page that sent the visitor here so leaving returns them to it.
+  const albumId = search.get("album");
+  const from = sitePath(search.get("from"));
+  const exitHref = albumId ? `/album/${albumId}` : (from ?? "/");
+  const originQuery = albumId
+    ? `?album=${albumId}`
+    : from
+      ? `?from=${encodeURIComponent(from)}`
+      : "";
   // undefined while loading, null once we know it isn't there.
   const [place, setPlace] = useState<Place | null | undefined>();
-  const [pins, setPins] = useState<AudioPin[]>([]);
   const [allPlaces, setAllPlaces] = useState<Place[]>([]);
-  const [missingFile, setMissingFile] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -36,30 +47,14 @@ export default function PlacePage({
     };
   }, [placeId]);
 
-  useEffect(() => subscribeToPins(placeId, setPins), [placeId]);
   useEffect(() => subscribeToPlaces(setAllPlaces), []);
-
-  // Firestore is shared but an app-served splat is not: the doc lists fine on
-  // every machine while the file exists on exactly one. Check before handing
-  // the URL to Spark, which would otherwise fail silently into an empty scene.
-  useEffect(() => {
-    const url = place?.splatUrl;
-    if (!url?.startsWith("/")) return;
-    let active = true;
-    fetch(url, { method: "HEAD" })
-      .then((res) => active && setMissingFile(!res.ok))
-      .catch(() => active && setMissingFile(true));
-    return () => {
-      active = false;
-    };
-  }, [place?.splatUrl]);
 
   if (place === null) {
     return (
       <main className="flex h-screen flex-col items-center justify-center gap-3 bg-black text-white">
         <p>That environment doesn&apos;t exist.</p>
-        <Link href="/" className="text-sky-400 underline">
-          Back to Albums
+        <Link href={exitHref} className="text-sky-400 underline">
+          Back
         </Link>
       </main>
     );
@@ -73,38 +68,15 @@ export default function PlacePage({
     );
   }
 
-  if (missingFile) {
-    return (
-      <main className="flex h-screen flex-col items-center justify-center gap-3 bg-black px-6 text-center text-white">
-        <p className="text-lg font-medium">
-          {place.name} isn&apos;t on this computer.
-        </p>
-        <p className="max-w-md text-sm text-neutral-400">
-          Its splat was saved by the app that captured it, and this one serves
-          files from its own <code>public/splats</code>. Open it on the machine
-          that captured it, or commit{" "}
-          <code className="text-neutral-300">{place.splatUrl}</code> to the repo
-          so every clone has it.
-        </p>
-        <Link href="/" className="text-sky-400 underline">
-          Back to Albums
-        </Link>
-      </main>
-    );
-  }
-
   return (
     <main className="h-screen w-screen">
       <PlaceExperience
         place={place}
-        pins={pins}
         linkTargets={allPlaces
           .filter((p) => p.id !== placeId)
           .map((p) => ({ id: p.id, name: p.name }))}
-        onJump={(id) => router.push(`/place/${id}`)}
-        onSubmitPin={(point, recording, caption) =>
-          addAudioPin(placeId, point, recording, caption)
-        }
+        onJump={(id) => router.push(`/place/${id}${originQuery}`)}
+        onExit={() => router.push(exitHref)}
         onAddHotspot={async (point, linksToPlaceId) => {
           await addHotspot(placeId, point, linksToPlaceId);
           setPlace(await getPlace(placeId));
@@ -112,4 +84,10 @@ export default function PlacePage({
       />
     </main>
   );
+}
+
+// Only a path on this site may aim the exit; anything else in ?from would let a
+// shared link send the visitor to another origin.
+function sitePath(value: string | null) {
+  return value && /^\/(?![/\\])/.test(value) ? value : null;
 }

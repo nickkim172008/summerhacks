@@ -25,9 +25,17 @@ export interface Place {
   createdAt: Timestamp;
   splatUrl: string;
   thumbnailUrl: string;
+  /** Original walkthrough video in Firebase Storage, when uploaded. */
+  videoUrl?: string;
   hotspots?: Hotspot[];
   entryPoint?: EntryPoint;
+  /** The walkthrough video's own audio, lifted off at capture time. */
+  audioUrl?: string;
+  audioSeconds?: number;
+  /** ISO 8601. Read from the video, or typed in when it carried none. */
+  capturedAt?: string;
   location?: { lat: number; lng: number };
+  locationName?: string;
 }
 
 /** A user-created collection of places, shown like an Apple Photos album. */
@@ -46,12 +54,4 @@ export interface Profile {
   displayName: string;
   photoURL: string;
   createdAt: Timestamp;
-}
-
-export interface AudioPin extends Vec3 {
-  id: string;
-  audioUrl: string;
-  duration: number;
-  createdAt: Timestamp;
-  caption?: string;
 }
