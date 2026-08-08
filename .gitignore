@@ -41,9 +41,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# large local splat captures
+# large local splat captures — the compressed .spz files under public/splats
+# are committable on purpose, so every clone can serve the same environments
 /splat_*/
-/public/splats/
+/public/splats/*
+!/public/splats/*.spz
 
 # local capture inputs
 *.mov

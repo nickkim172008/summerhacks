@@ -10,9 +10,9 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { FirebaseError } from "firebase/app";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "./firebase";
+import { uploadSplat } from "./splatStore";
 import type { AudioPin, Place, Vec3 } from "./types";
 
 export function subscribeToPlaces(
@@ -53,28 +53,14 @@ export async function createPlace(
   uploaderId: string,
 ) {
   const placeRef = doc(collection(db, "places"));
-  const splatRef = ref(
-    storage,
-    `splats/${placeRef.id}/${splatFile.name ?? "scene.ply"}`,
-  );
-  try {
-    await uploadBytes(splatRef, splatFile);
-  } catch (error) {
-    // A project with no bucket provisioned answers 404, which the SDK reports
-    // as an opaque storage/unknown — worth naming, since it is the one cause
-    // no amount of retrying fixes.
-    const code = error instanceof FirebaseError ? ` (${error.code})` : "";
-    throw new Error(
-      `Upload to Firebase Storage failed${code}. If Storage has never been enabled for this project, turn it on in the Firebase console, then try again.`,
-      { cause: error },
-    );
-  }
+  // The bytes go wherever splatStore points; the doc only ever holds the URL.
+  const splatUrl = await uploadSplat(placeRef.id, splatFile);
 
   await setDoc(placeRef, {
     name,
     uploaderId,
     createdAt: serverTimestamp(),
-    splatUrl: await getDownloadURL(splatRef),
+    splatUrl,
     thumbnailUrl: "",
   });
   return placeRef.id;

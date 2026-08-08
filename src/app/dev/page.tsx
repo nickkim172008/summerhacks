@@ -10,17 +10,6 @@ import type { Timestamp } from "firebase/firestore";
 const SPLAT_BASE = "https://sparkjs.dev/assets/splats";
 
 const PLACES: Record<string, Place> = {
-  // Local capture: public/splats/IMG_7576.ply symlinks the KIRI 3DGS output in
-  // splat_IMG_7576/, so the file is served without a 109MB copy in the repo.
-  img7576: {
-    id: "img7576",
-    name: "IMG_7576",
-    uploaderId: "dev",
-    createdAt: null as unknown as Timestamp,
-    splatUrl: "/splats/IMG_7576.ply",
-    thumbnailUrl: "",
-    hotspots: [{ x: 0.5, y: -0.3, z: 0, linksToPlaceId: "butterfly" }],
-  },
   butterfly: {
     id: "butterfly",
     name: "The Butterfly Room",
@@ -28,7 +17,7 @@ const PLACES: Record<string, Place> = {
     createdAt: null as unknown as Timestamp,
     splatUrl: `${SPLAT_BASE}/butterfly.spz`,
     thumbnailUrl: "",
-    hotspots: [{ x: 0.6, y: -0.4, z: 0, linksToPlaceId: "img7576" }],
+    hotspots: [{ x: 0.6, y: -0.4, z: 0, linksToPlaceId: "penguin" }],
   },
   penguin: {
     id: "penguin",
@@ -42,7 +31,7 @@ const PLACES: Record<string, Place> = {
 };
 
 export default function DevPage() {
-  const [placeId, setPlaceId] = useState("img7576");
+  const [placeId, setPlaceId] = useState("butterfly");
   const [places, setPlaces] = useState(PLACES);
   const [pinsByPlace, setPinsByPlace] = useState<Record<string, AudioPin[]>>({});
 

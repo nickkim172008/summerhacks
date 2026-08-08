@@ -43,7 +43,8 @@ One walkthrough video per place, reconstructed by KIRI Engine:
 2. `GET /api/capture/status` polls KIRI until status `2` (successful)
 3. `GET /api/capture/model` downloads the result zip, extracts the `.ply`
 4. The browser renders that PLY immediately — Spark reads it from an object URL
-5. Optionally, it uploads to Firebase Storage and writes the place doc
+5. Saving transcodes it to SPZ (64.7MB → 4.9MB on a 260k-splat room) and
+   stores it, writing the resulting URL into the place doc
 
 Reconstruction takes roughly 30–90 minutes, so seed places ahead of a demo
 rather than generating one live. KIRI's limits: video ≤ 3 minutes, ≤ 1920×1080.
@@ -56,6 +57,25 @@ need no Firebase — without it the splat still renders and can be downloaded.
 `scripts/kiri_3dgs.py` drives the same three endpoints from the command line
 (`--video` to start, `--serialize` to resume). Paste the task id it prints into
 `/capture` to render that job's splat in the app.
+
+## Where saved splats live
+
+`NEXT_PUBLIC_SPLAT_STORE` picks the backend; Firestore only ever holds the URL,
+since a document caps at 1 MiB.
+
+- `local` (default) POSTs to `/api/places/splat`, which writes
+  `public/splats/<placeId>.spz` and returns that relative path. No bucket, no
+  billing — but **the file lives on the machine that saved it while Firestore
+  is shared**, so another computer lists the environment and cannot load it.
+  `.spz` files under `public/splats/` are deliberately not gitignored: commit
+  one and every clone can serve it. Needs a writable filesystem, so this is a
+  laptop/LAN setup, not a serverless deploy.
+- `firebase` uploads to Cloud Storage and stores an absolute download URL,
+  which resolves from anywhere. Requires Storage to be enabled on the project;
+  an unprovisioned bucket answers 404, which the SDK reports as
+  `storage/unknown`.
+
+Voice pins still go to Cloud Storage either way.
 
 ## Data model
 
