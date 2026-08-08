@@ -9,11 +9,20 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "./firebase";
 import { uploadSplat } from "./splatStore";
 import type { AudioPin, Place, Vec3 } from "./types";
+
+function sortByCreatedDesc(places: Place[]) {
+  return [...places].sort((a, b) => {
+    const aTime = a.createdAt?.toMillis?.() ?? 0;
+    const bTime = b.createdAt?.toMillis?.() ?? 0;
+    return bTime - aTime;
+  });
+}
 
 export function subscribeToPlaces(
   onChange: (places: Place[]) => void,
@@ -24,6 +33,28 @@ export function subscribeToPlaces(
     q,
     (snap) => {
       onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place));
+    },
+    onError,
+  );
+}
+
+export function subscribeToPlacesByUploader(
+  uploaderId: string,
+  onChange: (places: Place[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const q = query(
+    collection(db, "places"),
+    where("uploaderId", "==", uploaderId),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        sortByCreatedDesc(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place),
+        ),
+      );
     },
     onError,
   );

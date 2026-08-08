@@ -34,7 +34,17 @@ export interface Place {
 export interface Album {
   id: string;
   name: string;
+  ownerId: string;
   placeIds: string[];
+  createdAt: Timestamp;
+}
+
+/** Public profile keyed by Firebase Auth uid. Username is unique. */
+export interface Profile {
+  id: string;
+  username: string;
+  displayName: string;
+  photoURL: string;
   createdAt: Timestamp;
 }
 
