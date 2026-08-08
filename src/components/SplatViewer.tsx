@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
-import { LookControls } from "@/lib/lookControls";
+import { PivotControls } from "@/lib/pivotControls";
 import { frameCapture } from "@/lib/splatFraming";
 import type { AudioPin, EntryPoint, Hotspot, Vec3 } from "@/lib/types";
 
@@ -92,7 +92,7 @@ export default function SplatViewer({
     const spark = new SparkRenderer({ renderer });
     scene.add(spark);
 
-    const controls = new LookControls(camera, renderer.domElement);
+    const controls = new PivotControls(camera, renderer.domElement);
 
     const splat = new SplatMesh({
       url: splatUrl,
@@ -106,12 +106,19 @@ export default function SplatViewer({
 
         const entry = entryPointRef.current;
         if (entry) {
-          const facing = new THREE.Vector3()
-            .subVectors(entry.target, entry.position)
-            .normalize();
-          controls.setPose(new THREE.Vector3().copy(entry.position), facing);
+          // An authored entry point names the pivot outright: it is the thing
+          // the camera was pointed at, however far back the author stood.
+          const toTarget = new THREE.Vector3().subVectors(
+            entry.target,
+            entry.position,
+          );
+          controls.setPivot(
+            new THREE.Vector3().copy(entry.target),
+            toTarget,
+            toTarget.length(),
+          );
         } else {
-          controls.setPose(center, framing.forward);
+          controls.setPivot(center, framing.forward, 0);
         }
         controls.setBounds(framing.box, radius);
         camera.near = Math.max(radius / 1000, 0.001);
