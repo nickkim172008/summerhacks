@@ -1,5 +1,4 @@
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
-import { DEMO_MAP_PLACES } from "./demoMapData";
 
 /** Fallback before GPS resolves (downtown Toronto). */
 export const DEFAULT_MAP_CENTER = {
@@ -9,20 +8,13 @@ export const DEFAULT_MAP_CENTER = {
 
 export const CITY_ZOOM = 13;
 
-export type HeatWeightedPoint = {
-  location: google.maps.LatLng;
-  weight: number;
-};
-
 export type GoogleMapsLibs = {
   Map: typeof google.maps.Map;
   LatLng: typeof google.maps.LatLng;
   LatLngBounds: typeof google.maps.LatLngBounds;
   Marker: typeof google.maps.Marker;
   InfoWindow: typeof google.maps.InfoWindow;
-  // visualization.HeatmapLayer is stubbed in @types — keep loose
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  HeatmapLayer: new (opts?: any) => any;
+  OverlayView: typeof google.maps.OverlayView;
   SymbolPath: typeof google.maps.SymbolPath;
 };
 
@@ -36,7 +28,10 @@ export function isGoogleMapsConfigured() {
 
 let libsPromise: Promise<GoogleMapsLibs> | null = null;
 
-/** Load Maps JS + visualization heatmap library once. */
+/**
+ * Load current Maps JS. Native HeatmapLayer was removed in 3.65 —
+ * we render heat via canvas OverlayView instead.
+ */
 export function loadGoogleMaps(): Promise<GoogleMapsLibs> {
   if (!libsPromise) {
     const key = getGoogleMapsApiKey();
@@ -48,7 +43,6 @@ export function loadGoogleMaps(): Promise<GoogleMapsLibs> {
       setOptions({ key, v: "weekly" });
       libsPromise = (async () => {
         const maps = await importLibrary("maps");
-        const visualization = await importLibrary("visualization");
         await importLibrary("marker");
         return {
           Map: maps.Map,
@@ -56,12 +50,7 @@ export function loadGoogleMaps(): Promise<GoogleMapsLibs> {
           LatLngBounds: google.maps.LatLngBounds,
           Marker: google.maps.Marker,
           InfoWindow: maps.InfoWindow,
-          HeatmapLayer: (
-            visualization as unknown as {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              HeatmapLayer: new (opts?: any) => any;
-            }
-          ).HeatmapLayer,
+          OverlayView: google.maps.OverlayView,
           SymbolPath: google.maps.SymbolPath,
         };
       })();
@@ -83,46 +72,19 @@ export function placesWithLocation<
   );
 }
 
-/** Always have something to heat — fall back to Toronto demo pins. */
-export function heatPlacesFor(
-  places: { id: string; location: { lat: number; lng: number } }[],
-) {
-  return places.length > 0 ? places : placesWithLocation(DEMO_MAP_PLACES);
-}
+export type HeatPoint = {
+  lat: number;
+  lng: number;
+  weight: number;
+};
 
-/**
- * Weighted points for google.maps.visualization.HeatmapLayer.
- * Demo pins expand into dense clouds so the overlay is obvious.
- */
-export function placesToHeatData(
-  places: { id: string; location: { lat: number; lng: number } }[],
-): HeatWeightedPoint[] {
-  const points: HeatWeightedPoint[] = [];
-  const source = heatPlacesFor(places);
-
-  for (const place of source) {
-    const copies = place.id.startsWith("demo-map-") ? 12 : 3;
-    for (let i = 0; i < copies; i++) {
-      const seed = hashStr(`${place.id}:${i}`);
-      const jitterLat = i === 0 ? 0 : ((seed % 1000) / 1000 - 0.5) * 0.01;
-      const jitterLng =
-        i === 0 ? 0 : (((seed >>> 10) % 1000) / 1000 - 0.5) * 0.01;
-      points.push({
-        location: new google.maps.LatLng(
-          place.location.lat + jitterLat,
-          place.location.lng + jitterLng,
-        ),
-        weight: place.id.startsWith("demo-map-") ? 2 : 1,
-      });
-    }
-  }
-  return points;
-}
-
-function hashStr(value: string) {
-  let h = 0;
-  for (let i = 0; i < value.length; i++) {
-    h = (h * 31 + value.charCodeAt(i)) >>> 0;
-  }
-  return h;
+/** One heat point per place (demo + real); density drives the colour. */
+export function placesToHeatPoints(
+  places: { location: { lat: number; lng: number } }[],
+): HeatPoint[] {
+  return places.map((place) => ({
+    lat: place.location.lat,
+    lng: place.location.lng,
+    weight: 1,
+  }));
 }

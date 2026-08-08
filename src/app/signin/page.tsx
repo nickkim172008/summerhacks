@@ -15,7 +15,7 @@ export default function SignInPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (profile) router.replace(`/u/${profile.username}`);
+    if (profile) router.replace("/");
     else if (user) router.replace("/setup");
   }, [user, profile, loading, router]);
 
@@ -25,7 +25,7 @@ export default function SignInPage() {
     try {
       const cred = await signInWithGoogle();
       const existing = await getProfile(cred.user.uid);
-      router.replace(existing ? `/u/${existing.username}` : "/setup");
+      router.replace(existing ? "/" : "/setup");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-in failed");
       setBusy(false);

@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import Link from "next/link";
+import { createCanvasHeatmap } from "@/lib/canvasHeatmap";
 import {
   CITY_ZOOM,
   DEFAULT_MAP_CENTER,
   isGoogleMapsConfigured,
   loadGoogleMaps,
-  placesToHeatData,
+  placesToHeatPoints,
   type GoogleMapsLibs,
 } from "@/lib/maps";
 import type { LatLng } from "@/lib/geolocation";
@@ -15,9 +16,9 @@ import type { Place } from "@/lib/types";
 
 type LocatedPlace = Place & { location: { lat: number; lng: number } };
 
-type HeatmapLayerLike = {
-  setData: (data: unknown) => void;
+type HeatHandle = {
   setMap: (map: google.maps.Map | null) => void;
+  setData: (points: ReturnType<typeof placesToHeatPoints>) => void;
 };
 
 export default function PlacesMap({
@@ -32,10 +33,8 @@ export default function PlacesMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const libsRef = useRef<GoogleMapsLibs | null>(null);
-  const heatRef = useRef<HeatmapLayerLike | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  const heatRef = useRef<HeatHandle | null>(null);
   const liveMarkerRef = useRef<google.maps.Marker | null>(null);
-  const infoRef = useRef<google.maps.InfoWindow | null>(null);
   const placesRef = useRef(places);
   const liveRef = useRef(liveLocation);
   const didCenterRef = useRef(false);
@@ -70,20 +69,12 @@ export default function PlacesMap({
           gestureHandling: "greedy",
         });
         mapRef.current = map;
-        infoRef.current = new libs.InfoWindow();
 
-        // Heatmap sits on top of the Google basemap.
-        const heat = new libs.HeatmapLayer({
-          data: placesToHeatData(placesRef.current),
-          map,
-          radius: 56,
-          opacity: 0.9,
-          maxIntensity: 4,
-          dissipating: true,
-        }) as HeatmapLayerLike;
+        const heat = createCanvasHeatmap(libs.OverlayView);
+        heat.setData(placesToHeatPoints(placesRef.current));
+        heat.setMap(map);
         heatRef.current = heat;
 
-        syncMarkers(libs, map, placesRef.current, markersRef, infoRef);
         fitMap(libs, map, placesRef.current, liveRef.current, didCenterRef);
 
         if (liveRef.current) {
@@ -105,11 +96,8 @@ export default function PlacesMap({
       cancelled = true;
       heatRef.current?.setMap(null);
       heatRef.current = null;
-      for (const marker of markersRef.current) marker.setMap(null);
-      markersRef.current = [];
       liveMarkerRef.current?.setMap(null);
       liveMarkerRef.current = null;
-      infoRef.current?.close();
       mapRef.current = null;
       libsRef.current = null;
       didCenterRef.current = false;
@@ -122,12 +110,7 @@ export default function PlacesMap({
     const libs = libsRef.current;
     if (!map || !libs || !ready) return;
 
-    const data = placesToHeatData(places);
-    heatRef.current?.setData(data);
-    // Keep heat on top if the map reorders overlays.
-    heatRef.current?.setMap(map);
-
-    syncMarkers(libs, map, places, markersRef, infoRef);
+    heatRef.current?.setData(placesToHeatPoints(places));
     if (!didCenterRef.current) {
       fitMap(libs, map, places, liveRef.current, didCenterRef);
     }
@@ -172,8 +155,13 @@ export default function PlacesMap({
     <div className={`relative h-full w-full ${className}`}>
       <div ref={containerRef} className="absolute inset-0 h-full w-full" />
       <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-white/95 px-3 py-1 text-[11px] font-medium text-[#1d1d1f] shadow ring-1 ring-black/10">
-        Heatmap on · {places.length || "demo"} spots
+        Heatmap on · {places.length} spots
       </div>
+      {ready && places.length === 0 && (
+        <div className="pointer-events-none absolute inset-x-4 top-14 z-10 rounded-xl bg-white/95 px-4 py-3 text-center text-sm text-neutral-600 shadow ring-1 ring-black/10">
+          No geotagged places yet — capture with location to fill the heatmap.
+        </div>
+      )}
       {error && error !== "missing-key" && (
         <div className="absolute inset-x-4 bottom-24 z-10 rounded-xl bg-white/95 px-4 py-3 text-center text-sm text-red-600 shadow-lg ring-1 ring-black/10">
           Map error: {error}
@@ -181,50 +169,6 @@ export default function PlacesMap({
       )}
     </div>
   );
-}
-
-function syncMarkers(
-  libs: GoogleMapsLibs,
-  map: google.maps.Map,
-  places: LocatedPlace[],
-  markersRef: MutableRefObject<google.maps.Marker[]>,
-  infoRef: MutableRefObject<google.maps.InfoWindow | null>,
-) {
-  for (const marker of markersRef.current) marker.setMap(null);
-
-  markersRef.current = places.map((place) => {
-    const marker = new libs.Marker({
-      map,
-      position: place.location,
-      title: place.name,
-      opacity: 0.95,
-      icon: {
-        path: libs.SymbolPath.CIRCLE,
-        scale: 6,
-        fillColor: "#0071e3",
-        fillOpacity: 1,
-        strokeColor: "#ffffff",
-        strokeWeight: 2,
-      },
-    });
-    marker.addListener("click", () => {
-      const info = infoRef.current;
-      if (!info) return;
-      const isDemo = place.id.startsWith("demo-map-");
-      info.setContent(
-        `<div style="font:14px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;padding:2px 4px">
-          <strong>${escapeHtml(place.name)}</strong><br/>
-          ${
-            isDemo
-              ? `<span style="color:#86868b">Demo pin</span>`
-              : `<a href="/place/${escapeHtml(place.id)}" style="color:#0071e3;text-decoration:none">Open environment →</a>`
-          }
-        </div>`,
-      );
-      info.open({ map, anchor: marker });
-    });
-    return marker;
-  });
 }
 
 function ensureLiveMarker(
@@ -241,7 +185,7 @@ function ensureLiveMarker(
       zIndex: 999,
       icon: {
         path: libs.SymbolPath.CIRCLE,
-        scale: 8,
+        scale: 9,
         fillColor: "#0071e3",
         fillOpacity: 1,
         strokeColor: "#ffffff",
@@ -274,12 +218,4 @@ function fitMap(
   if (live) bounds.extend(live);
   map.fitBounds(bounds, 72);
   didCenterRef.current = true;
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
