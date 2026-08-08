@@ -157,11 +157,12 @@ export function createCanvasHeatmap(
 }
 
 /** Cell weight that counts as "fully hot" when nothing busier is on screen. */
-const DENSITY_FLOOR = 3;
-const MIN_ALPHA = 0.18;
-const LAYER_OPACITY = 0.85;
-const COLOR_GAMMA = 0.75;
-const ALPHA_GAMMA = 0.5;
+const DENSITY_FLOOR = 2;
+/** A lone spot should still read mid-ramp rather than disappear into blue. */
+const MIN_ALPHA = 0.36;
+const LAYER_OPACITY = 0.8;
+const COLOR_GAMMA = 0.7;
+const ALPHA_GAMMA = 0.78;
 
 /** Soft-edged dot; alpha falls off toward the rim so blobs merge smoothly. */
 function makeBrush(radius: number) {
@@ -200,11 +201,11 @@ function buildPalette() {
   if (!ctx) return new Uint8ClampedArray(256 * 4);
 
   const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-  gradient.addColorStop(0, "#2b56d8");
-  gradient.addColorStop(0.3, "#00b7ff");
-  gradient.addColorStop(0.5, "#2fd671");
-  gradient.addColorStop(0.7, "#f5e14b");
-  gradient.addColorStop(0.85, "#f79337");
+  gradient.addColorStop(0, "#3b4cc0");
+  gradient.addColorStop(0.2, "#00a6ff");
+  gradient.addColorStop(0.4, "#22d67c");
+  gradient.addColorStop(0.6, "#f2e34c");
+  gradient.addColorStop(0.8, "#f79337");
   gradient.addColorStop(1, "#e8332a");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 1, 256);

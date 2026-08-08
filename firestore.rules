@@ -1,0 +1,64 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsAlbum() {
+      return signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    function ownsPlace() {
+      return signedIn() && resource.data.uploaderId == request.auth.uid;
+    }
+
+    // Profiles remain discoverable to authenticated users, but only the
+    // account owner can create or edit their profile.
+    match /profiles/{userId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && userId == request.auth.uid;
+      allow update: if signedIn()
+                    && userId == request.auth.uid
+                    && request.resource.data.username == resource.data.username;
+      allow delete: if signedIn() && userId == request.auth.uid;
+    }
+
+    // Username claim documents are immutable locks created by their owner.
+    match /usernames/{username} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+                    && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /albums/{albumId} {
+      allow create: if signedIn()
+                    && request.resource.data.ownerId == request.auth.uid;
+      allow read, delete: if ownsAlbum();
+      allow update: if ownsAlbum()
+                    && request.resource.data.ownerId == resource.data.ownerId;
+    }
+
+    match /places/{placeId} {
+      allow create: if signedIn()
+                    && request.resource.data.uploaderId == request.auth.uid;
+      allow read, delete: if ownsPlace();
+      allow update: if ownsPlace()
+                    && request.resource.data.uploaderId
+                       == resource.data.uploaderId;
+
+      match /audioPins/{pinId} {
+        allow read, create, update, delete: if signedIn()
+          && get(/databases/$(database)/documents/places/$(placeId)).data.uploaderId
+             == request.auth.uid;
+      }
+    }
+
+    // Deny every collection that has not been explicitly allowed above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
