@@ -10,6 +10,7 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
+import { FirebaseError } from "firebase/app";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "./firebase";
 import type { AudioPin, Place, Vec3 } from "./types";
@@ -56,7 +57,18 @@ export async function createPlace(
     storage,
     `splats/${placeRef.id}/${splatFile.name ?? "scene.ply"}`,
   );
-  await uploadBytes(splatRef, splatFile);
+  try {
+    await uploadBytes(splatRef, splatFile);
+  } catch (error) {
+    // A project with no bucket provisioned answers 404, which the SDK reports
+    // as an opaque storage/unknown — worth naming, since it is the one cause
+    // no amount of retrying fixes.
+    const code = error instanceof FirebaseError ? ` (${error.code})` : "";
+    throw new Error(
+      `Upload to Firebase Storage failed${code}. If Storage has never been enabled for this project, turn it on in the Firebase console, then try again.`,
+      { cause: error },
+    );
+  }
 
   await setDoc(placeRef, {
     name,
