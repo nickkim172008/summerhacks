@@ -45,11 +45,6 @@ next-env.d.ts
 /splat_*/
 /public/splats/
 
-# walkthrough audio — the .wav files under public/audio are committable for the
-# same reason, so a shared environment arrives with its sound
-/public/audio/*
-!/public/audio/*.wav
-
 # local capture inputs
 *.mov
 *.MOV

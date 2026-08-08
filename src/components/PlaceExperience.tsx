@@ -32,6 +32,7 @@ export default function PlaceExperience({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jumping, setJumping] = useState(false);
+  const jumpTimerRef = useRef<number | null>(null);
 
   // Arriving somewhere new clears the previous place's UI state.
   const [renderedPlaceId, setRenderedPlaceId] = useState(place.id);
@@ -43,14 +44,28 @@ export default function PlaceExperience({
     setError(null);
   }
 
+  const cancelJump = useCallback(() => {
+    if (jumpTimerRef.current === null) return;
+    clearTimeout(jumpTimerRef.current);
+    jumpTimerRef.current = null;
+  }, []);
+
   const handleHotspotClick = useCallback(
     (placeId: string) => {
       // Fade out first so the splat swap reads as travel, not a glitch.
       setJumping(true);
-      setTimeout(() => onJump(placeId), FADE_MS);
+      jumpTimerRef.current = window.setTimeout(() => {
+        jumpTimerRef.current = null;
+        onJump(placeId);
+      }, FADE_MS);
     },
     [onJump],
   );
+
+  // A jump still in flight has to be called off when the visitor leaves during
+  // the fade, or it lands afterwards and pulls them into the place they turned
+  // down. Both the place changing under us and unmounting count as leaving.
+  useEffect(() => cancelJump, [renderedPlaceId, cancelJump]);
 
   async function saveHotspot(linksToPlaceId: string) {
     if (!pending || !onAddHotspot) return;
@@ -99,7 +114,12 @@ export default function PlaceExperience({
 
       {onExit && (
         <button
-          onClick={onExit}
+          onClick={() => {
+            // Leaving can take longer than the fade, so waiting for the
+            // unmount to call off a pending jump would be too late.
+            cancelJump();
+            onExit();
+          }}
           className="absolute left-4 top-4 z-50 flex items-center gap-1 rounded-full bg-white/90 px-4 py-2 text-[15px] text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
         >
           <span aria-hidden className="text-xl leading-none">
@@ -217,39 +237,80 @@ function AmbientPlayer({
   leaving: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const fadeRef = useRef<number | null>(null);
+  const contextRef = useRef<AudioContext | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loop, setLoop] = useState(true);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(seconds ?? 0);
+  const [failed, setFailed] = useState(false);
 
+  /**
+   * The fade rides a GainNode rather than the element's own volume, which iOS
+   * Safari exposes as read-only and drops writes to without complaining — the
+   * sound would arrive there at full level under copy promising a fade.
+   */
   const fadeTo = useCallback((target: number, ms: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (fadeRef.current !== null) cancelAnimationFrame(fadeRef.current);
-    const from = audio.volume;
-    const start = performance.now();
-    const step = (now: number) => {
-      const progress = Math.min((now - start) / ms, 1);
-      audio.volume = from + (target - from) * progress;
-      fadeRef.current = progress < 1 ? requestAnimationFrame(step) : null;
-    };
-    fadeRef.current = requestAnimationFrame(step);
+    const context = contextRef.current;
+    const gain = gainRef.current;
+    if (!context || !gain) return;
+    const now = context.currentTime;
+    // Read the level before cancelling: cancelScheduledValues on its own snaps
+    // back to where the running ramp started instead of holding where it got to.
+    const current = gain.gain.value;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setValueAtTime(current, now);
+    gain.gain.linearRampToValueAtTime(target, now + ms / 1000);
   }, []);
 
+  // Deliberately runs once per mounted element: an element can be given a
+  // MediaElementAudioSourceNode only once, and a second attempt throws. Each
+  // place mounts its own player, so a changing url arrives as a new element.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.volume = 0;
+
+    const context = createAudioContext();
+    let source: MediaElementAudioSourceNode | undefined;
+    let gain: GainNode | undefined;
+    let resumeOnGesture: (() => void) | undefined;
+    if (context) {
+      gain = context.createGain();
+      gain.gain.value = 0;
+      // Routing an element through Web Audio replaces its own output, so the
+      // graph has to carry on to the destination or the place plays silent.
+      source = context.createMediaElementSource(audio);
+      source.connect(gain).connect(context.destination);
+      contextRef.current = context;
+      gainRef.current = gain;
+      // This runs a beat after the press that opened the place rather than
+      // inside it, which Safari may not accept, and a context left suspended
+      // plays nothing now that the element feeds it. Dragging to look around
+      // is the next gesture going, so it doubles as the second attempt.
+      resumeOnGesture = () => {
+        context.resume().catch(() => {});
+      };
+      resumeOnGesture();
+      window.addEventListener("pointerdown", resumeOnGesture);
+    }
+
     startPlayback(audio);
     fadeTo(1, AUDIO_FADE_IN_MS);
+
     return () => {
-      if (fadeRef.current !== null) cancelAnimationFrame(fadeRef.current);
+      contextRef.current = null;
+      gainRef.current = null;
       audio.pause();
       // A media element that keeps its source goes on streaming after React
       // detaches it, which would leave this place audible under the next one.
       audio.removeAttribute("src");
       audio.load();
+      if (resumeOnGesture) {
+        window.removeEventListener("pointerdown", resumeOnGesture);
+      }
+      source?.disconnect();
+      gain?.disconnect();
+      context?.close().catch(() => {});
     };
   }, [fadeTo]);
 
@@ -261,8 +322,20 @@ function AmbientPlayer({
   function togglePlay() {
     const audio = audioRef.current;
     if (!audio) return;
-    if (audio.paused) startPlayback(audio);
-    else audio.pause();
+    if (audio.paused) {
+      // A press is a gesture of its own, so it is the second chance to open a
+      // context iOS left suspended when the place did not count as one.
+      contextRef.current?.resume().catch(() => {});
+      startPlayback(audio);
+    } else audio.pause();
+  }
+
+  if (failed) {
+    return (
+      <p className="text-sm text-neutral-400">
+        The sound recorded here could not be loaded.
+      </p>
+    );
   }
 
   return (
@@ -272,6 +345,10 @@ function AmbientPlayer({
         src={url}
         loop={loop}
         preload="auto"
+        // Storage serves these from another origin, and Web Audio reads a
+        // cross-origin element as silence unless it was fetched with CORS.
+        crossOrigin="anonymous"
+        onError={() => setFailed(true)}
         onLoadedMetadata={(e) => {
           // A source served without a length answers Infinity; the duration
           // measured when the track was lifted off the video covers that.
@@ -337,6 +414,20 @@ function AmbientPlayer({
  */
 function startPlayback(audio: HTMLAudioElement) {
   audio.play().catch(() => {});
+}
+
+/**
+ * Safari shipped this prefixed for years. Null covers the browser that has
+ * neither, where the track still plays — straight out of the element, at full
+ * level, without the fade.
+ */
+function createAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const Ctor =
+    window.AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext;
+  return Ctor ? new Ctor() : null;
 }
 
 function formatTime(seconds: number) {

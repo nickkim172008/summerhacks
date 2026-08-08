@@ -45,6 +45,9 @@ export default function ProfilePage({
 
   const isOwn = Boolean(user && profile && user.uid === profile.id);
   const loading = profile === undefined;
+  // These places belong to a profile rather than an album, so name the profile
+  // as the way back out of them.
+  const fromProfile = `?from=${encodeURIComponent(`/u/${username}`)}`;
 
   if (!loading && profile === null) {
     return (
@@ -115,26 +118,26 @@ export default function ProfilePage({
                   {albums.map((album) => {
                     const cover = coverFor(album, placeById);
                     return (
-                    <li key={album.id}>
-                      <Link
-                        href={`/album/${album.id}`}
-                        className="group block"
-                      >
-                        <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
-                          {cover ? (
-                            <PlaceThumb place={cover} />
-                          ) : (
-                            <EmptyCover />
-                          )}
-                        </div>
-                        <p className="mt-2 truncate text-[15px] font-medium">
-                          {album.name}
-                        </p>
-                        <p className="text-sm text-neutral-500">
-                          {album.placeIds?.length ?? 0}
-                        </p>
-                      </Link>
-                    </li>
+                      <li key={album.id}>
+                        <Link
+                          href={`/album/${album.id}`}
+                          className="group block"
+                        >
+                          <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
+                            {cover ? (
+                              <PlaceThumb place={cover} />
+                            ) : (
+                              <EmptyCover />
+                            )}
+                          </div>
+                          <p className="mt-2 truncate text-[15px] font-medium">
+                            {album.name}
+                          </p>
+                          <p className="text-sm text-neutral-500">
+                            {album.placeIds?.length ?? 0}
+                          </p>
+                        </Link>
+                      </li>
                     );
                   })}
                 </ul>
@@ -156,7 +159,7 @@ export default function ProfilePage({
                   {places.map((place) => (
                     <li key={place.id}>
                       <Link
-                        href={`/place/${place.id}`}
+                        href={`/place/${place.id}${fromProfile}`}
                         className="group relative block aspect-square overflow-hidden bg-neutral-100"
                       >
                         <PlaceThumb place={place} />

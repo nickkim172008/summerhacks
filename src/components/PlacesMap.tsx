@@ -110,6 +110,11 @@ export default function PlacesMap({
           const name = String(feature.properties?.name ?? "Environment");
           const id = String(feature.properties?.id ?? "");
           const isDemo = id.startsWith("demo-map-");
+          // The popup navigates in place, so hand the place page this map as
+          // the way back.
+          const from = encodeURIComponent(
+            window.location.pathname + window.location.search,
+          );
           new Popup({ offset: 12 })
             .setLngLat([lng, lat])
             .setHTML(
@@ -118,7 +123,7 @@ export default function PlacesMap({
                 ${
                   isDemo
                     ? `<span style="color:#86868b">Demo pin</span>`
-                    : `<a href="/place/${escapeHtml(id)}" style="color:#0071e3;text-decoration:none">Open environment →</a>`
+                    : `<a href="/place/${escapeHtml(id)}?from=${from}" style="color:#0071e3;text-decoration:none">Open environment →</a>`
                 }
               </div>`,
             )

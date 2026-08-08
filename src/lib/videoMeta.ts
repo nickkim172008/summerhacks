@@ -28,7 +28,7 @@
  */
 
 export interface VideoCapture {
-  /** ISO 8601, UTC. */
+  /** ISO 8601, UTC. Null unless the container carried a date of its own. */
   capturedAt: string | null;
   location: { lat: number; lng: number } | null;
 }
@@ -435,14 +435,16 @@ export async function readVideoCapture(file: File): Promise<VideoCapture> {
   }
 
   return {
-    // The camera's own answer first. `mvhd` is a weaker one — it records when
-    // the file was finalized, so it runs the length of the video late — and the
-    // filesystem's is weaker still, being about the copy rather than the shoot.
+    // The camera's own answer first; `mvhd` is a weaker one, recording when the
+    // file was finalized and so running the length of the video late. The chain
+    // stops there rather than reaching for `file.lastModified`: an mtime is
+    // about the copy, not the shoot — a 2019 walkthrough AirDropped yesterday
+    // reads as yesterday — and a browser always supplies one, so leaning on it
+    // would answer every file and leave no way to say the video carried no date.
     capturedAt:
       parseCaptureDate(found.creationDate) ??
       parseCaptureDate(found.day) ??
-      isoIfPlausible(found.createdMs) ??
-      isoIfPlausible(file.lastModified),
+      isoIfPlausible(found.createdMs),
     location: parseIso6709(found.iso6709),
   };
 }
