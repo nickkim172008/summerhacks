@@ -33,10 +33,14 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Readable by any signed-in account so profiles and the map can show other
+    // people's work — following someone is pointless if their captures are
+    // invisible. Writing stays owner-only.
     match /albums/{albumId} {
       allow create: if signedIn()
                     && request.resource.data.ownerId == request.auth.uid;
-      allow read, delete: if ownsAlbum();
+      allow read: if signedIn();
+      allow delete: if ownsAlbum();
       allow update: if ownsAlbum()
                     && request.resource.data.ownerId == resource.data.ownerId;
     }
@@ -44,7 +48,8 @@ service cloud.firestore {
     match /places/{placeId} {
       allow create: if signedIn()
                     && request.resource.data.uploaderId == request.auth.uid;
-      allow read, delete: if ownsPlace();
+      allow read: if signedIn();
+      allow delete: if ownsPlace();
       allow update: if ownsPlace()
                     && request.resource.data.uploaderId
                        == resource.data.uploaderId;
