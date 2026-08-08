@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+import { LookControls } from "@/lib/lookControls";
 import { frameCapture } from "@/lib/splatFraming";
 import type { AudioPin, EntryPoint, Hotspot, Vec3 } from "@/lib/types";
 
@@ -92,10 +92,7 @@ export default function SplatViewer({
     const spark = new SparkRenderer({ renderer });
     scene.add(spark);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.target.set(0, 1, 0);
+    const controls = new LookControls(camera, renderer.domElement);
 
     const splat = new SplatMesh({
       url: splatUrl,
@@ -109,25 +106,17 @@ export default function SplatViewer({
 
         const entry = entryPointRef.current;
         if (entry) {
-          camera.position.copy(entry.position);
-          controls.target.copy(entry.target);
+          const facing = new THREE.Vector3()
+            .subVectors(entry.target, entry.position)
+            .normalize();
+          controls.setPose(new THREE.Vector3().copy(entry.position), facing);
         } else {
-          camera.position.copy(framing.eye);
-          controls.target
-            .copy(framing.eye)
-            .addScaledVector(framing.forward, framing.pivotDistance);
+          controls.setPose(center, framing.forward);
         }
+        controls.setBounds(framing.box, radius);
         camera.near = Math.max(radius / 1000, 0.001);
         camera.far = radius * 100;
         camera.updateProjectionMatrix();
-        // Standing inside, the pivot is close enough that an unclamped dolly
-        // would either land on it or shove the camera out through a wall. Widen
-        // the limits to admit the opening shot rather than snapping it, since an
-        // authored entry point is free to sit outside them.
-        const opening = camera.position.distanceTo(controls.target);
-        controls.minDistance = Math.min(radius * 0.05, opening);
-        controls.maxDistance = Math.max(radius * 4, opening);
-        controls.update();
 
         floorPlane.set(FLOOR_NORMAL, -framing.floorY);
         bounds = { box: framing.box, center, radius };
@@ -226,8 +215,11 @@ export default function SplatViewer({
       (window as unknown as Record<string, unknown>).__dbg = { scene, camera, renderer, splat, controls };
     }
 
-    renderer.setAnimationLoop(() => {
-      controls.update();
+    let lastFrame = performance.now();
+    renderer.setAnimationLoop((time) => {
+      const deltaTime = (time - lastFrame) / 1000;
+      lastFrame = time;
+      controls.update(deltaTime);
       onCameraFrameRef.current?.(camera);
       renderer.render(scene, camera);
     });
