@@ -12,7 +12,12 @@ import {
   type MapLayerMouseEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { CITY_ZOOM, DEFAULT_MAP_CENTER, MAP_STYLE } from "@/lib/maps";
+import {
+  CITY_ZOOM,
+  DEFAULT_MAP_CENTER,
+  MAP_STYLE,
+  placesToGeoJSON,
+} from "@/lib/maps";
 import type { LatLng } from "@/lib/geolocation";
 import type { Place } from "@/lib/types";
 
@@ -20,6 +25,7 @@ type LocatedPlace = Place & { location: { lat: number; lng: number } };
 
 const SOURCE_ID = "places";
 const HEAT_LAYER = "places-heat";
+const GLOW_LAYER = "places-glow";
 const POINT_LAYER = "places-points";
 
 export default function PlacesMap({
@@ -36,8 +42,9 @@ export default function PlacesMap({
   const liveMarkerRef = useRef<Marker | null>(null);
   const placesRef = useRef(places);
   const liveRef = useRef(liveLocation);
-  const didCenterOnLiveRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [spotCount, setSpotCount] = useState(places.length);
   placesRef.current = places;
   liveRef.current = liveLocation;
 
@@ -77,146 +84,54 @@ export default function PlacesMap({
     ro.observe(containerRef.current);
 
     map.on("error", (e) => {
-      const message = e.error?.message ?? "Map failed to load tiles";
-      // Ignore noisy tile aborts; surface real failures.
+      const message = e.error?.message ?? "Map failed to load";
       if (!/abort|cancel/i.test(message)) setError(message);
     });
 
     map.on("load", () => {
-      setError(null);
-      if (!map.getSource(SOURCE_ID)) {
-        map.addSource(SOURCE_ID, {
-          type: "geojson",
-          data: toFeatureCollection(placesRef.current),
-        });
-      }
-
-      if (!map.getLayer(HEAT_LAYER)) {
-        map.addLayer({
-          id: HEAT_LAYER,
-          type: "heatmap",
-          source: SOURCE_ID,
-          maxzoom: 17,
-          paint: {
-            "heatmap-weight": 1,
-            "heatmap-intensity": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              0,
-              0.5,
-              14,
-              1.3,
-            ],
-            "heatmap-radius": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              0,
-              6,
-              14,
-              32,
-            ],
-            "heatmap-opacity": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              12,
-              0.85,
-              16,
-              0.4,
-            ],
-            "heatmap-color": [
-              "interpolate",
-              ["linear"],
-              ["heatmap-density"],
-              0,
-              "rgba(0,113,227,0)",
-              0.2,
-              "rgba(0,113,227,0.35)",
-              0.45,
-              "rgba(52,199,89,0.55)",
-              0.7,
-              "rgba(255,204,0,0.7)",
-              1,
-              "rgba(255,59,48,0.85)",
-            ],
-          },
-        });
-      }
-
-      if (!map.getLayer(POINT_LAYER)) {
-        map.addLayer({
-          id: POINT_LAYER,
-          type: "circle",
-          source: SOURCE_ID,
-          minzoom: 11,
-          paint: {
-            "circle-radius": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              11,
-              4,
-              16,
-              9,
-            ],
-            "circle-color": "#0071e3",
-            "circle-stroke-color": "#ffffff",
-            "circle-stroke-width": 2,
-            "circle-opacity": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              11,
-              0.4,
-              13,
-              1,
-            ],
-          },
-        });
-      }
-
-      map.on("mouseenter", POINT_LAYER, () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", POINT_LAYER, () => {
-        map.getCanvas().style.cursor = "";
-      });
-      map.on("click", POINT_LAYER, (e: MapLayerMouseEvent) => {
-        const feature = e.features?.[0];
-        if (!feature || feature.geometry.type !== "Point") return;
-        const [lng, lat] = feature.geometry.coordinates as [number, number];
-        const name = String(feature.properties?.name ?? "Environment");
-        const id = String(feature.properties?.id ?? "");
-        const isDemo = id.startsWith("demo-map-");
-        new Popup({ offset: 12 })
-          .setLngLat([lng, lat])
-          .setHTML(
-            `<div style="font:14px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;padding:2px 4px">
-              <strong>${escapeHtml(name)}</strong><br/>
-              ${
-                isDemo
-                  ? `<span style="color:#86868b">Demo pin</span>`
-                  : `<a href="/place/${escapeHtml(id)}" style="color:#0071e3;text-decoration:none">Open environment →</a>`
-              }
-            </div>`,
-          )
-          .addTo(map);
-      });
-
-      resize();
-
-      if (liveRef.current) {
-        ensureLiveMarker(map, liveRef.current, liveMarkerRef);
-        centerOnLive(
-          map,
-          liveRef.current,
-          placesRef.current,
-          didCenterOnLiveRef,
-        );
-      } else if (placesRef.current.length > 0) {
+      try {
+        ensureHeatLayers(map, placesRef.current);
+        setSpotCount(placesRef.current.length);
+        setReady(true);
+        setError(null);
+        resize();
         fitToPlaces(map, placesRef.current);
+
+        map.on("mouseenter", POINT_LAYER, () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", POINT_LAYER, () => {
+          map.getCanvas().style.cursor = "";
+        });
+        map.on("click", POINT_LAYER, (e: MapLayerMouseEvent) => {
+          const feature = e.features?.[0];
+          if (!feature || feature.geometry.type !== "Point") return;
+          const [lng, lat] = feature.geometry.coordinates as [number, number];
+          const name = String(feature.properties?.name ?? "Environment");
+          const id = String(feature.properties?.id ?? "");
+          const isDemo = id.startsWith("demo-map-");
+          new Popup({ offset: 12 })
+            .setLngLat([lng, lat])
+            .setHTML(
+              `<div style="font:14px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;padding:2px 4px">
+                <strong>${escapeHtml(name)}</strong><br/>
+                ${
+                  isDemo
+                    ? `<span style="color:#86868b">Demo pin</span>`
+                    : `<a href="/place/${escapeHtml(id)}" style="color:#0071e3;text-decoration:none">Open environment →</a>`
+                }
+              </div>`,
+            )
+            .addTo(map);
+        });
+
+        if (liveRef.current) {
+          ensureLiveMarker(map, liveRef.current, liveMarkerRef);
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Could not add heatmap layers",
+        );
       }
     });
 
@@ -226,43 +141,32 @@ export default function PlacesMap({
       liveMarkerRef.current = null;
       map.remove();
       mapRef.current = null;
-      didCenterOnLiveRef.current = false;
+      setReady(false);
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-
-    const apply = () => {
-      const source = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
-      if (!source) return;
-      source.setData(toFeatureCollection(places));
-      if (places.length > 0 && !liveRef.current) {
-        fitToPlaces(map, places);
-      }
-    };
-
-    if (map.isStyleLoaded()) apply();
-    else map.once("load", apply);
-  }, [places]);
+    if (!map || !ready) return;
+    ensureHeatLayers(map, places);
+    setSpotCount(places.length);
+  }, [places, ready]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !liveLocation) return;
-
-    const apply = () => {
-      ensureLiveMarker(map, liveLocation, liveMarkerRef);
-      centerOnLive(map, liveLocation, placesRef.current, didCenterOnLiveRef);
-    };
-
-    if (map.isStyleLoaded()) apply();
-    else map.once("load", apply);
-  }, [liveLocation]);
+    if (!map || !ready || !liveLocation) return;
+    ensureLiveMarker(map, liveLocation, liveMarkerRef);
+  }, [liveLocation, ready]);
 
   return (
     <div className={`relative h-full w-full ${className}`}>
-      <div ref={containerRef} className="places-map absolute inset-0 h-full w-full" />
+      <div
+        ref={containerRef}
+        className="places-map absolute inset-0 h-full w-full"
+      />
+      <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-white/95 px-3 py-1 text-[11px] font-medium text-[#1d1d1f] shadow ring-1 ring-black/10">
+        Heatmap · {spotCount} spots
+      </div>
       {error && (
         <div className="absolute inset-x-4 bottom-24 z-10 rounded-xl bg-white/95 px-4 py-3 text-center text-sm text-red-600 shadow-lg ring-1 ring-black/10">
           Map error: {error}
@@ -272,34 +176,102 @@ export default function PlacesMap({
   );
 }
 
-function centerOnLive(
-  map: MapLibreMap,
-  live: LatLng,
-  places: LocatedPlace[],
-  didCenterRef: MutableRefObject<boolean>,
-) {
-  if (didCenterRef.current) return;
-  didCenterRef.current = true;
+/** Source + heat/glow/point layers. Safe to call repeatedly. */
+function ensureHeatLayers(map: MapLibreMap, places: LocatedPlace[]) {
+  const data = placesToGeoJSON(places);
 
-  if (places.length > 0) {
-    const bounds = new LngLatBounds();
-    bounds.extend([live.lng, live.lat]);
-    for (const place of places) {
-      bounds.extend([place.location.lng, place.location.lat]);
-    }
-    map.fitBounds(bounds, {
-      padding: 80,
-      maxZoom: CITY_ZOOM + 1,
-      duration: 800,
-    });
-    return;
+  if (!map.getSource(SOURCE_ID)) {
+    map.addSource(SOURCE_ID, { type: "geojson", data });
+  } else {
+    (map.getSource(SOURCE_ID) as GeoJSONSource).setData(data);
   }
 
-  map.easeTo({
-    center: [live.lng, live.lat],
-    zoom: CITY_ZOOM,
-    duration: 800,
-  });
+  // Soft glow — always visible even if native heatmap fails on a GPU.
+  if (!map.getLayer(GLOW_LAYER)) {
+    map.addLayer({
+      id: GLOW_LAYER,
+      type: "circle",
+      source: SOURCE_ID,
+      paint: {
+        "circle-radius": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          10,
+          28,
+          14,
+          55,
+        ],
+        "circle-color": "#ff3b30",
+        "circle-opacity": 0.28,
+        "circle-blur": 0.95,
+      },
+    });
+  }
+
+  // Native heatmap on top of the glow.
+  if (!map.getLayer(HEAT_LAYER)) {
+    map.addLayer({
+      id: HEAT_LAYER,
+      type: "heatmap",
+      source: SOURCE_ID,
+      maxzoom: 20,
+      paint: {
+        "heatmap-weight": 1,
+        "heatmap-intensity": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          10,
+          1.5,
+          15,
+          3,
+        ],
+        "heatmap-radius": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          10,
+          20,
+          15,
+          40,
+        ],
+        "heatmap-opacity": 0.85,
+        "heatmap-color": [
+          "interpolate",
+          ["linear"],
+          ["heatmap-density"],
+          0,
+          "rgba(33,102,172,0)",
+          0.2,
+          "rgb(103,169,207)",
+          0.4,
+          "rgb(209,229,240)",
+          0.6,
+          "rgb(253,219,199)",
+          0.8,
+          "rgb(239,138,98)",
+          1,
+          "rgb(178,24,43)",
+        ],
+      },
+    });
+  }
+
+  if (!map.getLayer(POINT_LAYER)) {
+    map.addLayer({
+      id: POINT_LAYER,
+      type: "circle",
+      source: SOURCE_ID,
+      paint: {
+        "circle-radius": 5,
+        "circle-color": "#0071e3",
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5,
+        "circle-opacity": 0.95,
+      },
+    });
+  }
 }
 
 function ensureLiveMarker(
@@ -319,29 +291,11 @@ function ensureLiveMarker(
   }
 }
 
-function toFeatureCollection(
-  places: LocatedPlace[],
-): GeoJSON.FeatureCollection {
-  return {
-    type: "FeatureCollection",
-    features: places.map((place) => ({
-      type: "Feature",
-      properties: { id: place.id, name: place.name },
-      geometry: {
-        type: "Point",
-        coordinates: [place.location.lng, place.location.lat],
-      },
-    })),
-  };
-}
-
 function fitToPlaces(map: MapLibreMap, places: LocatedPlace[]) {
-  if (places.length === 0) return;
-  if (places.length === 1) {
-    map.easeTo({
-      center: [places[0].location.lng, places[0].location.lat],
+  if (places.length === 0) {
+    map.jumpTo({
+      center: [DEFAULT_MAP_CENTER.lng, DEFAULT_MAP_CENTER.lat],
       zoom: CITY_ZOOM,
-      duration: 500,
     });
     return;
   }
@@ -350,9 +304,9 @@ function fitToPlaces(map: MapLibreMap, places: LocatedPlace[]) {
     bounds.extend([place.location.lng, place.location.lat]);
   }
   map.fitBounds(bounds, {
-    padding: 64,
-    maxZoom: CITY_ZOOM + 1,
-    duration: 500,
+    padding: 80,
+    maxZoom: CITY_ZOOM,
+    duration: 600,
   });
 }
 

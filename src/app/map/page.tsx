@@ -111,7 +111,7 @@ export default function MapPage() {
           <p className="text-sm font-semibold tracking-tight">Map</p>
           <p className="text-xs text-neutral-500">
             {scopeLabel}
-            {allPlaces !== null && ` · ${filtered.length} nearby`}
+            {` · ${filtered.length} spots`}
             {liveLoading && " · locating…"}
             {liveLocation && !liveLoading && " · live location on"}
             {liveError && " · location off"}
