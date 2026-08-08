@@ -9,6 +9,19 @@ export interface CaptureJob {
   serialize: string;
   name: string;
   startedAt: number;
+  /**
+   * When and where the walkthrough was filmed, read out of the video or typed
+   * in when it carried neither. The form is long gone by the time the splat
+   * lands, so the answers wait here with the job.
+   */
+  capturedAt?: string;
+  location?: { lat: number; lng: number };
+  locationName?: string;
+  /**
+   * Length of the audio lifted off the video. The samples themselves are
+   * megabytes and live in Cache Storage under the same serialize.
+   */
+  audioSeconds?: number;
 }
 
 const STORAGE_KEY = "atlas:capture-job";
@@ -92,7 +105,8 @@ export function uploadVideo(
         reject(new Error(body.error ?? `Upload failed (${xhr.status})`));
       }
     };
-    xhr.onerror = () => reject(new Error("Upload failed — check your connection"));
+    xhr.onerror = () =>
+      reject(new Error("Upload failed — check your connection"));
     xhr.send(form);
   });
 }

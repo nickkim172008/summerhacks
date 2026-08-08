@@ -1,28 +1,32 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, use, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PlaceExperience from "@/components/PlaceExperience";
-import {
-  addAudioPin,
-  addHotspot,
-  getPlace,
-  subscribeToPins,
-  subscribeToPlaces,
-} from "@/lib/places";
-import type { AudioPin, Place } from "@/lib/types";
+import { addHotspot, getPlace, subscribeToPlaces } from "@/lib/places";
+import type { Place } from "@/lib/types";
 
 export default function PlacePage({
   params,
 }: {
   params: Promise<{ placeId: string }>;
 }) {
+  return (
+    <Suspense fallback={null}>
+      <PlaceView params={params} />
+    </Suspense>
+  );
+}
+
+function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
   const { placeId } = use(params);
   const router = useRouter();
+  // Set when the visitor arrived from an album, so leaving returns them there.
+  const albumId = useSearchParams().get("album");
+  const exitHref = albumId ? `/album/${albumId}` : "/";
   // undefined while loading, null once we know it isn't there.
   const [place, setPlace] = useState<Place | null | undefined>();
-  const [pins, setPins] = useState<AudioPin[]>([]);
   const [allPlaces, setAllPlaces] = useState<Place[]>([]);
   const [missingFile, setMissingFile] = useState(false);
 
@@ -36,7 +40,6 @@ export default function PlacePage({
     };
   }, [placeId]);
 
-  useEffect(() => subscribeToPins(placeId, setPins), [placeId]);
   useEffect(() => subscribeToPlaces(setAllPlaces), []);
 
   // Firestore is shared but an app-served splat is not: the doc lists fine on
@@ -58,8 +61,8 @@ export default function PlacePage({
     return (
       <main className="flex h-screen flex-col items-center justify-center gap-3 bg-black text-white">
         <p>That environment doesn&apos;t exist.</p>
-        <Link href="/" className="text-sky-400 underline">
-          Back to Albums
+        <Link href={exitHref} className="text-sky-400 underline">
+          Back
         </Link>
       </main>
     );
@@ -86,8 +89,8 @@ export default function PlacePage({
           <code className="text-neutral-300">{place.splatUrl}</code> to the repo
           so every clone has it.
         </p>
-        <Link href="/" className="text-sky-400 underline">
-          Back to Albums
+        <Link href={exitHref} className="text-sky-400 underline">
+          Back
         </Link>
       </main>
     );
@@ -97,14 +100,15 @@ export default function PlacePage({
     <main className="h-screen w-screen">
       <PlaceExperience
         place={place}
-        pins={pins}
         linkTargets={allPlaces
           .filter((p) => p.id !== placeId)
           .map((p) => ({ id: p.id, name: p.name }))}
-        onJump={(id) => router.push(`/place/${id}`)}
-        onSubmitPin={(point, recording, caption) =>
-          addAudioPin(placeId, point, recording, caption)
+        onJump={(id) =>
+          router.push(
+            albumId ? `/place/${id}?album=${albumId}` : `/place/${id}`,
+          )
         }
+        onExit={() => router.push(exitHref)}
         onAddHotspot={async (point, linksToPlaceId) => {
           await addHotspot(placeId, point, linksToPlaceId);
           setPlace(await getPlace(placeId));

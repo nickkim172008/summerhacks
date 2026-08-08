@@ -31,10 +31,15 @@ import {
   type CaptureJob,
 } from "@/lib/captureJob";
 import {
+  dropCachedAudio,
   dropCachedSplat,
+  readCachedAudio,
   readCachedSplat,
+  writeCachedAudio,
   writeCachedSplat,
 } from "@/lib/splatCache";
+import { extractAudio, type ExtractedAudio } from "@/lib/audioTrack";
+import { readVideoCapture, type VideoCapture } from "@/lib/videoMeta";
 import { createPlace } from "@/lib/places";
 import { addPlacesToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
@@ -73,6 +78,13 @@ function CaptureFlow() {
   const [name, setName] = useState("");
   const [video, setVideo] = useState<File | null>(null);
   const [meta, setMeta] = useState<VideoMeta | null>(null);
+  const [capture, setCapture] = useState<VideoCapture | null>(null);
+  const [whenLocal, setWhenLocal] = useState("");
+  const [locationName, setLocationName] = useState("");
+  // undefined while the track is still being lifted, null when there is none.
+  const [audio, setAudio] = useState<ExtractedAudio | null | undefined>(
+    undefined,
+  );
   const [formKey, setFormKey] = useState(0);
 
   // The job lives in localStorage, not in state: reconstruction outlasts the
@@ -98,9 +110,14 @@ function CaptureFlow() {
   const [demoQueued, setDemoQueued] = useState(false);
 
   const problem = !DEMO_CAPTURE && meta && describeProblem(meta);
-  const canSubmit = Boolean(name.trim() && video && !problem && !busy);
+  // `capture` gates submission so the video's own answers are in hand before
+  // the job that has to carry them is written.
+  const canSubmit = Boolean(
+    name.trim() && video && capture && !problem && !busy,
+  );
   const backHref = albumId ? `/album/${albumId}` : "/";
   const resumeHref = albumId ? `/capture?album=${albumId}` : "/capture";
+  const jobDetails = job && describeCapture(job);
 
   // An object URL pins its blob — a hundred-odd megabytes here — until it is
   // revoked, so the live one is tracked in a ref and released when it is
@@ -201,11 +218,45 @@ function CaptureFlow() {
     return () => clearInterval(id);
   }, [job, splat, startingNew]);
 
+  // The lift runs alongside the upload, so what submit waits on is the promise
+  // rather than the finished track. The counter keeps a slow read of one video
+  // from answering for the video the user has since picked instead.
+  const liftRef = useRef<Promise<ExtractedAudio | null> | null>(null);
+  const pickRef = useRef(0);
+
+  /**
+   * Everything only the video can answer is read here, while the File is in
+   * hand: after a reload there is no File left, and the splat it belongs to is
+   * still 30-90 minutes out.
+   */
   async function handleFile(file: File | undefined) {
+    const pick = (pickRef.current += 1);
+    // Started before the first await: the form is submittable the moment the
+    // video lands in state, and submit has to find this promise waiting.
+    const lifting = file ? liftAudio(file) : null;
+    liftRef.current = lifting;
+
     setVideo(file ?? null);
-    setMeta(file ? await readVideoMeta(file) : null);
+    setCapture(null);
+    setWhenLocal("");
+    setLocationName("");
+    setAudio(undefined);
+
+    const nextMeta = file ? await readVideoMeta(file) : null;
+    if (pickRef.current !== pick) return;
+    setMeta(nextMeta);
+    if (!file) return;
+
     // The file is usually named after the place; save the typing.
-    if (file && !name.trim()) setName(prettyName(file.name));
+    if (!name.trim()) setName(prettyName(file.name));
+
+    const found = await readVideoCapture(file);
+    if (pickRef.current !== pick) return;
+    setCapture(found);
+    setWhenLocal(found.capturedAt ? toLocalInput(found.capturedAt) : "");
+
+    const track = await lifting;
+    if (pickRef.current === pick) setAudio(track);
   }
 
   async function submit() {
@@ -228,7 +279,20 @@ function CaptureFlow() {
 
     try {
       const serialize = await uploadVideo(video, setUploadFraction);
-      saveJob({ serialize, name: name.trim(), startedAt: Date.now() });
+      const track = await liftRef.current;
+      // Megabytes of samples cannot go in localStorage beside the job, so the
+      // job carries their length and Cache Storage carries the bytes, both
+      // under the serialize that will still be here after a reload.
+      if (track) await writeCachedAudio(serialize, track.file);
+      saveJob({
+        serialize,
+        name: name.trim(),
+        startedAt: Date.now(),
+        capturedAt: toIso(whenLocal),
+        location: capture?.location ?? undefined,
+        locationName: locationName.trim() || undefined,
+        audioSeconds: track?.seconds,
+      });
       if (startingNew) router.replace(resumeHref);
     } catch (err) {
       setError(messageOf(err, "Upload failed"));
@@ -242,14 +306,25 @@ function CaptureFlow() {
     setBusy("saving");
     setError(null);
     try {
-      const placeId = await createPlace(
-        splat.name,
-        await toSpz(splat),
-        "anonymous",
-      );
+      // Both the audio and the details were put aside at upload time; this is
+      // the first moment there is a place to attach them to.
+      const wav = job ? await readCachedAudio(job.serialize) : null;
+      const placeId = await createPlace({
+        name: splat.name,
+        uploaderId: "anonymous",
+        splatFile: await toSpz(splat),
+        audioFile: wav && wavFile(wav, splat.name),
+        audioSeconds: job?.audioSeconds,
+        capturedAt: job?.capturedAt,
+        location: job?.location ?? null,
+        locationName: job?.locationName,
+      });
       if (albumId) await addPlacesToAlbum(albumId, [placeId]);
-      // It serves from Storage now, so the local copy is dead weight.
-      if (job) await dropCachedSplat(job.serialize);
+      // They serve from the place now, so the local copies are dead weight.
+      if (job) {
+        await dropCachedSplat(job.serialize);
+        await dropCachedAudio(job.serialize);
+      }
       clearJob();
       router.push(`/place/${placeId}`);
     } catch (err) {
@@ -259,7 +334,10 @@ function CaptureFlow() {
   }
 
   function startOver() {
-    if (job) void dropCachedSplat(job.serialize);
+    if (job) {
+      void dropCachedSplat(job.serialize);
+      void dropCachedAudio(job.serialize);
+    }
     clearJob();
     if (splatUrlRef.current) {
       URL.revokeObjectURL(splatUrlRef.current);
@@ -271,6 +349,13 @@ function CaptureFlow() {
     setName("");
     setVideo(null);
     setMeta(null);
+    setCapture(null);
+    setWhenLocal("");
+    setLocationName("");
+    setAudio(undefined);
+    // A lift still running belongs to a video that is no longer chosen.
+    pickRef.current += 1;
+    liftRef.current = null;
     setUploadFraction(0);
     setFormKey((key) => key + 1);
   }
@@ -317,6 +402,9 @@ function CaptureFlow() {
           <h1 className="mt-8 text-[34px] font-bold tracking-tight">
             {splat.name}
           </h1>
+          {jobDetails && (
+            <p className="text-[15px] text-neutral-500">{jobDetails}</p>
+          )}
           <p className="text-neutral-500">
             Drag to look around, scroll to zoom.
           </p>
@@ -324,7 +412,6 @@ function CaptureFlow() {
           <div className="mt-6 h-[65vh] overflow-hidden rounded-2xl bg-black ring-1 ring-black/10">
             <SplatViewer
               splatUrl={splat.url}
-              pins={[]}
               placementMode={false}
               onPlacePoint={() => {}}
             />
@@ -387,6 +474,12 @@ function CaptureFlow() {
             minutes and keeps going without you — close this tab and come back,
             and your environment will be waiting here.
           </p>
+
+          {jobDetails && (
+            <p className="mt-2 text-sm text-neutral-500">
+              {jobDetails} — saved with it.
+            </p>
+          )}
 
           <div className="mt-6 flex items-center gap-4">
             {error && !busy && (
@@ -458,12 +551,63 @@ function CaptureFlow() {
               </p>
             )}
 
+            {video && (
+              <p className="text-sm text-neutral-500">{describeAudio(audio)}</p>
+            )}
+
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="What is this place called?"
               className="rounded-xl border border-black/10 bg-neutral-50 px-4 py-2.5 text-[15px] outline-none focus:border-[#0071e3]"
             />
+
+            {capture && (
+              <section className="flex flex-col gap-4 rounded-xl border border-black/10 px-4 py-4">
+                <div>
+                  <h2 className="text-[15px] font-medium">Where and when</h2>
+                  <p className="text-xs text-neutral-500">
+                    Kept with the environment. Anything the video did not carry
+                    is yours to fill in, or to leave blank.
+                  </p>
+                </div>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-2 text-[13px] text-neutral-500">
+                    Filmed
+                    <Source known={Boolean(capture.capturedAt)} />
+                  </span>
+                  <input
+                    type="datetime-local"
+                    value={whenLocal}
+                    onChange={(e) => setWhenLocal(e.target.value)}
+                    className="rounded-xl border border-black/10 bg-neutral-50 px-4 py-2.5 text-[15px] outline-none focus:border-[#0071e3]"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="flex items-center gap-2 text-[13px] text-neutral-500">
+                    Location
+                    <Source known={Boolean(capture.location)} />
+                  </span>
+                  {capture.location && (
+                    <span className="text-[15px] tabular-nums">
+                      {formatCoords(capture.location)}
+                    </span>
+                  )}
+                  <input
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    placeholder={
+                      capture.location
+                        ? "Name it in words too, like Grandma's kitchen"
+                        : "Where was this? Type it in"
+                    }
+                    className="rounded-xl border border-black/10 bg-neutral-50 px-4 py-2.5 text-[15px] outline-none focus:border-[#0071e3]"
+                  />
+                </label>
+              </section>
+            )}
 
             <button
               onClick={submit}
@@ -497,6 +641,51 @@ function CaptureFlow() {
   );
 }
 
+/** Which of the two answers came off the video and which the user owes us. */
+function Source({ known }: { known: boolean }) {
+  return known ? (
+    <span className="rounded-full bg-[#0071e3]/10 px-2 py-0.5 text-[11px] font-medium text-[#0071e3]">
+      From the video
+    </span>
+  ) : (
+    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
+      Not in the video
+    </span>
+  );
+}
+
+/**
+ * A walkthrough whose audio cannot be read is still a walkthrough, so nothing
+ * that happens in here reaches the upload it runs alongside.
+ */
+async function liftAudio(file: File) {
+  try {
+    return await extractAudio(file, slug(prettyName(file.name)));
+  } catch {
+    // A container this browser cannot open, or a file that moved out from
+    // under the read. Either way the environment is saved silent.
+    return null;
+  }
+}
+
+function describeAudio(audio: ExtractedAudio | null | undefined) {
+  if (audio === undefined) return "Lifting the sound off the video…";
+  if (!audio) {
+    return "No sound this browser can read — the environment will be silent.";
+  }
+  return `${formatClock(audio.seconds)} of sound, which plays when you walk in.`;
+}
+
+function describeCapture(job: CaptureJob) {
+  const parts: string[] = [];
+  if (job.capturedAt) parts.push(`Filmed ${formatWhen(job.capturedAt)}`);
+  const where =
+    job.locationName ?? (job.location ? formatCoords(job.location) : null);
+  if (where) parts.push(where);
+  if (job.audioSeconds) parts.push(`${formatClock(job.audioSeconds)} of sound`);
+  return parts.join(" · ");
+}
+
 function describeProblem({ seconds, width, height }: VideoMeta) {
   if (seconds > MAX_VIDEO_SECONDS) {
     return `too long, max ${MAX_VIDEO_SECONDS / 60} minutes`;
@@ -521,6 +710,47 @@ function describeWait(startedAt: number, now: number) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * A datetime-local input speaks wall clock and carries no offset, so the
+ * instant is shifted into the viewer's zone on the way in. Date reads an
+ * offsetless string back against that same zone, which is what toIso relies on.
+ */
+function toLocalInput(iso: string) {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return "";
+  const shifted = ms - new Date(ms).getTimezoneOffset() * 60_000;
+  return new Date(shifted).toISOString().slice(0, 16);
+}
+
+/** Undefined for a field left empty, which is a legitimate answer here. */
+function toIso(local: string) {
+  const ms = Date.parse(local);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
+}
+
+function formatWhen(iso: string) {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return iso;
+  return new Date(ms).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+/** Five decimals is about a metre — past that it is noise from the phone. */
+function formatCoords({ lat, lng }: { lat: number; lng: number }) {
+  return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+}
+
+function formatClock(seconds: number) {
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+function wavFile(blob: Blob, name: string) {
+  return new File([blob], `${slug(name)}.wav`, { type: "audio/wav" });
 }
 
 function prettyName(fileName: string) {
