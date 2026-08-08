@@ -53,5 +53,6 @@ export interface Profile {
   username: string;
   displayName: string;
   photoURL: string;
+  bio?: string;
   createdAt: Timestamp;
 }
