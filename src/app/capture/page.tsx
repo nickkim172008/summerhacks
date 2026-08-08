@@ -65,7 +65,11 @@ export default function CapturePage() {
 
 function CaptureFlow() {
   const router = useRouter();
-  const albumId = useSearchParams().get("album");
+  const params = useSearchParams();
+  const albumId = params.get("album");
+  // "Capture New Environment" asks for a blank form. Without this, /capture
+  // resumes the saved job and the entry point shows the last render instead.
+  const startingNew = params.get("new") === "1";
   const [name, setName] = useState("");
   const [video, setVideo] = useState<File | null>(null);
   const [meta, setMeta] = useState<VideoMeta | null>(null);
@@ -96,6 +100,7 @@ function CaptureFlow() {
   const problem = !DEMO_CAPTURE && meta && describeProblem(meta);
   const canSubmit = Boolean(name.trim() && video && !problem && !busy);
   const backHref = albumId ? `/album/${albumId}` : "/";
+  const resumeHref = albumId ? `/capture?album=${albumId}` : "/capture";
 
   // An object URL pins its blob — a hundred-odd megabytes here — until it is
   // revoked, so the live one is tracked in a ref and released when it is
@@ -137,7 +142,7 @@ function CaptureFlow() {
   );
 
   useEffect(() => {
-    if (!job || splat) return;
+    if (!job || splat || startingNew) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     let failures = 0;
@@ -187,14 +192,14 @@ function CaptureFlow() {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [job, splat, download, showSplat]);
+  }, [job, splat, startingNew, download, showSplat]);
 
   // Drives the "waiting for N minutes" readout.
   useEffect(() => {
-    if (!job || splat) return;
+    if (!job || splat || startingNew) return;
     const id = setInterval(() => setNow(Date.now()), CLOCK_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [job, splat]);
+  }, [job, splat, startingNew]);
 
   async function handleFile(file: File | undefined) {
     setVideo(file ?? null);
@@ -224,6 +229,7 @@ function CaptureFlow() {
     try {
       const serialize = await uploadVideo(video, setUploadFraction);
       saveJob({ serialize, name: name.trim(), startedAt: Date.now() });
+      if (startingNew) router.replace(resumeHref);
     } catch (err) {
       setError(messageOf(err, "Upload failed"));
     } finally {
@@ -355,7 +361,7 @@ function CaptureFlow() {
           )}
           {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
         </div>
-      ) : job ? (
+      ) : job && !startingNew ? (
         <div className="mx-auto max-w-xl px-6">
           <h1 className="mt-8 text-[34px] font-bold tracking-tight">
             {job.name}
@@ -405,6 +411,22 @@ function CaptureFlow() {
             several angles and heights.
             {albumId && " It will be added to this album when it's ready."}
           </p>
+
+          {job && (
+            <div className="mt-6 flex items-center justify-between gap-4 rounded-xl border border-black/10 bg-neutral-50 px-4 py-3">
+              <p className="text-sm text-neutral-500">
+                <span className="font-medium text-[#1d1d1f]">{job.name}</span>{" "}
+                is already captured on this device. Starting a new one replaces
+                it.
+              </p>
+              <Link
+                href={resumeHref}
+                className="shrink-0 text-[15px] text-[#0071e3]"
+              >
+                Open
+              </Link>
+            </div>
+          )}
 
           <div className="mt-8 flex flex-col gap-4">
             <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed border-black/20 bg-neutral-50 px-4 py-8 text-center transition hover:border-[#0071e3]">

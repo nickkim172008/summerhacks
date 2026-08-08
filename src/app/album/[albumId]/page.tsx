@@ -58,7 +58,10 @@ export default function AlbumPage({
 
   const title = isRecents ? "Recents" : (album?.name ?? "");
   const loading = albumPlaces === null || (!isRecents && album === undefined);
-  const captureHref = isRecents ? "/capture" : `/capture?album=${albumId}`;
+  // ?new=1 so the entry point is always a blank form, never the saved capture.
+  const captureHref = isRecents
+    ? "/capture?new=1"
+    : `/capture?album=${albumId}&new=1`;
 
   return (
     <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
@@ -123,7 +126,7 @@ export default function AlbumPage({
             </p>
             {isRecents ? (
               <Link
-                href="/capture"
+                href="/capture?new=1"
                 className="mt-3 rounded-full bg-[#0071e3] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#0077ed]"
               >
                 Capture an Environment
