@@ -23,6 +23,12 @@ export default function AtlasPage() {
           Places you can walk through, with voices left where they happened.
           Every visitor can add one.
         </p>
+        <Link
+          href="/capture"
+          className="mt-4 inline-block rounded-full bg-sky-500 px-5 py-2 text-sm font-medium"
+        >
+          Capture a place
+        </Link>
       </header>
 
       <section className="mx-auto mt-10 max-w-5xl">

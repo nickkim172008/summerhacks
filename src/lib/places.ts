@@ -46,11 +46,14 @@ export async function getPlace(placeId: string): Promise<Place | null> {
 
 export async function createPlace(
   name: string,
-  splatFile: File,
+  splatFile: Blob & { name?: string },
   uploaderId: string,
 ) {
   const placeRef = doc(collection(db, "places"));
-  const splatRef = ref(storage, `splats/${placeRef.id}/${splatFile.name}`);
+  const splatRef = ref(
+    storage,
+    `splats/${placeRef.id}/${splatFile.name ?? "scene.ply"}`,
+  );
   await uploadBytes(splatRef, splatFile);
 
   await setDoc(placeRef, {
