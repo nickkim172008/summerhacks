@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Spatial memory atlas
 
-## Getting Started
+Places captured as photorealistic 3D Gaussian Splats, walkable in the browser,
+with voice memories pinned to specific coordinates inside them. Walk toward a
+memory and it gets louder; walk past it and it moves to the other ear.
 
-First, run the development server:
+Each place is its own independent splat scene. Hotspot markers link them —
+clicking one swaps the loaded scene and drops you at that place's entry point.
+
+## Setup
 
 ```bash
+npm install
+cp .env.local.example .env.local   # then fill it in
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`.env.local` needs:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `NEXT_PUBLIC_FIREBASE_*` — from the Firebase console (Project settings → Your
+  apps → Web app config). Enable **Firestore** and **Storage**.
+- `KIRI_API_KEY` — from the KIRI Engine developer dashboard. Server-side only;
+  never prefix it with `NEXT_PUBLIC_`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Without Firebase keys the atlas says so explicitly instead of hanging.
 
-## Learn More
+## Routes
 
-To learn more about Next.js, take a look at the following resources:
+| Route             | What it does                                              |
+| ----------------- | --------------------------------------------------------- |
+| `/`               | Live atlas grid of all places (Firestore `onSnapshot`)    |
+| `/place/[id]`     | Walk a place, hear its voices, leave one, link to others  |
+| `/capture`        | Upload a walkthrough video → KIRI → a new place           |
+| `/dev`            | Two linked sample scenes; no Firebase or KIRI needed      |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`/dev` is the fastest way to see the whole interaction loop working.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Capture pipeline
 
-## Deploy on Vercel
+One walkthrough video per place, reconstructed by KIRI Engine:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. `POST /api/capture/submit` → KIRI `/3dgs/video`, returns a `serialize` job id
+2. `GET /api/capture/status` polls KIRI until status `2` (successful)
+3. `GET /api/capture/model` downloads the result zip, extracts the `.ply`
+4. The browser uploads that PLY to Firebase Storage and writes the place doc
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Reconstruction takes roughly 30–90 minutes, so seed places ahead of a demo
+rather than generating one live. KIRI's limits: video ≤ 3 minutes, ≤ 1920×1080.
+Both are checked client-side before upload so a bad file never costs credits.
+
+## Data model
+
+```
+places/{placeId}
+  name, uploaderId, createdAt, splatUrl, thumbnailUrl
+  hotspots?: [{ x, y, z, linksToPlaceId }]
+  entryPoint?: { position: {x,y,z}, target: {x,y,z} }
+
+places/{placeId}/audioPins/{pinId}
+  x, y, z, audioUrl, duration, createdAt, caption?
+```
+
+## Implementation notes
+
+Things that are non-obvious and cost time to rediscover:
+
+- **Pin placement raycasts an infinite floor plane**, not the splat and not a
+  finite proxy mesh. Rays hit stray floating splat particles, and a
+  sized-to-the-room proxy is missed entirely at shallow viewing angles, which
+  drops pins into empty space. Hits are clamped to the scene's bounding box.
+- **The camera auto-frames to the splat's bounding box** on load. Captures come
+  back at arbitrary scale and centering, and audio falloff plus marker sizes are
+  derived from that radius so room- and object-scale scans both behave.
+- **`AudioContext` starts suspended** until a user gesture — that is what the
+  "Enter" button is for. Without it spatial audio silently never plays.
+- **`MediaRecorder` container support differs per browser.** Chrome takes
+  `audio/webm;codecs=opus`, iOS Safari needs `audio/mp4`; the recorder probes
+  rather than hardcoding.
+- **React StrictMode is off.** Its double-mount created two WebGL contexts and
+  downloaded every splat twice.
+- Splats load with `quaternion.set(1, 0, 0, 0)` because captures arrive Y-down
+  relative to three.js.
+
+## Stack
+
+Next.js · TypeScript · Spark (`@sparkjsdev/spark`) for WebGL2 splat rendering ·
+three.js · Web Audio `PannerNode` · Firebase Firestore + Storage · KIRI Engine
