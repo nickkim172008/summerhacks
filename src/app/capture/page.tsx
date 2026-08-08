@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createPlace } from "@/lib/places";
+import { addPlacesToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 
 // https://docs.kiriengine.app/3dgs-scan/video-upload
@@ -16,13 +18,22 @@ type Phase = "idle" | "uploading" | "processing" | "saving";
 const PHASE_LABEL: Record<Exclude<Phase, "idle">, string> = {
   uploading: "Sending the walkthrough to KIRI…",
   processing: "KIRI is reconstructing the scene. This takes 30–90 minutes.",
-  saving: "Saving the place…",
+  saving: "Saving the environment…",
 };
 
 type VideoMeta = { seconds: number; width: number; height: number };
 
 export default function CapturePage() {
+  return (
+    <Suspense fallback={null}>
+      <CaptureForm />
+    </Suspense>
+  );
+}
+
+function CaptureForm() {
   const router = useRouter();
+  const albumId = useSearchParams().get("album");
   const [name, setName] = useState("");
   const [video, setVideo] = useState<File | null>(null);
   const [meta, setMeta] = useState<VideoMeta | null>(null);
@@ -31,6 +42,7 @@ export default function CapturePage() {
 
   const problem = meta && describeProblem(meta);
   const canSubmit = name.trim() && video && !problem && phase === "idle";
+  const backHref = albumId ? `/album/${albumId}` : "/";
 
   async function handleFile(file: File | undefined) {
     setVideo(file ?? null);
@@ -67,6 +79,7 @@ export default function CapturePage() {
         await modelRes.blob(),
         "anonymous",
       );
+      if (albumId) await addPlacesToAlbum(albumId, [placeId]);
       router.push(`/place/${placeId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Capture failed");
@@ -75,56 +88,84 @@ export default function CapturePage() {
   }
 
   return (
-    <main className="mx-auto max-w-xl px-6 py-12 text-white">
-      <h1 className="text-2xl font-semibold">Capture a place</h1>
-      <p className="mt-2 text-sm text-neutral-400">
-        Upload one slow walkthrough video of the space — under {MAX_SECONDS / 60}{" "}
-        minutes, {MAX_WIDTH}×{MAX_HEIGHT} or smaller. Move steadily and cover it
-        from several angles and heights. Each place is its own scene; you link
-        them together with hotspots afterwards.
-      </p>
+    <main className="min-h-screen bg-white text-[#1d1d1f]">
+      <nav className="sticky top-0 z-20 border-b border-black/10 bg-white/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-13 max-w-5xl items-center px-6 py-3">
+          <Link
+            href={backHref}
+            className="flex items-center gap-1 text-[17px] text-[#0071e3]"
+          >
+            <span aria-hidden className="text-xl leading-none">
+              ‹
+            </span>
+            {albumId ? "Album" : "Albums"}
+          </Link>
+        </div>
+      </nav>
 
-      {!isFirebaseConfigured && (
-        <p className="mt-6 text-sm text-amber-400">
-          Firebase isn&apos;t configured, so the finished place can&apos;t be
-          saved. Fill in <code>.env.local</code> first.
+      <div className="mx-auto max-w-xl px-6">
+        <h1 className="mt-8 text-[34px] font-bold tracking-tight">
+          New Environment
+        </h1>
+        <p className="mt-2 text-sm text-neutral-500">
+          Upload one slow walkthrough video of the space — under{" "}
+          {MAX_SECONDS / 60} minutes, {MAX_WIDTH}×{MAX_HEIGHT} or smaller. Move
+          steadily and cover it from several angles and heights.
+          {albumId && " It will be added to this album when it's ready."}
         </p>
-      )}
 
-      <div className="mt-8 flex flex-col gap-4">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="What is this place called?"
-          className="rounded bg-neutral-900 px-3 py-2 outline-none"
-        />
-
-        <input
-          type="file"
-          accept="video/*"
-          onChange={(e) => handleFile(e.target.files?.[0])}
-          className="text-sm text-neutral-400"
-        />
-
-        {meta && (
-          <p className={`text-sm ${problem ? "text-amber-400" : "text-neutral-400"}`}>
-            {meta.width}×{meta.height}, {meta.seconds.toFixed(0)}s
-            {problem && ` — ${problem}`}
+        {!isFirebaseConfigured && (
+          <p className="mt-6 text-sm text-amber-600">
+            Firebase isn&apos;t configured, so the finished environment
+            can&apos;t be saved. Fill in <code>.env.local</code> first.
           </p>
         )}
 
-        <button
-          onClick={submit}
-          disabled={!canSubmit}
-          className="rounded-full bg-sky-500 px-6 py-2 font-medium disabled:opacity-40"
-        >
-          Start capture
-        </button>
+        <div className="mt-8 flex flex-col gap-4">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="What is this place called?"
+            className="rounded-xl border border-black/10 bg-neutral-50 px-4 py-2.5 text-[15px] outline-none focus:border-[#0071e3]"
+          />
 
-        {phase !== "idle" && (
-          <p className="text-sm text-neutral-300">{PHASE_LABEL[phase]}</p>
-        )}
-        {error && <p className="text-sm text-red-400">{error}</p>}
+          <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed border-black/20 bg-neutral-50 px-4 py-8 text-center transition hover:border-[#0071e3]">
+            <span className="text-[15px] font-medium text-[#0071e3]">
+              {video ? video.name : "Choose a Video"}
+            </span>
+            <span className="text-xs text-neutral-500">
+              One continuous walkthrough works best
+            </span>
+            <input
+              type="file"
+              accept="video/*"
+              onChange={(e) => handleFile(e.target.files?.[0])}
+              className="hidden"
+            />
+          </label>
+
+          {meta && (
+            <p
+              className={`text-sm ${problem ? "text-amber-600" : "text-neutral-500"}`}
+            >
+              {meta.width}×{meta.height}, {meta.seconds.toFixed(0)}s
+              {problem && ` — ${problem}`}
+            </p>
+          )}
+
+          <button
+            onClick={submit}
+            disabled={!canSubmit}
+            className="rounded-full bg-[#0071e3] px-6 py-2.5 font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
+          >
+            Start Capture
+          </button>
+
+          {phase !== "idle" && (
+            <p className="text-sm text-neutral-600">{PHASE_LABEL[phase]}</p>
+          )}
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
       </div>
     </main>
   );

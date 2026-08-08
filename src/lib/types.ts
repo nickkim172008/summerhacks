@@ -30,6 +30,14 @@ export interface Place {
   location?: { lat: number; lng: number };
 }
 
+/** A user-created collection of places, shown like an Apple Photos album. */
+export interface Album {
+  id: string;
+  name: string;
+  placeIds: string[];
+  createdAt: Timestamp;
+}
+
 export interface AudioPin extends Vec3 {
   id: string;
   audioUrl: string;
