@@ -13,10 +13,13 @@ const MAX_WIDTH = 1920;
 const MAX_HEIGHT = 1080;
 const POLL_INTERVAL_MS = 20_000;
 
-type Phase = "idle" | "uploading" | "processing" | "saving";
+/** Pitch mode: show the upload UX without waiting 30–90 min for a splat. */
+const DEMO_CAPTURE = process.env.NEXT_PUBLIC_DEMO_CAPTURE === "true";
 
-const PHASE_LABEL: Record<Exclude<Phase, "idle">, string> = {
-  uploading: "Sending the walkthrough to KIRI…",
+type Phase = "idle" | "uploading" | "processing" | "saving" | "queued";
+
+const PHASE_LABEL: Record<Exclude<Phase, "idle" | "queued">, string> = {
+  uploading: "Sending the walkthrough…",
   processing: "KIRI is reconstructing the scene. This takes 30–90 minutes.",
   saving: "Saving the environment…",
 };
@@ -40,7 +43,7 @@ function CaptureForm() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  const problem = meta && describeProblem(meta);
+  const problem = !DEMO_CAPTURE && meta && describeProblem(meta);
   const canSubmit = name.trim() && video && !problem && phase === "idle";
   const backHref = albumId ? `/album/${albumId}` : "/";
 
@@ -53,6 +56,13 @@ function CaptureForm() {
     if (!video) return;
     setError(null);
     setPhase("uploading");
+
+    if (DEMO_CAPTURE) {
+      await sleep(1600);
+      setPhase("queued");
+      return;
+    }
+
     try {
       const form = new FormData();
       form.append("video", video);
@@ -87,6 +97,46 @@ function CaptureForm() {
     }
   }
 
+  if (phase === "queued") {
+    return (
+      <main className="min-h-screen bg-white text-[#1d1d1f]">
+        <nav className="sticky top-0 z-20 border-b border-black/10 bg-white/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-13 max-w-5xl items-center px-6 py-3">
+            <Link
+              href={backHref}
+              className="flex items-center gap-1 text-[17px] text-[#0071e3]"
+            >
+              <span aria-hidden className="text-xl leading-none">
+                ‹
+              </span>
+              {albumId ? "Album" : "Albums"}
+            </Link>
+          </div>
+        </nav>
+        <div className="mx-auto max-w-xl px-6 pt-16 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#0071e3]/10 text-2xl text-[#0071e3]">
+            ✓
+          </div>
+          <h1 className="mt-6 text-[28px] font-bold tracking-tight">
+            Video added
+          </h1>
+          <p className="mt-2 text-sm text-neutral-500">
+            <span className="font-medium text-[#1d1d1f]">{name.trim()}</span>{" "}
+            is queued for reconstruction. In production this takes 30–90
+            minutes — then it shows up as a walkable environment
+            {albumId ? " in this album" : ""}.
+          </p>
+          <Link
+            href={backHref}
+            className="mt-8 inline-block rounded-full bg-[#0071e3] px-6 py-2.5 font-medium text-white transition hover:bg-[#0077ed]"
+          >
+            {albumId ? "Back to Album" : "Back to Albums"}
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-white text-[#1d1d1f]">
       <nav className="sticky top-0 z-20 border-b border-black/10 bg-white/80 backdrop-blur-xl">
@@ -114,7 +164,7 @@ function CaptureForm() {
           {albumId && " It will be added to this album when it's ready."}
         </p>
 
-        {!isFirebaseConfigured && (
+        {!isFirebaseConfigured && !DEMO_CAPTURE && (
           <p className="mt-6 text-sm text-amber-600">
             Firebase isn&apos;t configured, so the finished environment
             can&apos;t be saved. Fill in <code>.env.local</code> first.
@@ -161,7 +211,7 @@ function CaptureForm() {
             Start Capture
           </button>
 
-          {phase !== "idle" && (
+          {phase !== "idle" && phase !== "queued" && (
             <p className="text-sm text-neutral-600">{PHASE_LABEL[phase]}</p>
           )}
           {error && <p className="text-sm text-red-500">{error}</p>}
@@ -169,6 +219,10 @@ function CaptureForm() {
       </div>
     </main>
   );
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function describeProblem({ seconds, width, height }: VideoMeta) {
