@@ -224,6 +224,16 @@ export default function PlaceExperience({
         <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-2xl bg-neutral-900/90 p-4 backdrop-blur">
           {error && <p className="text-sm text-red-400">{error}</p>}
 
+          {/* Arming placement changes only the cursor, which nobody notices —
+              without this the button looks like it did nothing. */}
+          {!pending && placementMode !== "none" && (
+            <p className="text-sm text-neutral-300">
+              {placementMode === "voice"
+                ? "Now click the spot where this memory belongs."
+                : "Now click the spot where the way out should stand."}
+            </p>
+          )}
+
           {!pending && (
             <div className="flex gap-2">
               <button
