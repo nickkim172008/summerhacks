@@ -12,11 +12,18 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, storage } from "./firebase";
 import type { AudioPin, Place } from "./types";
 
-export function subscribeToPlaces(onChange: (places: Place[]) => void) {
+export function subscribeToPlaces(
+  onChange: (places: Place[]) => void,
+  onError?: (error: Error) => void,
+) {
   const q = query(collection(db, "places"), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place));
+    },
+    onError,
+  );
 }
 
 export function subscribeToPins(
