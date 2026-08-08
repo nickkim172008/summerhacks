@@ -22,31 +22,31 @@ import type { SplatMesh } from "@sparkjsdev/spark";
  * to open from outside says so with an explicit `entryPoint`.
  */
 
+/**
+ * The middle is the midpoint of the trimmed extent rather than the median of the
+ * splats. The median tracks where the mass is, so a wall you filmed up close
+ * drags it off the middle of the space — and once the camera turns about itself,
+ * any such error is visible as a capture that pivots off its own centre.
+ */
+
 /** Splats sampled per capture: enough for a stable percentile, cheap to sort. */
 const MAX_SAMPLES = 150_000;
 /** Below this, a splat is reconstruction haze rather than a real surface. */
 const MIN_OPACITY = 0.15;
 /** Fraction ignored at each end of each axis. Floaters live out there. */
 const TRIM = 0.02;
-/** Standing eye height, as a fraction of the floor-to-ceiling span. */
-const EYE_FRACTION = 0.55;
 /** Fewer usable samples than this and none of the percentiles mean anything. */
 const MIN_SAMPLES = 32;
-/** Orbit pivot distance ahead of the eye, as a fraction of the capture radius. */
-const PIVOT_FRACTION = 0.3;
 
 export interface Framing {
   /** Extent of the capture with floaters trimmed off. */
   box: THREE.Box3;
+  /** Where the camera goes, and what it turns about: the middle of the place. */
   center: THREE.Vector3;
   radius: number;
   floorY: number;
-  /** Where the camera goes: the middle of the place, at standing height. */
-  eye: THREE.Vector3;
-  /** Unit direction the camera looks from `eye`. */
+  /** Unit direction the camera looks from `center`. */
   forward: THREE.Vector3;
-  /** How far along `forward` to put the orbit pivot. */
-  pivotDistance: number;
 }
 
 function percentile(sorted: Float32Array, q: number) {
@@ -112,32 +112,14 @@ export function frameCapture(mesh: SplatMesh): Framing | null {
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
   const radius = size.length() / 2;
-  const floorY = box.min.y;
 
-  // Stand at the median of the mass rather than the middle of the box: one
-  // overshot wall or an open doorway skews the box, the median far less.
-  const eye = new THREE.Vector3(
-    percentile(sortedX, 0.5),
-    floorY + size.y * EYE_FRACTION,
-    percentile(sortedZ, 0.5),
-  );
-
-  // Face down the longer horizontal axis, toward whichever end is further off.
-  // That is the view with the most depth in it instead of a wall up close.
+  // Face down the longer horizontal axis: that is the view with the most depth
+  // in it, rather than a wall up close. Standing dead centre the two ends are
+  // equidistant, so the sign is arbitrary and +axis is as good as any.
   const forward =
     size.x >= size.z
-      ? new THREE.Vector3(box.max.x - eye.x >= eye.x - box.min.x ? 1 : -1, 0, 0)
-      : new THREE.Vector3(0, 0, box.max.z - eye.z >= eye.z - box.min.z ? 1 : -1);
+      ? new THREE.Vector3(1, 0, 0)
+      : new THREE.Vector3(0, 0, 1);
 
-  return {
-    box,
-    center,
-    radius,
-    floorY,
-    eye,
-    forward,
-    // Orbiting needs somewhere to turn about. Put it a short way ahead so a drag
-    // reads as looking around rather than swinging around a distant object.
-    pivotDistance: Math.max(radius * PIVOT_FRACTION, 1e-4),
-  };
+  return { box, center, radius, floorY: box.min.y, forward };
 }
