@@ -2,6 +2,26 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { FirebaseError } from "firebase/app";
 import { storage } from "./firebase";
 
+/**
+ * Firebase reports both "there is no bucket" and "the rules said no" as an
+ * upload failure, and they need opposite fixes. Telling someone to enable
+ * Storage when the rules refused them sends them to a console page that already
+ * looks correct, which is the slowest possible way to find a rules problem.
+ */
+function explainStorageError(error: unknown, what: string) {
+  const code = error instanceof FirebaseError ? error.code : "";
+  if (code === "storage/unauthorized") {
+    return `${what} upload was refused by Firebase Storage rules (${code}). Sign in, and make sure storage.rules is deployed: firebase deploy --only storage.`;
+  }
+  if (code === "storage/unauthenticated") {
+    return `${what} upload needs you to be signed in (${code}).`;
+  }
+  // A project with no bucket provisioned answers 404, which the SDK reports as
+  // an opaque storage/unknown — worth naming, since no amount of retrying fixes it.
+  const suffix = code ? ` (${code})` : "";
+  return `${what} upload to Firebase Storage failed${suffix}. If Storage has never been enabled for this project, turn it on in the Firebase console, then try again.`;
+}
+
 /** Upload a finished splat to Firebase Storage; returns a public download URL. */
 export async function uploadSplat(
   placeId: string,
@@ -16,11 +36,7 @@ export async function uploadSplat(
       contentType: splatFile.type || "application/octet-stream",
     });
   } catch (error) {
-    const code = error instanceof FirebaseError ? ` (${error.code})` : "";
-    throw new Error(
-      `Upload to Firebase Storage failed${code}. Enable Storage in the Firebase console, then try again.`,
-      { cause: error },
-    );
+    throw new Error(explainStorageError(error, "Splat"), { cause: error });
   }
   return getDownloadURL(splatRef);
 }
@@ -40,11 +56,12 @@ export async function uploadVideoFile(
       contentType: video.type || "video/mp4",
     });
   } catch (error) {
-    const code = error instanceof FirebaseError ? ` (${error.code})` : "";
-    throw new Error(
-      `Video upload to Firebase Storage failed${code}. Enable Storage in the Firebase console, then try again.`,
-      { cause: error },
-    );
+    // storage/unauthorized is the rules refusing the write, which is a different
+    // problem from the bucket not existing and has a different fix — saying
+    // "enable Storage" for it sends you to a console page that already looks
+    // fine. storage/unknown is the one that means no bucket: a project without
+    // one answers 404, which the SDK reports opaquely.
+    throw new Error(explainStorageError(error, "Video"), { cause: error });
   }
   return getDownloadURL(videoRef);
 }
@@ -61,11 +78,7 @@ export async function uploadAudio(
   try {
     await uploadBytes(audioRef, audio, { contentType: "audio/wav" });
   } catch (error) {
-    const code = error instanceof FirebaseError ? ` (${error.code})` : "";
-    throw new Error(
-      `Audio upload to Firebase Storage failed${code}. Enable Storage in the Firebase console, then try again.`,
-      { cause: error },
-    );
+    throw new Error(explainStorageError(error, "Audio"), { cause: error });
   }
   return getDownloadURL(audioRef);
 }
@@ -79,11 +92,7 @@ export async function uploadProfilePhoto(
   try {
     await uploadBytes(photoRef, image, { contentType: "image/jpeg" });
   } catch (error) {
-    const code = error instanceof FirebaseError ? ` (${error.code})` : "";
-    throw new Error(
-      `Photo upload failed${code}. Enable Storage in the Firebase console, then try again.`,
-      { cause: error },
-    );
+    throw new Error(explainStorageError(error, "Photo"), { cause: error });
   }
   return getDownloadURL(photoRef);
 }
