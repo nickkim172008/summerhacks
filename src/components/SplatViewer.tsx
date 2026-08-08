@@ -4,32 +4,50 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
-import type { AudioPin } from "@/lib/types";
+import type { AudioPin, EntryPoint, Hotspot, Vec3 } from "@/lib/types";
 
 export interface SplatViewerProps {
   splatUrl: string;
   pins: AudioPin[];
+  hotspots?: Hotspot[];
+  entryPoint?: EntryPoint;
   placementMode: boolean;
-  onPlacePoint: (point: { x: number; y: number; z: number }) => void;
+  onPlacePoint: (point: Vec3) => void;
   onPinClick?: (pinId: string) => void;
+  onHotspotClick?: (linksToPlaceId: string) => void;
   onCameraFrame?: (camera: THREE.PerspectiveCamera) => void;
+  onSceneReady?: (radius: number) => void;
   activePinIds?: string[];
 }
 
 const FALLBACK_PLACE_DISTANCE = 3;
 const FLOOR_NORMAL = new THREE.Vector3(0, 1, 0);
 
+function clearGroup(group: THREE.Group) {
+  for (const child of [...group.children]) {
+    group.remove(child);
+    const marker = child as THREE.Mesh;
+    marker.geometry.dispose();
+    (marker.material as THREE.Material).dispose();
+  }
+}
+
 export default function SplatViewer({
   splatUrl,
   pins,
+  hotspots = [],
+  entryPoint,
   placementMode,
   onPlacePoint,
   onPinClick,
+  onHotspotClick,
   onCameraFrame,
+  onSceneReady,
   activePinIds = [],
 }: SplatViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pinGroupRef = useRef<THREE.Group | null>(null);
+  const hotspotGroupRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const [sceneRadius, setSceneRadius] = useState(1);
 
@@ -37,12 +55,18 @@ export default function SplatViewer({
   const placementModeRef = useRef(placementMode);
   const onPlacePointRef = useRef(onPlacePoint);
   const onPinClickRef = useRef(onPinClick);
+  const onHotspotClickRef = useRef(onHotspotClick);
   const onCameraFrameRef = useRef(onCameraFrame);
+  const onSceneReadyRef = useRef(onSceneReady);
+  const entryPointRef = useRef(entryPoint);
   useEffect(() => {
     placementModeRef.current = placementMode;
     onPlacePointRef.current = onPlacePoint;
     onPinClickRef.current = onPinClick;
+    onHotspotClickRef.current = onHotspotClick;
     onCameraFrameRef.current = onCameraFrame;
+    onSceneReadyRef.current = onSceneReady;
+    entryPointRef.current = entryPoint;
   });
 
   useEffect(() => {
@@ -82,8 +106,16 @@ export default function SplatViewer({
         const center = box.getCenter(new THREE.Vector3());
         const radius = box.getSize(new THREE.Vector3()).length() / 2;
 
-        controls.target.copy(center);
-        camera.position.copy(center).add(new THREE.Vector3(0, radius * 0.3, radius * 2));
+        const entry = entryPointRef.current;
+        if (entry) {
+          camera.position.copy(entry.position);
+          controls.target.copy(entry.target);
+        } else {
+          controls.target.copy(center);
+          camera.position
+            .copy(center)
+            .add(new THREE.Vector3(0, radius * 0.3, radius * 2));
+        }
         camera.near = Math.max(radius / 1000, 0.001);
         camera.far = radius * 100;
         camera.updateProjectionMatrix();
@@ -92,6 +124,7 @@ export default function SplatViewer({
         floorPlane.set(FLOOR_NORMAL, -box.min.y);
         bounds = { box, center, radius };
         setSceneRadius(radius);
+        onSceneReadyRef.current?.(radius);
       },
     });
     // Splat captures (SPZ/PLY) come in Y-down relative to three.js convention.
@@ -112,6 +145,10 @@ export default function SplatViewer({
     const pinGroup = new THREE.Group();
     scene.add(pinGroup);
     pinGroupRef.current = pinGroup;
+
+    const hotspotGroup = new THREE.Group();
+    scene.add(hotspotGroup);
+    hotspotGroupRef.current = hotspotGroup;
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -139,9 +176,13 @@ export default function SplatViewer({
       raycaster.setFromCamera(pointer, camera);
 
       if (!placementModeRef.current) {
-        const hit = raycaster.intersectObjects(pinGroup.children, false)[0];
-        const pinId = hit?.object.userData.pinId;
+        const hit = raycaster.intersectObjects(
+          [...pinGroup.children, ...hotspotGroup.children],
+          false,
+        )[0];
+        const { pinId, linksToPlaceId } = hit?.object.userData ?? {};
         if (pinId) onPinClickRef.current?.(pinId);
+        else if (linksToPlaceId) onHotspotClickRef.current?.(linksToPlaceId);
         return;
       }
 
@@ -193,6 +234,7 @@ export default function SplatViewer({
       renderer.dispose();
       container.removeChild(renderer.domElement);
       pinGroupRef.current = null;
+      hotspotGroupRef.current = null;
       cameraRef.current = null;
     };
   }, [splatUrl]);
@@ -200,13 +242,7 @@ export default function SplatViewer({
   useEffect(() => {
     const pinGroup = pinGroupRef.current;
     if (!pinGroup) return;
-
-    for (const child of [...pinGroup.children]) {
-      pinGroup.remove(child);
-      const marker = child as THREE.Mesh;
-      marker.geometry.dispose();
-      (marker.material as THREE.Material).dispose();
-    }
+    clearGroup(pinGroup);
 
     for (const pin of pins) {
       const marker = new THREE.Mesh(
@@ -222,6 +258,27 @@ export default function SplatViewer({
       pinGroup.add(marker);
     }
   }, [pins, activePinIds, sceneRadius]);
+
+  useEffect(() => {
+    const hotspotGroup = hotspotGroupRef.current;
+    if (!hotspotGroup) return;
+    clearGroup(hotspotGroup);
+
+    // Octahedrons so jump points read as distinct from the round voice pins.
+    for (const hotspot of hotspots) {
+      const marker = new THREE.Mesh(
+        new THREE.OctahedronGeometry(sceneRadius * 0.05),
+        new THREE.MeshBasicMaterial({
+          color: 0xb388ff,
+          transparent: true,
+          opacity: 0.85,
+        }),
+      );
+      marker.position.set(hotspot.x, hotspot.y, hotspot.z);
+      marker.userData.linksToPlaceId = hotspot.linksToPlaceId;
+      hotspotGroup.add(marker);
+    }
+  }, [hotspots, sceneRadius]);
 
   return (
     <div

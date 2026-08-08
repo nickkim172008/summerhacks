@@ -1,52 +1,63 @@
 "use client";
 
 import { useState } from "react";
-import dynamic from "next/dynamic";
-import type { AudioPin } from "@/lib/types";
+import PlaceExperience from "@/components/PlaceExperience";
+import type { AudioPin, Place } from "@/lib/types";
 import type { Timestamp } from "firebase/firestore";
 
-const SplatViewer = dynamic(() => import("@/components/SplatViewer"), {
-  ssr: false,
-});
+// Local harness: exercises jumps, pin placement and spatial playback without
+// depending on Firebase credentials.
+const SPLAT_BASE = "https://sparkjs.dev/assets/splats";
 
-const SAMPLE_SPLAT = "https://sparkjs.dev/assets/splats/butterfly.spz";
+const PLACES: Record<string, Place> = {
+  butterfly: {
+    id: "butterfly",
+    name: "The Butterfly Room",
+    uploaderId: "dev",
+    createdAt: null as unknown as Timestamp,
+    splatUrl: `${SPLAT_BASE}/butterfly.spz`,
+    thumbnailUrl: "",
+    hotspots: [{ x: 0.6, y: -0.4, z: 0, linksToPlaceId: "penguin" }],
+  },
+  penguin: {
+    id: "penguin",
+    name: "The Penguin Ledge",
+    uploaderId: "dev",
+    createdAt: null as unknown as Timestamp,
+    splatUrl: `${SPLAT_BASE}/penguin.spz`,
+    thumbnailUrl: "",
+    hotspots: [{ x: 0.4, y: -0.3, z: 0, linksToPlaceId: "butterfly" }],
+  },
+};
 
 export default function DevPage() {
-  const [pins, setPins] = useState<AudioPin[]>([]);
-  const [placementMode, setPlacementMode] = useState(false);
+  const [placeId, setPlaceId] = useState("butterfly");
+  const [pinsByPlace, setPinsByPlace] = useState<Record<string, AudioPin[]>>({});
+
+  const place = PLACES[placeId];
+  const pins = pinsByPlace[placeId] ?? [];
 
   return (
-    <div className="flex h-screen flex-col bg-black text-white">
-      <div className="flex items-center gap-4 p-3">
-        <button
-          onClick={() => setPlacementMode((v) => !v)}
-          className="rounded bg-sky-500 px-3 py-1 text-sm font-medium"
-        >
-          {placementMode ? "Cancel placement" : "Place a pin"}
-        </button>
-        <span className="text-sm text-neutral-400">{pins.length} pins</span>
-      </div>
-      <div className="flex-1">
-        <SplatViewer
-          splatUrl={SAMPLE_SPLAT}
-          pins={pins}
-          placementMode={placementMode}
-          onPlacePoint={(p) => {
-            setPins((prev) => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                ...p,
-                audioUrl: "",
-                duration: 0,
-                createdAt: null as unknown as Timestamp,
-              },
-            ]);
-            setPlacementMode(false);
-          }}
-          onPinClick={(id) => console.log("clicked pin", id)}
-        />
-      </div>
+    <div className="h-screen w-screen">
+      <PlaceExperience
+        place={place}
+        pins={pins}
+        onJump={setPlaceId}
+        onSubmitPin={async (point, recording, caption) => {
+          const pin: AudioPin = {
+            id: crypto.randomUUID(),
+            ...point,
+            audioUrl: URL.createObjectURL(recording.blob),
+            duration: recording.duration,
+            createdAt: null as unknown as Timestamp,
+            ...(caption ? { caption } : {}),
+          };
+          setPinsByPlace((prev) => ({
+            ...prev,
+            [placeId]: [...(prev[placeId] ?? []), pin],
+          }));
+        }}
+      />
     </div>
   );
 }
