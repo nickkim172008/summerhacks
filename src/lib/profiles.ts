@@ -1,11 +1,16 @@
 import {
   collection,
   doc,
+  endAt,
   getDoc,
+  getDocs,
+  limit,
   onSnapshot,
+  orderBy,
   query,
   runTransaction,
   serverTimestamp,
+  startAt,
   updateDoc,
   where,
   type Unsubscribe,
@@ -56,6 +61,50 @@ export function subscribeToProfileByUsername(
       first ? ({ id: first.id, ...first.data() } as Profile) : null,
     );
   });
+}
+
+export const PROFILE_SEARCH_LIMIT = 20;
+
+/**
+ * Handle search, matched by prefix.
+ *
+ * Firestore has no substring or full-text search, so "ayd" finds "aydan" but
+ * nothing finds "dan" inside it. Prefix is the normal shape for handles.
+ * The endAt sentinel is U+F8FF, which sorts above every character a username
+ * can contain, so the range [term, term + U+F8FF] spans exactly the strings
+ * beginning with term. Ordered on one field, so the automatic index covers it.
+ */
+export async function searchProfiles(rawTerm: string): Promise<Profile[]> {
+  const term = normalizeUsername(rawTerm);
+  if (!term) return [];
+  const snap = await getDocs(
+    query(
+      collection(db, "profiles"),
+      orderBy("username"),
+      startAt(term),
+      endAt(`${term}`),
+      limit(PROFILE_SEARCH_LIMIT),
+    ),
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Profile);
+}
+
+/** Newest accounts, for an empty search box to have something to show. */
+export function subscribeToRecentProfiles(
+  onChange: (profiles: Profile[]) => void,
+  onError?: (error: Error) => void,
+): Unsubscribe {
+  const q = query(
+    collection(db, "profiles"),
+    orderBy("createdAt", "desc"),
+    limit(PROFILE_SEARCH_LIMIT),
+  );
+  return onSnapshot(
+    q,
+    (snap) =>
+      onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Profile)),
+    onError,
+  );
 }
 
 /**

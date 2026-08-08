@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import type { Place, Vec3 } from "@/lib/types";
 
 const SplatViewer = dynamic(() => import("./SplatViewer"), { ssr: false });
@@ -14,6 +15,8 @@ export interface PlaceExperienceProps {
   place: Place;
   /** Other places this one can link to, for authoring hotspots. */
   linkTargets?: { id: string; name: string }[];
+  /** Who captured this, when their profile could be resolved. */
+  uploader?: { username: string; displayName: string } | null;
   onAddHotspot?: (point: Vec3, linksToPlaceId: string) => Promise<void>;
   onJump: (placeId: string) => void;
   onExit?: () => void;
@@ -22,6 +25,7 @@ export interface PlaceExperienceProps {
 export default function PlaceExperience({
   place,
   linkTargets = [],
+  uploader,
   onAddHotspot,
   onJump,
   onExit,
@@ -132,6 +136,14 @@ export default function PlaceExperience({
       {!entered && (
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/85 px-6 backdrop-blur">
           <h1 className="text-2xl font-semibold">{place.name}</h1>
+          {uploader && (
+            <Link
+              href={`/u/${uploader.username}`}
+              className="text-sm text-sky-400 transition hover:text-sky-300"
+            >
+              by @{uploader.username}
+            </Link>
+          )}
           {captured && (
             // Rendered in the visitor's locale and time zone, neither of which
             // the server shares, so the two passes legitimately differ.

@@ -1,15 +1,32 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 
-type Tab = "library" | "map";
+type Tab = "library" | "discover" | "map";
 
 export default function AppTabs({ active }: { active: Tab }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-black/10 bg-white/90 backdrop-blur-xl">
       <div className="mx-auto flex max-w-5xl items-stretch justify-around px-6 py-2">
-        <TabLink href="/" label="Library" active={active === "library"} />
-        <TabLink href="/map" label="Map" active={active === "map"} />
+        <TabLink
+          href="/"
+          label="Library"
+          icon={<LibraryIcon />}
+          active={active === "library"}
+        />
+        <TabLink
+          href="/discover"
+          label="Discover"
+          icon={<DiscoverIcon />}
+          active={active === "discover"}
+        />
+        <TabLink
+          href="/map"
+          label="Map"
+          icon={<MapIcon />}
+          active={active === "map"}
+        />
       </div>
     </nav>
   );
@@ -18,10 +35,12 @@ export default function AppTabs({ active }: { active: Tab }) {
 function TabLink({
   href,
   label,
+  icon,
   active,
 }: {
   href: string;
   label: string;
+  icon: ReactNode;
   active: boolean;
 }) {
   return (
@@ -31,9 +50,17 @@ function TabLink({
         active ? "text-[#0071e3]" : "text-neutral-500 hover:text-[#1d1d1f]"
       }`}
     >
-      {label === "Library" ? <LibraryIcon /> : <MapIcon />}
+      {icon}
       {label}
     </Link>
+  );
+}
+
+function DiscoverIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden>
+      <path d="M10.5 3a7.5 7.5 0 1 0 4.55 13.46l4.24 4.25a1 1 0 0 0 1.42-1.42l-4.25-4.24A7.5 7.5 0 0 0 10.5 3Zm0 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11Z" />
+    </svg>
   );
 }
 

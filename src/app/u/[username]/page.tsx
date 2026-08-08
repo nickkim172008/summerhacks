@@ -33,6 +33,8 @@ export default function ProfilePage({
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [albums, setAlbums] = useState<Album[] | null>(null);
   const [places, setPlaces] = useState<Place[] | null>(null);
+  const [albumsError, setAlbumsError] = useState<string | null>(null);
+  const [placesError, setPlacesError] = useState<string | null>(null);
   const [followers, setFollowers] = useState<number | null>(null);
   const [following, setFollowing] = useState<number | null>(null);
 
@@ -44,12 +46,30 @@ export default function ProfilePage({
     if (!profile) {
       setAlbums(null);
       setPlaces(null);
+      setAlbumsError(null);
+      setPlacesError(null);
       setFollowers(null);
       setFollowing(null);
       return;
     }
-    const unsubAlbums = subscribeToAlbumsByOwner(profile.id, setAlbums);
-    const unsubPlaces = subscribeToPlacesByUploader(profile.id, setPlaces);
+    setAlbumsError(null);
+    setPlacesError(null);
+    const unsubAlbums = subscribeToAlbumsByOwner(
+      profile.id,
+      setAlbums,
+      () => {
+        setAlbums([]);
+        setAlbumsError("Couldn’t load albums (check Firestore rules).");
+      },
+    );
+    const unsubPlaces = subscribeToPlacesByUploader(
+      profile.id,
+      setPlaces,
+      () => {
+        setPlaces([]);
+        setPlacesError("Couldn’t load environments (check Firestore rules).");
+      },
+    );
     const unsubFollowers = subscribeToFollowerCount(profile.id, setFollowers);
     const unsubFollowing = subscribeToFollowingCount(profile.id, setFollowing);
     return () => {
@@ -136,7 +156,9 @@ export default function ProfilePage({
 
             <section className="mt-10">
               <h2 className="text-[22px] font-bold tracking-tight">Albums</h2>
-              {albums === null ? (
+              {albumsError ? (
+                <p className="mt-3 text-sm text-amber-600">{albumsError}</p>
+              ) : albums === null ? (
                 <p className="mt-3 text-sm text-neutral-500">Loading…</p>
               ) : albums.length === 0 ? (
                 <p className="mt-3 text-sm text-neutral-500">No albums yet.</p>
@@ -175,7 +197,9 @@ export default function ProfilePage({
               <h2 className="text-[22px] font-bold tracking-tight">
                 Environments
               </h2>
-              {places === null ? (
+              {placesError ? (
+                <p className="mt-3 text-sm text-amber-600">{placesError}</p>
+              ) : places === null ? (
                 <p className="mt-3 text-sm text-neutral-500">Loading…</p>
               ) : places.length === 0 ? (
                 <p className="mt-3 text-sm text-neutral-500">
