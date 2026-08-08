@@ -242,7 +242,11 @@ function CaptureFlow() {
     setBusy("saving");
     setError(null);
     try {
-      const placeId = await createPlace(splat.name, splat.file, "anonymous");
+      const placeId = await createPlace(
+        splat.name,
+        await toSpz(splat),
+        "anonymous",
+      );
       if (albumId) await addPlacesToAlbum(albumId, [placeId]);
       // It serves from Storage now, so the local copy is dead weight.
       if (job) await dropCachedSplat(job.serialize);
@@ -521,6 +525,24 @@ function sleep(ms: number) {
 
 function prettyName(fileName: string) {
   return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+}
+
+/**
+ * KIRI returns float32 PLY — 65MB for a small room, most of it spherical
+ * harmonics stored at full precision. SPZ quantizes them to roughly a
+ * thirteenth of the size with no visible loss, and Spark reads it natively,
+ * so only the compressed copy is ever uploaded or served.
+ *
+ * Spark is imported lazily: the form and progress views have no use for it.
+ */
+async function toSpz({ file, name }: { file: File; name: string }) {
+  const { transcodeSpz } = await import("@sparkjsdev/spark");
+  const { fileBytes } = await transcodeSpz({
+    inputs: [{ fileBytes: new Uint8Array(await file.arrayBuffer()) }],
+  });
+  return new File([fileBytes as BlobPart], `${slug(name)}.spz`, {
+    type: "application/octet-stream",
+  });
 }
 
 function splatFile(blob: Blob, name: string) {
