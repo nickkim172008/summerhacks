@@ -20,10 +20,17 @@ import {
 } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
+import { subscribeToRecentProfiles } from "@/lib/profiles";
+import {
+  DEMO_OWNED_JOURNEYS,
+  DEMO_SHARED_JOURNEY,
+  type DemoJourney,
+} from "@/lib/demoJourneys";
 import AlbumCover from "@/components/AlbumCover";
 import AlbumCollaborators from "@/components/AlbumCollaborators";
+import Avatar from "@/components/Avatar";
 import TileMenu, { type TileMenuItem } from "@/components/TileMenu";
-import type { Album, AlbumVisibility, Place } from "@/lib/types";
+import type { Album, AlbumVisibility, Place, Profile } from "@/lib/types";
 
 /** The library counts things constantly; "1 places" is not worth shipping. */
 function countLabel(n: number, singular: string, plural: string) {
@@ -43,6 +50,9 @@ export default function AlbumsPage() {
   const [deleting, setDeleting] = useState<Album | null>(null);
   const [leaving, setLeaving] = useState<Album | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Real faces for the demo shared journey — pulled from Firestore so the
+  // cover stack looks like the rest of the library.
+  const [demoFaces, setDemoFaces] = useState<Profile[]>([]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -71,6 +81,21 @@ export default function AlbumsPage() {
     if (!isFirebaseConfigured || !user) return;
     return subscribeToAlbumsSharedWith(user.uid, setSharedAlbums, () =>
       setSharedAlbums([]),
+    );
+  }, [user]);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured || !user) return;
+    const want = DEMO_SHARED_JOURNEY.shared?.faceCount ?? 3;
+    return subscribeToRecentProfiles(
+      (profiles) => {
+        const withPhotos = profiles.filter(
+          (p) => p.id !== user.uid && Boolean(p.photoURL),
+        );
+        const pool = withPhotos.length >= want ? withPhotos : profiles;
+        setDemoFaces(pool.slice(0, want));
+      },
+      () => setDemoFaces([]),
     );
   }, [user]);
 
@@ -169,6 +194,9 @@ export default function AlbumsPage() {
               className="mt-8 scroll-mt-20 grid grid-cols-4 gap-x-6 gap-y-7"
             >
               <RecentsCard places={ownPlaces ?? []} />
+              {DEMO_OWNED_JOURNEYS.map((journey) => (
+                <DemoJourneyCard key={journey.id} journey={journey} />
+              ))}
               {(ownedAlbums ?? []).map((album) => (
                 <AlbumCard
                   key={album.id}
@@ -187,23 +215,20 @@ export default function AlbumsPage() {
               <h2 className="text-[20px] font-semibold leading-[26px] tracking-[-0.01em]">
                 Shared with you
               </h2>
-              {(sharedAlbums?.length ?? 0) === 0 ? (
-                <p className="mt-3 max-w-[62ch] text-[15px] leading-6 text-[#4A4F57]">
-                  Journeys others invite you to show up here after you accept
-                  from Notifications.
-                </p>
-              ) : (
-                <ul className="mt-5 grid grid-cols-4 gap-x-6 gap-y-7">
-                  {(sharedAlbums ?? []).map((album) => (
-                    <AlbumCard
-                      key={album.id}
-                      album={album}
-                      places={resolveAlbumPlaces(album.placeIds, placeById)}
-                      onRemove={() => setLeaving(album)}
-                    />
-                  ))}
-                </ul>
-              )}
+              <ul className="mt-5 grid grid-cols-4 gap-x-6 gap-y-7">
+                <DemoJourneyCard
+                  journey={DEMO_SHARED_JOURNEY}
+                  faces={demoFaces}
+                />
+                {(sharedAlbums ?? []).map((album) => (
+                  <AlbumCard
+                    key={album.id}
+                    album={album}
+                    places={resolveAlbumPlaces(album.placeIds, placeById)}
+                    onRemove={() => setLeaving(album)}
+                  />
+                ))}
+              </ul>
             </div>
           </>
         )}
@@ -388,6 +413,88 @@ function AlbumCard({
         </Link>
       </div>
     </li>
+  );
+}
+
+/**
+ * Pitch journeys with a still cover and a fixed place count — not linked into
+ * a real album. The shared one also wears real collaborator faces from
+ * Firestore so the stack looks like the rest of the library.
+ */
+function DemoJourneyCard({
+  journey,
+  faces = [],
+}: {
+  journey: DemoJourney;
+  faces?: Profile[];
+}) {
+  const peopleCount = journey.shared?.peopleCount ?? 0;
+
+  return (
+    <li>
+      <div className="group relative">
+        <div className="relative aspect-[4/3]">
+          <div className={COVER_CLASS} aria-label={journey.name}>
+            <AlbumCover coverUrl={journey.coverUrl} places={[]} alt={journey.name} />
+            {journey.shared && faces.length > 0 && (
+              <DemoCollaboratorFaces
+                faces={faces}
+                peopleCount={journey.shared.peopleCount}
+              />
+            )}
+          </div>
+        </div>
+        <div className="mt-3 block">
+          <p className="truncate font-display text-[19px] font-normal leading-6 tracking-[-0.01em]">
+            {journey.name}
+          </p>
+          <p className="mt-0.5 truncate text-[13px] leading-[18px] text-[#6B7178] tabular-nums">
+            {countLabel(journey.placeCount, "place", "places")}
+            {peopleCount > 1
+              ? ` · ${countLabel(peopleCount, "person", "people")}`
+              : ""}
+          </p>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function DemoCollaboratorFaces({
+  faces,
+  peopleCount,
+}: {
+  faces: Profile[];
+  peopleCount: number;
+}) {
+  const shown = faces.slice(0, 3);
+  const extra = Math.max(0, peopleCount - shown.length);
+  if (shown.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none absolute bottom-3.5 left-4 flex items-center">
+      <div className="flex flex-row-reverse">
+        {extra > 0 && (
+          <span className="relative z-0 -ml-[7px] flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[rgba(20,22,26,0.72)] text-[10px] font-semibold tabular-nums text-white shadow-[0_0_0_2px_#FAF9F7]">
+            +{extra}
+          </span>
+        )}
+        {[...shown].reverse().map((profile, index) => (
+          <span
+            key={profile.id}
+            title={`@${profile.username}`}
+            className="relative -ml-[7px] first:ml-0 rounded-full shadow-[0_0_0_2px_#FAF9F7]"
+            style={{ zIndex: shown.length - index }}
+          >
+            <Avatar
+              profile={profile}
+              className="h-[22px] w-[22px]"
+              textClassName="text-[10px]"
+            />
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
