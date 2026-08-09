@@ -34,7 +34,9 @@ export function subscribeToPlaces(
   return onSnapshot(
     q,
     (snap) => {
-      onChange(livePlaces(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place)));
+      onChange(
+        livePlaces(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place)),
+      );
     },
     onError,
   );
@@ -119,7 +121,9 @@ export function subscribeToPlacesByUploader(
     (snap) => {
       onChange(
         sortByCreatedDesc(
-          livePlaces(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place)),
+          livePlaces(
+            snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place),
+          ),
         ),
       );
     },

@@ -115,7 +115,10 @@ export async function removePlacesFromAlbum(
   });
 }
 
-export async function updateAlbumCover(albumId: string, coverUrl: string | null) {
+export async function updateAlbumCover(
+  albumId: string,
+  coverUrl: string | null,
+) {
   await updateDoc(doc(db, "albums", albumId), {
     coverUrl: coverUrl ?? deleteField(),
   });

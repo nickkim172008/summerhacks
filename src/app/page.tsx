@@ -49,34 +49,35 @@ export default function AlbumsPage() {
   );
 
   const loading =
-    !error &&
-    (authLoading ||
-      !user ||
-      places === null ||
-      albums === null);
+    !error && (authLoading || !user || places === null || albums === null);
 
   return (
     <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
       <div className="mx-auto max-w-5xl px-6">
         <div className="mt-8 flex items-center justify-between gap-3">
           <h1 className="text-[34px] font-bold tracking-tight">Albums</h1>
-          <button
-            onClick={() => {
-              if (!user) {
-                router.push("/signin");
-                return;
-              }
-              if (needsUsername) {
-                router.push("/setup");
-                return;
-              }
-              setShowNewAlbum(true);
-            }}
-            aria-label="New Album"
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-xl leading-none text-[#0071e3] transition hover:bg-neutral-200"
-          >
-            +
-          </button>
+          <div className="flex items-center gap-4">
+            <Link href="/trash" className="text-[15px] text-[#0071e3]">
+              Trash
+            </Link>
+            <button
+              onClick={() => {
+                if (!user) {
+                  router.push("/signin");
+                  return;
+                }
+                if (needsUsername) {
+                  router.push("/setup");
+                  return;
+                }
+                setShowNewAlbum(true);
+              }}
+              aria-label="New Album"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-xl leading-none text-[#0071e3] transition hover:bg-neutral-200"
+            >
+              +
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -108,9 +109,9 @@ export default function AlbumsPage() {
             {user && (albums?.length ?? 0) === 0 && (
               <p className="mt-10 text-sm text-neutral-500">
                 Create an album with the{" "}
-                <span className="font-medium text-[#0071e3]">+</span> button
-                and start collecting environments — for example, a “Summer
-                Hacks” album for the whole journey.
+                <span className="font-medium text-[#0071e3]">+</span> button and
+                start collecting environments — for example, a “Summer Hacks”
+                album for the whole journey.
               </p>
             )}
 
@@ -140,7 +141,6 @@ export default function AlbumsPage() {
           }}
         />
       )}
-
     </main>
   );
 }

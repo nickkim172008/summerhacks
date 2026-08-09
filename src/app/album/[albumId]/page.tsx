@@ -3,9 +3,10 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { subscribeToPlacesByUploader } from "@/lib/places";
+import { movePlaceToTrash, subscribeToPlacesByUploader } from "@/lib/places";
 import {
   addPlacesToAlbum,
+  removePlacesFromAlbum,
   resolveAlbumPlaces,
   subscribeToAlbum,
   updateAlbumCover,
@@ -40,6 +41,17 @@ export default function AlbumPage({
   const [showPicker, setShowPicker] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState<Place | null>(null);
+  const [trashing, setTrashing] = useState<Place | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function removeFromAlbum(placeId: string) {
+    setActionError(null);
+    try {
+      await removePlacesFromAlbum(albumId, [placeId]);
+    } catch {
+      setActionError("Could not remove that from the album.");
+    }
+  }
 
   useEffect(() => {
     if (authLoading) return;
@@ -212,6 +224,10 @@ export default function AlbumPage({
           </div>
         )}
 
+        {actionError && (
+          <p className="mt-4 text-sm text-red-500">{actionError}</p>
+        )}
+
         {/* Anything this album has in flight, reconstructing in place. The
             capture form starts work; this is where it is watched. */}
         <CaptureRunner albumId={isRecents ? null : albumId} mode="album" />
@@ -228,12 +244,59 @@ export default function AlbumPage({
                       ? () => setEditing(place)
                       : undefined
                   }
+                  // Recents is a view of everything, not an album, so there is
+                  // nothing there to be removed from.
+                  onRemoveFromAlbum={
+                    isRecents ? undefined : () => removeFromAlbum(place.id)
+                  }
+                  onTrash={
+                    place.uploaderId === user?.uid
+                      ? () => setTrashing(place)
+                      : undefined
+                  }
                 />
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {trashing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6">
+            <h2 className="text-[17px] font-semibold">
+              Delete {trashing.name}?
+            </h2>
+            <p className="mt-2 text-sm text-neutral-500">
+              It goes to the trash, and every album loses it. You can put it
+              back until you empty the trash.
+            </p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => setTrashing(null)}
+                className="text-[15px] text-[#0071e3]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const place = trashing;
+                  setTrashing(null);
+                  setActionError(null);
+                  try {
+                    await movePlaceToTrash(place.id);
+                  } catch {
+                    setActionError("Could not delete that environment.");
+                  }
+                }}
+                className="rounded-full bg-red-500 px-4 py-1.5 text-[15px] font-medium text-white"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <PlaceDetailsEditor
@@ -305,7 +368,10 @@ function CoverControls({
               maxEdge: COVER_EDGE,
               square: true,
             });
-            await updateAlbumCover(albumId, await uploadAlbumCover(albumId, cover));
+            await updateAlbumCover(
+              albumId,
+              await uploadAlbumCover(albumId, cover),
+            );
           }, "Couldn’t set that cover.");
         }}
       />
