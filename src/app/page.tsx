@@ -23,7 +23,8 @@ import { useAuthProfile } from "@/lib/auth";
 import { subscribeToRecentProfiles } from "@/lib/profiles";
 import {
   DEMO_OWNED_JOURNEYS,
-  DEMO_SHARED_JOURNEY,
+  DEMO_SHARED_JOURNEYS,
+  canSeeDemoJourneys,
   type DemoJourney,
 } from "@/lib/demoJourneys";
 import AlbumCover from "@/components/AlbumCover";
@@ -39,7 +40,8 @@ function countLabel(n: number, singular: string, plural: string) {
 
 export default function AlbumsPage() {
   const router = useRouter();
-  const { user, loading: authLoading, needsUsername } = useAuthProfile();
+  const { user, profile, loading: authLoading, needsUsername } = useAuthProfile();
+  const showDemoJourneys = canSeeDemoJourneys(user?.email, profile?.username);
   const [ownedAlbums, setOwnedAlbums] = useState<Album[] | null>(null);
   const [sharedAlbums, setSharedAlbums] = useState<Album[] | null>(null);
   const [ownPlaces, setOwnPlaces] = useState<Place[] | null>(null);
@@ -85,8 +87,14 @@ export default function AlbumsPage() {
   }, [user]);
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !user) return;
-    const want = DEMO_SHARED_JOURNEY.shared?.faceCount ?? 3;
+    if (!isFirebaseConfigured || !user || !showDemoJourneys) {
+      setDemoFaces([]);
+      return;
+    }
+    const want = Math.max(
+      ...DEMO_SHARED_JOURNEYS.map((j) => j.shared?.faceCount ?? 0),
+      3,
+    );
     return subscribeToRecentProfiles(
       (profiles) => {
         const withPhotos = profiles.filter(
@@ -97,7 +105,7 @@ export default function AlbumsPage() {
       },
       () => setDemoFaces([]),
     );
-  }, [user]);
+  }, [user, showDemoJourneys]);
 
   // Shared album covers need places that belong to someone else, so they are
   // fetched by id rather than by this account's uploader query.
@@ -194,9 +202,10 @@ export default function AlbumsPage() {
               className="mt-8 scroll-mt-20 grid grid-cols-4 gap-x-6 gap-y-7"
             >
               <RecentsCard places={ownPlaces ?? []} />
-              {DEMO_OWNED_JOURNEYS.map((journey) => (
-                <DemoJourneyCard key={journey.id} journey={journey} />
-              ))}
+              {showDemoJourneys &&
+                DEMO_OWNED_JOURNEYS.map((journey) => (
+                  <DemoJourneyCard key={journey.id} journey={journey} />
+                ))}
               {(ownedAlbums ?? []).map((album) => (
                 <AlbumCard
                   key={album.id}
@@ -215,20 +224,31 @@ export default function AlbumsPage() {
               <h2 className="text-[20px] font-semibold leading-[26px] tracking-[-0.01em]">
                 Shared with you
               </h2>
-              <ul className="mt-5 grid grid-cols-4 gap-x-6 gap-y-7">
-                <DemoJourneyCard
-                  journey={DEMO_SHARED_JOURNEY}
-                  faces={demoFaces}
-                />
-                {(sharedAlbums ?? []).map((album) => (
-                  <AlbumCard
-                    key={album.id}
-                    album={album}
-                    places={resolveAlbumPlaces(album.placeIds, placeById)}
-                    onRemove={() => setLeaving(album)}
-                  />
-                ))}
-              </ul>
+              {(sharedAlbums?.length ?? 0) === 0 && !showDemoJourneys ? (
+                <p className="mt-3 max-w-[62ch] text-[15px] leading-6 text-[#4A4F57]">
+                  Journeys others invite you to show up here after you accept
+                  from Notifications.
+                </p>
+              ) : (
+                <ul className="mt-5 grid grid-cols-4 gap-x-6 gap-y-7">
+                  {showDemoJourneys &&
+                    DEMO_SHARED_JOURNEYS.map((journey) => (
+                      <DemoJourneyCard
+                        key={journey.id}
+                        journey={journey}
+                        faces={demoFaces}
+                      />
+                    ))}
+                  {(sharedAlbums ?? []).map((album) => (
+                    <AlbumCard
+                      key={album.id}
+                      album={album}
+                      places={resolveAlbumPlaces(album.placeIds, placeById)}
+                      onRemove={() => setLeaving(album)}
+                    />
+                  ))}
+                </ul>
+              )}
             </div>
           </>
         )}

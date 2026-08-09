@@ -1,8 +1,25 @@
 /**
  * Pitch / demo journeys for the library — covers and counts only, not real
  * Firestore albums. Display-only seed data, same idea as the Discover
- * organizers.
+ * organizers. Gated to one account so nobody else sees the pitch tiles.
  */
+
+/** Google accounts that get the seeded library journeys. */
+const DEMO_JOURNEY_EMAILS = new Set(["nicholaskimto@gmail.com"]);
+
+/** Handles that get them too — in case the sign-in email differs. */
+const DEMO_JOURNEY_USERNAMES = new Set(["nick"]);
+
+export function canSeeDemoJourneys(
+  email: string | null | undefined,
+  username?: string | null,
+) {
+  if (email && DEMO_JOURNEY_EMAILS.has(email.trim().toLowerCase())) return true;
+  if (username && DEMO_JOURNEY_USERNAMES.has(username.trim().toLowerCase())) {
+    return true;
+  }
+  return false;
+}
 
 export type DemoJourney = {
   id: string;
@@ -31,21 +48,27 @@ export const DEMO_OWNED_JOURNEYS: DemoJourney[] = [
     coverUrl: "/demo-journeys/fishing.png",
     placeCount: 8,
   },
-  {
-    id: "demo-summer-nights",
-    name: "Summer nights",
-    coverUrl: "/demo-journeys/summer-nights.png",
-    placeCount: 10,
-  },
 ];
 
-export const DEMO_SHARED_JOURNEY: DemoJourney = {
-  id: "demo-bishop-allen-grad",
-  name: "bishop allen grad",
-  coverUrl: "/demo-journeys/bishop-allen-grad.png",
-  placeCount: 30,
-  shared: {
-    faceCount: 3,
-    peopleCount: 18,
+export const DEMO_SHARED_JOURNEYS: DemoJourney[] = [
+  {
+    id: "demo-summerhacks-2026",
+    name: "SummerHacks2026",
+    coverUrl: "/demo-journeys/summer-nights.png",
+    placeCount: 24,
+    shared: {
+      faceCount: 3,
+      peopleCount: 12,
+    },
   },
-};
+  {
+    id: "demo-bishop-allen-grad",
+    name: "bishop allen grad",
+    coverUrl: "/demo-journeys/bishop-allen-grad.png",
+    placeCount: 30,
+    shared: {
+      faceCount: 3,
+      peopleCount: 18,
+    },
+  },
+];
