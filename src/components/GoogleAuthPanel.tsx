@@ -86,19 +86,15 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
       <div aria-hidden className="auth-glow auth-glow-b" />
       <div aria-hidden className="auth-grain" />
 
-      <nav className="relative z-10 mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-5">
+      {/* The switch to the other mode lives under the form, next to the line
+          that explains it — offering it twice on one screen just competes. */}
+      <nav className="relative z-10 mx-auto flex w-full max-w-5xl items-center px-6 py-5">
         <Link
           href="/"
           aria-label="Atlas home"
           className="transition hover:opacity-80"
         >
           <AtlasLogo priority className="h-auto w-[92px]" />
-        </Link>
-        <Link
-          href={copy.switchHref}
-          className="text-[13px] font-medium text-[#0071e3] transition hover:text-[#0077ed]"
-        >
-          {copy.switchLabel}
         </Link>
       </nav>
 

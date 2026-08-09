@@ -31,7 +31,7 @@ export default function AppTopBar() {
               </Link>
               <button
                 onClick={() => signOut()}
-                className="text-[13px] text-neutral-500"
+                className="rounded-full border border-[#0071e3]/25 px-3 py-1.5 text-[13px] font-medium text-[#0071e3] transition hover:border-[#0071e3]/40 hover:bg-[#0071e3]/5"
               >
                 Sign Out
               </button>

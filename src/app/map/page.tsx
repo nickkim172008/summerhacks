@@ -107,6 +107,20 @@ export default function MapPage() {
 
   const { located, pending, byName, unplaceable } = useResolvedPlaces(inScope);
 
+  // At most one thing to say, and only for a moment: an empty scope is worth a
+  // word, but not a banner sitting over the map for as long as it stays empty.
+  const notice =
+    located.length === 0 && pending === 0
+      ? inScope.length === 0
+        ? "No environments in this scope yet."
+        : `None of these ${inScope.length} environments say where they were filmed.`
+      : liveError
+        ? "Location off — allow GPS to show where you are"
+        : liveLoading
+          ? "Finding your live location…"
+          : null;
+  const noticeVisible = useTransientNotice(notice);
+
   const scopeLabel =
     scope.kind === "public"
       ? "Public"
@@ -143,7 +157,7 @@ export default function MapPage() {
                 active={scope.kind === "public"}
                 onClick={() => setScope({ kind: "public" })}
                 title="Public"
-                subtitle="Everyone\u2019s captures, plus sample spots"
+                subtitle="Everyone’s captures, plus sample spots"
               />
               <FilterButton
                 active={scope.kind === "personal"}
@@ -197,26 +211,37 @@ export default function MapPage() {
             liveLocation={liveLocation}
             className="absolute inset-0"
           />
-          {located.length === 0 && pending === 0 && (
-            <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center px-6">
-              <p className="max-w-xs rounded-2xl bg-white/95 px-4 py-3 text-center text-[13px] text-neutral-600 shadow-md ring-1 ring-black/10">
-                {inScope.length === 0
-                  ? "No environments in this scope yet."
-                  : `None of these ${inScope.length} environments say where they were filmed. Add a location when you capture one.`}
-              </p>
-            </div>
-          )}
-          {(liveLoading || liveError) && (
-            <div className="pointer-events-none absolute bottom-20 left-1/2 z-[1] max-w-sm -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-center text-[12px] text-neutral-600 shadow-md ring-1 ring-black/10">
-              {liveError
-                ? "Location off — allow GPS to show where you are"
-                : "Finding your live location…"}
+          {notice && (
+            <div
+              className="pointer-events-none absolute bottom-20 left-1/2 z-[1] max-w-sm -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-center text-[12px] text-neutral-600 shadow-md ring-1 ring-black/10 transition-opacity duration-700"
+              style={{ opacity: noticeVisible ? 1 : 0 }}
+            >
+              {notice}
             </div>
           )}
         </section>
       </div>
     </main>
   );
+}
+
+const NOTICE_MS = 4000;
+
+/**
+ * True while a notice is worth showing. Each new message restarts the clock;
+ * the fade itself is the caller's transition, so the element stays mounted and
+ * simply goes transparent.
+ */
+function useTransientNotice(message: string | null) {
+  const [settled, setSettled] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setSettled(message), NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [message]);
+
+  return Boolean(message) && settled !== message;
 }
 
 function FilterButton({
