@@ -333,8 +333,11 @@ Things that are non-obvious and cost time to rediscover:
 
 ## Stack
 
-Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · Spark
-(`@sparkjsdev/spark`) for WebGL2 splat rendering · three.js · Google Maps
+Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · PlayCanvas Engine for
+splat rendering — the engine SuperSplat is built on — with `@spz-loader` to read
+our stored SPZ, and Spark (`@sparkjsdev/spark`) kept for its PLY→SPZ transcode
+and behind `NEXT_PUBLIC_SPLAT_RENDERER=spark` as the previous renderer ·
+three.js · Google Maps
 JavaScript API for the map · Web Audio `OfflineAudioContext` for audio
 extraction · Firebase Auth + Firestore + Storage · a 3D Gaussian Splatting
 reconstruction pipeline built on KIRI Engine, with multi-account failover and

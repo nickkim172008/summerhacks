@@ -11,9 +11,11 @@
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.1.1",
     "@sparkjsdev/spark": "^2.1.0",
+    "@spz-loader/core": "^0.3.1",
     "fflate": "^0.8.3",
     "firebase": "^12.17.1",
     "next": "16.3.0",
+    "playcanvas": "^2.21.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",

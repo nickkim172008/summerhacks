@@ -1,0 +1,167 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+import { PivotControls } from "@/lib/pivotControls";
+import { frameCapture } from "@/lib/splatFraming";
+import { storedAssetUrl } from "@/lib/assetUrl";
+import type { SplatViewerProps } from "@/components/splatViewerTypes";
+import SplatLoadError from "@/components/SplatLoadError";
+
+/** The three.js/Spark renderer, kept behind NEXT_PUBLIC_SPLAT_RENDERER=spark. */
+export default function SparkSplatViewer({
+  splatUrl,
+  entryPoint,
+  onReady,
+}: SplatViewerProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Latest-value refs so the load callbacks never close over stale props.
+  const entryPointRef = useRef(entryPoint);
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    entryPointRef.current = entryPoint;
+    onReadyRef.current = onReady;
+  });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let mounted = true;
+    setLoadError(null);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      container.clientWidth / container.clientHeight,
+      0.01,
+      1000,
+    );
+    camera.position.set(0, 1.2, 3);
+    cameraRef.current = camera;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    const spark = new SparkRenderer({ renderer });
+    scene.add(spark);
+
+    const controls = new PivotControls(camera, renderer.domElement);
+
+    // Spark decodes in a worker created from a blob: URL, whose own location is
+    // that blob rather than the page. A root-relative splatUrl resolves against
+    // it into something unreachable, and the failure arrives as an uncaught
+    // "Failed to fetch" — a black canvas with nothing said. Absolute from here
+    // means a missing file at least fails as the 404 it is.
+    const resolvedUrl = new URL(storedAssetUrl(splatUrl), window.location.href)
+      .href;
+    // The one fact that separates "this record predates Firebase storage" from
+    // "Storage refused the read", and it is invisible without saying it out loud.
+    console.info("[splat] loading", resolvedUrl);
+    const splat = new SplatMesh({
+      url: resolvedUrl,
+      onLoad: (mesh) => {
+        // Captures arrive at arbitrary scale and centering, so work out where the
+        // place actually is before standing the camera in it and setting the
+        // floor that placed points land on.
+        const framing = frameCapture(mesh);
+        if (!framing) return;
+        const { center, radius } = framing;
+
+        const entry = entryPointRef.current;
+        if (entry) {
+          // An authored entry point names the pivot outright: it is the thing
+          // the camera was pointed at, however far back the author stood.
+          const toTarget = new THREE.Vector3().subVectors(
+            entry.target,
+            entry.position,
+          );
+          controls.setPivot(
+            new THREE.Vector3().copy(entry.target),
+            toTarget,
+            toTarget.length(),
+          );
+        } else {
+          controls.setPivot(center, framing.forward, 0);
+        }
+        controls.setBounds(framing.box, radius);
+        camera.near = Math.max(radius / 1000, 0.001);
+        camera.far = radius * 100;
+        camera.updateProjectionMatrix();
+      },
+    });
+    // Splat captures (SPZ/PLY) come in Y-down relative to three.js convention.
+    splat.quaternion.set(1, 0, 0, 0);
+    splat.updateMatrixWorld(true);
+    scene.add(splat);
+
+    // The only handle on a load that never arrives: SplatMesh takes no onError.
+    void splat.initialized
+      .then(() => {
+        if (mounted) onReadyRef.current?.();
+      })
+      .catch((error: unknown) => {
+        console.error("[splat] failed", resolvedUrl, error);
+        if (!mounted) return;
+        setLoadError(
+          error instanceof Error && error.message
+            ? error.message
+            : "This place could not be loaded.",
+        );
+      });
+
+    const resizeObserver = new ResizeObserver(() => {
+      const { clientWidth, clientHeight } = container;
+      if (!clientWidth || !clientHeight) return;
+      camera.aspect = clientWidth / clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(clientWidth, clientHeight);
+    });
+    resizeObserver.observe(container);
+
+    if (process.env.NODE_ENV === "development") {
+      (window as unknown as Record<string, unknown>).__dbg = {
+        scene,
+        camera,
+        renderer,
+        splat,
+        controls,
+      };
+    }
+
+    let lastFrame = performance.now();
+    renderer.setAnimationLoop((time) => {
+      const deltaTime = (time - lastFrame) / 1000;
+      lastFrame = time;
+      controls.update(deltaTime);
+      renderer.render(scene, camera);
+    });
+
+    return () => {
+      mounted = false;
+      renderer.setAnimationLoop(null);
+      resizeObserver.disconnect();
+      controls.dispose();
+      splat.dispose();
+      renderer.dispose();
+      container.removeChild(renderer.domElement);
+      cameraRef.current = null;
+    };
+  }, [splatUrl]);
+
+  if (loadError) {
+    return <SplatLoadError splatUrl={splatUrl} loadError={loadError} />;
+  }
+
+  // touch-none: with no pinch of our own to handle, an unclaimed one falls
+  // through to the browser and zooms the page over the canvas. Dragging would
+  // scroll the page behind it for the same reason.
+  return (
+    <div ref={containerRef} className="h-full w-full cursor-grab touch-none" />
+  );
+}
