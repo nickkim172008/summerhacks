@@ -9,6 +9,9 @@ import {
 } from "@/lib/places";
 import {
   createAlbum,
+  deleteAlbum,
+  leaveAlbum,
+  renameAlbum,
   resolveAlbumPlaces,
   subscribeToAlbumsByOwner,
   subscribeToAlbumsSharedWith,
@@ -17,6 +20,7 @@ import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
 import AlbumCover from "@/components/AlbumCover";
 import AlbumCollaborators from "@/components/AlbumCollaborators";
+import TileMenu, { type TileMenuItem } from "@/components/TileMenu";
 import type { Album, Place } from "@/lib/types";
 
 export default function AlbumsPage() {
@@ -28,6 +32,10 @@ export default function AlbumsPage() {
   const [sharedPlaces, setSharedPlaces] = useState<Place[]>([]);
   const [error, setError] = useState(!isFirebaseConfigured);
   const [showNewAlbum, setShowNewAlbum] = useState(false);
+  const [renaming, setRenaming] = useState<Album | null>(null);
+  const [deleting, setDeleting] = useState<Album | null>(null);
+  const [leaving, setLeaving] = useState<Album | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -148,6 +156,8 @@ export default function AlbumsPage() {
                   key={album.id}
                   album={album}
                   places={resolveAlbumPlaces(album.placeIds, placeById)}
+                  onEdit={() => setRenaming(album)}
+                  onDelete={() => setDeleting(album)}
                 />
               ))}
             </ul>
@@ -176,11 +186,16 @@ export default function AlbumsPage() {
                     key={album.id}
                     album={album}
                     places={resolveAlbumPlaces(album.placeIds, placeById)}
+                    onRemove={() => setLeaving(album)}
                   />
                 ))}
               </ul>
             )}
           </>
+        )}
+
+        {actionError && (
+          <p className="mt-4 text-sm text-red-500">{actionError}</p>
         )}
       </div>
 
@@ -191,6 +206,63 @@ export default function AlbumsPage() {
             const id = await createAlbum(name, user.uid);
             setShowNewAlbum(false);
             router.push(`/album/${id}`);
+          }}
+        />
+      )}
+
+      {renaming && (
+        <RenameAlbumDialog
+          album={renaming}
+          onCancel={() => setRenaming(null)}
+          onSave={async (name) => {
+            setActionError(null);
+            try {
+              await renameAlbum(renaming.id, name);
+              setRenaming(null);
+            } catch {
+              setActionError("Couldn’t rename that journey.");
+              setRenaming(null);
+            }
+          }}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete ${deleting.name}?`}
+          body="The journey goes away. Places stay in your library and in any other journey that holds them."
+          confirmLabel="Delete"
+          danger
+          onCancel={() => setDeleting(null)}
+          onConfirm={async () => {
+            const album = deleting;
+            setDeleting(null);
+            setActionError(null);
+            try {
+              await deleteAlbum(album.id);
+            } catch {
+              setActionError("Couldn’t delete that journey.");
+            }
+          }}
+        />
+      )}
+
+      {leaving && user && (
+        <ConfirmDialog
+          title={`Leave ${leaving.name}?`}
+          body="You’ll lose access until you’re invited again. Places you added stay on the journey."
+          confirmLabel="Remove"
+          danger
+          onCancel={() => setLeaving(null)}
+          onConfirm={async () => {
+            const album = leaving;
+            setLeaving(null);
+            setActionError(null);
+            try {
+              await leaveAlbum(album, user.uid);
+            } catch {
+              setActionError("Couldn’t leave that journey.");
+            }
           }}
         />
       )}
@@ -214,23 +286,64 @@ function TrashGlyph() {
   );
 }
 
-function AlbumCard({ album, places }: { album: Album; places: Place[] }) {
+function AlbumCard({
+  album,
+  places,
+  onEdit,
+  onRemove,
+  onDelete,
+}: {
+  album: Album;
+  places: Place[];
+  onEdit?: () => void;
+  /** Leave a shared journey — labeled Remove to match place tiles. */
+  onRemove?: () => void;
+  onDelete?: () => void;
+}) {
+  const items: TileMenuItem[] = [];
+  if (onEdit) items.push({ label: "Edit", onClick: onEdit });
+  if (onRemove) {
+    items.push({
+      label: "Remove",
+      onClick: onRemove,
+      title: "Leave this journey",
+    });
+  }
+  if (onDelete) {
+    items.push({
+      label: "Delete",
+      onClick: onDelete,
+      danger: true,
+      title: "Delete this journey",
+    });
+  }
+
   return (
     <li>
-      <Link href={`/album/${album.id}`} className="group block">
-        <div className="relative aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
-          <AlbumCover
-            coverUrl={album.coverUrl}
-            places={places}
-            alt={album.name}
-          />
-          <AlbumCollaborators album={album} />
+      <div className="group relative">
+        {/* Menu sits outside the clipped cover so the dropdown isn’t cut off. */}
+        <div className="relative aspect-square">
+          <Link
+            href={`/album/${album.id}`}
+            className="absolute inset-0 overflow-hidden rounded-2xl bg-neutral-100"
+            aria-label={album.name}
+          >
+            <AlbumCover
+              coverUrl={album.coverUrl}
+              places={places}
+              alt={album.name}
+            />
+            <AlbumCollaborators album={album} />
+          </Link>
+          <TileMenu items={items} />
         </div>
-        <p className="mt-2 truncate text-[15px] font-medium">{album.name}</p>
-        <p className="text-sm text-neutral-500">
-          {album.placeIds?.length ?? 0}
-        </p>
-      </Link>
+        <Link href={`/album/${album.id}`} className="mt-2 block">
+          <p className="truncate text-[15px] font-medium">{album.name}</p>
+          <p className="text-sm text-neutral-500">
+            {album.placeIds?.length ?? 0}
+          </p>
+        </Link>
+      </div>
     </li>
   );
 }
@@ -295,6 +408,109 @@ function NewAlbumDialog({
             className="py-2.5 font-semibold text-[#0071e3] transition hover:bg-neutral-50 disabled:opacity-40"
           >
             {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RenameAlbumDialog({
+  album,
+  onCancel,
+  onSave,
+}: {
+  album: Album;
+  onCancel: () => void;
+  onSave: (name: string) => Promise<void>;
+}) {
+  const [name, setName] = useState(album.name);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    await onSave(name.trim());
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6">
+      <div className="w-full max-w-xs overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="px-5 pt-5 pb-4 text-center">
+          <h3 className="text-[17px] font-semibold">Edit Journey</h3>
+          <p className="mt-1 text-[13px] text-neutral-500">
+            Change the name of this journey.
+          </p>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && save()}
+            placeholder="Title"
+            className="mt-3 w-full rounded-lg border border-black/10 bg-neutral-50 px-3 py-1.5 text-[15px] outline-none focus:border-[#0071e3]"
+          />
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-black/10 border-t border-black/10 text-[17px]">
+          <button
+            onClick={onCancel}
+            className="py-2.5 text-[#0071e3] transition hover:bg-neutral-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={!name.trim() || saving}
+            className="py-2.5 font-semibold text-[#0071e3] transition hover:bg-neutral-50 disabled:opacity-40"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmDialog({
+  title,
+  body,
+  confirmLabel,
+  danger,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6">
+        <h2 className="text-[17px] font-semibold">{title}</h2>
+        <p className="mt-2 text-sm text-neutral-500">{body}</p>
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="text-[15px] text-[#0071e3] disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={async () => {
+              setBusy(true);
+              await onConfirm();
+            }}
+            disabled={busy}
+            className={`rounded-full px-4 py-1.5 text-[15px] font-medium text-white disabled:opacity-40 ${
+              danger ? "bg-red-500" : "bg-[#0071e3]"
+            }`}
+          >
+            {busy ? "Working…" : confirmLabel}
           </button>
         </div>
       </div>

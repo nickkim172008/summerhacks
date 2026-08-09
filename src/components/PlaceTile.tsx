@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import PlaceThumb from "@/components/PlaceThumb";
+import TileMenu, { type TileMenuItem } from "@/components/TileMenu";
 import type { Place } from "@/lib/types";
 
 /**
@@ -9,8 +10,8 @@ import type { Place } from "@/lib/types";
  * environment, so correcting a name, taking it out of an album or deleting it
  * does not mean loading a splat first.
  *
- * The buttons are siblings of the link, not children: nesting a button inside
- * an anchor is invalid, and the click would race the navigation.
+ * The menu is a sibling of the link, not a child: nesting a button inside an
+ * anchor is invalid, and the click would race the navigation.
  */
 export default function PlaceTile({
   place,
@@ -35,57 +36,43 @@ export default function PlaceTile({
   /** To the trash, where it waits rather than ends. */
   onTrash?: () => void;
 }) {
+  const items: TileMenuItem[] = [];
+  if (onEdit) items.push({ label: "Edit", onClick: onEdit });
+  if (onAddToAlbum) {
+    items.push({
+      label: "Add",
+      onClick: onAddToAlbum,
+      title: "Add to a journey",
+    });
+  }
+  if (onRemoveFromAlbum) {
+    items.push({
+      label: "Remove",
+      onClick: onRemoveFromAlbum,
+      title: "Remove from this journey — the place is kept",
+    });
+  }
+  if (onTrash) {
+    items.push({
+      label: "Delete",
+      onClick: onTrash,
+      danger: true,
+      title: "Move to trash",
+    });
+  }
+
   return (
-    <div className="group relative aspect-square overflow-hidden bg-neutral-100">
-      <Link href={href} className="block h-full w-full">
+    <div className="group relative aspect-square bg-neutral-100">
+      <Link
+        href={href}
+        className="absolute inset-0 overflow-hidden"
+      >
         <PlaceThumb place={place} />
         <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-6 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
           {place.name}
         </span>
       </Link>
-
-      {/* Always there on touch, where there is no hover to reveal them. */}
-      <div className="absolute right-1.5 top-1.5 z-10 flex gap-1 md:opacity-0 md:transition md:group-hover:opacity-100 md:focus-within:opacity-100">
-        {onEdit && (
-          <button
-            onClick={onEdit}
-            aria-label={`Edit ${place.name}`}
-            className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-medium text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
-          >
-            Edit
-          </button>
-        )}
-        {onAddToAlbum && (
-          <button
-            onClick={onAddToAlbum}
-            aria-label={`Add ${place.name} to a journey`}
-            title="Add to a journey"
-            className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-medium text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
-          >
-            Add
-          </button>
-        )}
-        {onRemoveFromAlbum && (
-          <button
-            onClick={onRemoveFromAlbum}
-            aria-label={`Remove ${place.name} from this journey`}
-            title="Remove from this journey — the place is kept"
-            className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-medium text-[#1d1d1f] shadow-sm backdrop-blur transition hover:bg-white"
-          >
-            Remove
-          </button>
-        )}
-        {onTrash && (
-          <button
-            onClick={onTrash}
-            aria-label={`Delete ${place.name}`}
-            title="Move to trash"
-            className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-medium text-red-500 shadow-sm backdrop-blur transition hover:bg-white"
-          >
-            Delete
-          </button>
-        )}
-      </div>
+      <TileMenu items={items} />
     </div>
   );
 }
