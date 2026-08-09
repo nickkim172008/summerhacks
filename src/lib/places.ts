@@ -60,6 +60,48 @@ export function subscribeToPlacesByUploader(
   );
 }
 
+/** Firestore rejects an `in` filter with more than 30 values. */
+const IN_CHUNK = 30;
+
+/**
+ * Places uploaded by any of `uploaderIds`, newest first.
+ *
+ * Split across several listeners because of the `in` cap above, so results
+ * arrive per chunk and are stitched back together here. Passing no ids yields
+ * an empty list without opening a listener — an `in` on [] is an error.
+ */
+export function subscribeToPlacesByUploaders(
+  uploaderIds: string[],
+  onChange: (places: Place[]) => void,
+  onError?: (error: Error) => void,
+) {
+  if (uploaderIds.length === 0) {
+    onChange([]);
+    return () => {};
+  }
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < uploaderIds.length; i += IN_CHUNK) {
+    chunks.push(uploaderIds.slice(i, i + IN_CHUNK));
+  }
+
+  const byChunk: Place[][] = chunks.map(() => []);
+  const unsubs = chunks.map((chunk, index) =>
+    onSnapshot(
+      query(collection(db, "places"), where("uploaderId", "in", chunk)),
+      (snap) => {
+        byChunk[index] = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Place,
+        );
+        onChange(sortByCreatedDesc(byChunk.flat()));
+      },
+      onError,
+    ),
+  );
+
+  return () => unsubs.forEach((off) => off());
+}
+
 export async function getPlace(placeId: string): Promise<Place | null> {
   const snap = await getDoc(doc(db, "places", placeId));
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as Place) : null;

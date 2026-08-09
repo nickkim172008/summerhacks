@@ -10,6 +10,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import type { Follow } from "./types";
 
 /**
  * One doc per follow edge, in a flat `follows` collection.
@@ -71,4 +72,43 @@ export function subscribeToFollowingCount(
 ): Unsubscribe {
   const q = query(collection(db, "follows"), where("followerId", "==", uid));
   return onSnapshot(q, (snap) => onChange(snap.size), onError);
+}
+
+/** The edges themselves, newest first — who followed `uid`, and when. */
+export function subscribeToFollowers(
+  uid: string,
+  onChange: (follows: Follow[]) => void,
+  onError?: (error: Error) => void,
+): Unsubscribe {
+  const q = query(collection(db, "follows"), where("followingId", "==", uid));
+  return onSnapshot(
+    q,
+    (snap) =>
+      onChange(
+        // Sorted here rather than with orderBy: pairing it with the where
+        // would need a composite index, and these sets are small.
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as Follow)
+          .sort((a, b) => millis(b.createdAt) - millis(a.createdAt)),
+      ),
+    onError,
+  );
+}
+
+/** The uids `uid` follows, for fetching what they have posted. */
+export function subscribeToFollowingIds(
+  uid: string,
+  onChange: (ids: string[]) => void,
+  onError?: (error: Error) => void,
+): Unsubscribe {
+  const q = query(collection(db, "follows"), where("followerId", "==", uid));
+  return onSnapshot(
+    q,
+    (snap) => onChange(snap.docs.map((d) => (d.data() as Follow).followingId)),
+    onError,
+  );
+}
+
+function millis(at: Follow["createdAt"]) {
+  return at?.toMillis?.() ?? 0;
 }
