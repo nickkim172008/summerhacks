@@ -21,6 +21,8 @@ export interface PlaceExperienceProps {
   onAddHotspot?: (point: Vec3, linksToPlaceId: string) => Promise<void>;
   onJump: (placeId: string) => void;
   onExit?: () => void;
+  /** Offered to whoever captured this, to correct its name or where it sits. */
+  onEdit?: () => void;
 }
 
 export default function PlaceExperience({
@@ -30,6 +32,7 @@ export default function PlaceExperience({
   onAddHotspot,
   onJump,
   onExit,
+  onEdit,
 }: PlaceExperienceProps) {
   const [entered, setEntered] = useState(false);
   const [placing, setPlacing] = useState(false);
@@ -137,6 +140,15 @@ export default function PlaceExperience({
             ‹
           </span>
           Back
+        </button>
+      )}
+
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          className="absolute right-4 top-4 z-50 rounded-full bg-white/90 px-4 py-2 text-[15px] text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
+        >
+          Edit
         </button>
       )}
 

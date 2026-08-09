@@ -1,6 +1,7 @@
 import {
   arrayUnion,
   collection,
+  deleteField,
   doc,
   getDoc,
   onSnapshot,
@@ -102,6 +103,30 @@ export async function createPlace(
     ...(options?.locationName ? { locationName: options.locationName } : {}),
   });
   return placeRef.id;
+}
+
+export interface PlaceEdits {
+  name: string;
+  locationName: string;
+  /** null clears the pin, leaving the name to place it on the map. */
+  location: { lat: number; lng: number } | null;
+}
+
+/**
+ * What the capture form guessed is not always what happened: the video's GPS
+ * can be absent, or wrong, and a name typed in a hurry reads badly later.
+ *
+ * Cleared fields are deleted rather than written empty, so a place with no
+ * location looks the same whether it never had one or lost one — the map and
+ * the geocoder both key off absence.
+ */
+export async function updatePlaceDetails(placeId: string, edits: PlaceEdits) {
+  const locationName = edits.locationName.trim();
+  await updateDoc(doc(db, "places", placeId), {
+    name: edits.name.trim(),
+    locationName: locationName || deleteField(),
+    location: edits.location ?? deleteField(),
+  });
 }
 
 export async function addHotspot(

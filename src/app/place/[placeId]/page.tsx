@@ -4,10 +4,17 @@ import { Suspense, use, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PlaceExperience from "@/components/PlaceExperience";
-import { addHotspot, getPlace, subscribeToPlacesByUploader } from "@/lib/places";
+import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
+import {
+  addHotspot,
+  getPlace,
+  subscribeToPlacesByUploader,
+} from "@/lib/places";
 import { useAuth } from "@/lib/auth";
 import { getProfile } from "@/lib/profiles";
 import type { Place, Profile } from "@/lib/types";
+
+const NO_PLACES: Place[] = [];
 
 export default function PlacePage({
   params,
@@ -38,8 +45,12 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
   const { user } = useAuth();
   // undefined while loading, null once we know it isn't there.
   const [place, setPlace] = useState<Place | null | undefined>();
-  const [allPlaces, setAllPlaces] = useState<Place[]>([]);
-  const [uploader, setUploader] = useState<Profile | null>(null);
+  const [ownPlaces, setOwnPlaces] = useState<Place[]>([]);
+  const [fetchedUploader, setFetchedUploader] = useState<{
+    uploaderId: string;
+    profile: Profile | null;
+  } | null>(null);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -56,33 +67,38 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
   }, [placeId]);
 
   useEffect(() => {
-    if (!user) {
-      setAllPlaces([]);
-      return;
-    }
-    return subscribeToPlacesByUploader(user.uid, setAllPlaces);
+    if (!user) return;
+    return subscribeToPlacesByUploader(user.uid, setOwnPlaces);
   }, [user]);
+
+  // Gated on the signed-in user rather than cleared on sign-out, so hotspot
+  // targets can never be the last account's captures.
+  const allPlaces = user ? ownPlaces : NO_PLACES;
 
   // Attribution is a nicety, so a missing or unreadable profile just leaves it
   // off rather than blocking the place from opening.
   useEffect(() => {
     const uploaderId = place?.uploaderId;
-    if (!uploaderId) {
-      setUploader(null);
-      return;
-    }
+    if (!uploaderId) return;
     let active = true;
     getProfile(uploaderId)
-      .then((found) => {
-        if (active) setUploader(found);
+      .then((profile) => {
+        if (active) setFetchedUploader({ uploaderId, profile });
       })
       .catch(() => {
-        if (active) setUploader(null);
+        if (active) setFetchedUploader({ uploaderId, profile: null });
       });
     return () => {
       active = false;
     };
   }, [place?.uploaderId]);
+
+  // Tagged with whose profile it is, so a jump to another capture cannot show
+  // the previous uploader while the new one loads.
+  const uploader =
+    fetchedUploader && fetchedUploader.uploaderId === place?.uploaderId
+      ? fetchedUploader.profile
+      : null;
 
   if (place === null) {
     return (
@@ -117,7 +133,17 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
           await addHotspot(placeId, point, linksToPlaceId);
           setPlace(await getPlace(placeId));
         }}
+        onEdit={
+          user?.uid === place.uploaderId ? () => setEditing(true) : undefined
+        }
       />
+      {editing && (
+        <PlaceDetailsEditor
+          place={place}
+          onClose={() => setEditing(false)}
+          onSaved={async () => setPlace(await getPlace(placeId))}
+        />
+      )}
     </main>
   );
 }
