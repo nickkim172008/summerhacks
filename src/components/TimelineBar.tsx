@@ -88,8 +88,10 @@ export default function TimelineBar({
     <div
       className="pointer-events-none fixed inset-x-0 z-30 flex justify-center px-3"
       // Clear of the tab bar rather than a slab across the bottom: the map is
-      // the thing being looked at, and the timeline is a control on it.
-      style={{ bottom: "calc(3rem + env(safe-area-inset-bottom))" }}
+      // the thing being looked at, and the timeline is a control on it. The
+      // extra 0.75rem is breathing room — flush against the tabs it read as
+      // part of them.
+      style={{ bottom: "calc(3.75rem + env(safe-area-inset-bottom))" }}
     >
       <div className="pointer-events-auto flex w-full max-w-3xl items-center gap-2.5 rounded-full bg-white/90 py-1.5 pl-1.5 pr-2.5 shadow-lg ring-1 ring-black/10 backdrop-blur-xl">
         <button

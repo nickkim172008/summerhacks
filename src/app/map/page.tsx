@@ -199,7 +199,7 @@ function MapView() {
 
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-white text-[#1d1d1f]">
-      <div className="relative flex min-h-[calc(100dvh-8.5rem)] flex-1">
+      <div className="relative flex h-[calc(100dvh-3.25rem)] flex-1">
         {!sidebarOpen && (
           <button
             onClick={() => setSidebarOpen(true)}
@@ -309,13 +309,13 @@ function MapView() {
           </aside>
         )}
 
-        <section className="relative min-h-0 min-w-0 flex-1 pb-16">
+        <section className="relative min-h-0 min-w-0 flex-1">
           <PlacesMap
             places={mapPlaces}
             liveLocation={liveLocation}
             weightOf={showTimeline ? heatWeightOf : undefined}
             focus={tourIntro.focus}
-            className="absolute inset-0"
+            className="absolute inset-x-0 top-0 bottom-[calc(3rem+env(safe-area-inset-bottom))]"
           />
 
           {/* Spelled out rather than left as an icon: a tour button elsewhere
