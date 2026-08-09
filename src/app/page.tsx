@@ -3,22 +3,29 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { subscribeToPlacesByUploader } from "@/lib/places";
+import {
+  subscribeToPlacesByIds,
+  subscribeToPlacesByUploader,
+} from "@/lib/places";
 import {
   createAlbum,
   resolveAlbumPlaces,
-  subscribeToEditableAlbums,
+  subscribeToAlbumsByOwner,
+  subscribeToAlbumsSharedWith,
 } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
 import AlbumCover from "@/components/AlbumCover";
+import AlbumCollaborators from "@/components/AlbumCollaborators";
 import type { Album, Place } from "@/lib/types";
 
 export default function AlbumsPage() {
   const router = useRouter();
   const { user, loading: authLoading, needsUsername } = useAuthProfile();
-  const [albums, setAlbums] = useState<Album[] | null>(null);
-  const [places, setPlaces] = useState<Place[] | null>(null);
+  const [ownedAlbums, setOwnedAlbums] = useState<Album[] | null>(null);
+  const [sharedAlbums, setSharedAlbums] = useState<Album[] | null>(null);
+  const [ownPlaces, setOwnPlaces] = useState<Place[] | null>(null);
+  const [sharedPlaces, setSharedPlaces] = useState<Place[]>([]);
   const [error, setError] = useState(!isFirebaseConfigured);
   const [showNewAlbum, setShowNewAlbum] = useState(false);
 
@@ -33,23 +40,60 @@ export default function AlbumsPage() {
 
   useEffect(() => {
     if (!isFirebaseConfigured || authLoading || !user) return;
-    return subscribeToPlacesByUploader(user.uid, setPlaces, () =>
+    return subscribeToPlacesByUploader(user.uid, setOwnPlaces, () =>
       setError(true),
     );
   }, [authLoading, user]);
 
   useEffect(() => {
     if (!isFirebaseConfigured || !user) return;
-    return subscribeToEditableAlbums(user.uid, setAlbums, () => setError(true));
+    return subscribeToAlbumsByOwner(user.uid, setOwnedAlbums, () =>
+      setError(true),
+    );
   }, [user]);
 
-  const placeById = useMemo(
-    () => new Map((places ?? []).map((p) => [p.id, p])),
-    [places],
-  );
+  useEffect(() => {
+    if (!isFirebaseConfigured || !user) return;
+    return subscribeToAlbumsSharedWith(user.uid, setSharedAlbums, () =>
+      setSharedAlbums([]),
+    );
+  }, [user]);
+
+  // Shared album covers need places that belong to someone else, so they are
+  // fetched by id rather than by this account's uploader query.
+  const sharedPlaceIdsKey = useMemo(() => {
+    const ids = new Set<string>();
+    for (const album of sharedAlbums ?? []) {
+      for (const id of album.placeIds ?? []) ids.add(id);
+    }
+    return [...ids].sort().join(",");
+  }, [sharedAlbums]);
+
+  useEffect(() => {
+    if (!user) {
+      setSharedPlaces([]);
+      return;
+    }
+    const ids = sharedPlaceIdsKey ? sharedPlaceIdsKey.split(",") : [];
+    return subscribeToPlacesByIds(ids, setSharedPlaces, () =>
+      setSharedPlaces([]),
+    );
+  }, [user, sharedPlaceIdsKey]);
+
+  const placeById = useMemo(() => {
+    const map = new Map<string, Place>();
+    for (const place of ownPlaces ?? []) map.set(place.id, place);
+    for (const place of sharedPlaces) map.set(place.id, place);
+    return map;
+  }, [ownPlaces, sharedPlaces]);
 
   const loading =
-    !error && (authLoading || !user || places === null || albums === null);
+    !error &&
+    (authLoading ||
+      !user ||
+      ownPlaces === null ||
+      ownedAlbums === null ||
+      sharedAlbums === null);
 
   return (
     <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
@@ -98,11 +142,11 @@ export default function AlbumsPage() {
         {!error && !loading && (
           <>
             <h2 className="mt-6 text-[22px] font-bold tracking-tight">
-              {user ? "My Albums" : "Library"}
+              My Albums
             </h2>
             <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
-              <RecentsCard places={places ?? []} />
-              {(albums ?? []).map((album) => (
+              <RecentsCard places={ownPlaces ?? []} />
+              {(ownedAlbums ?? []).map((album) => (
                 <AlbumCard
                   key={album.id}
                   album={album}
@@ -111,8 +155,8 @@ export default function AlbumsPage() {
               ))}
             </ul>
 
-            {user && (albums?.length ?? 0) === 0 && (
-              <p className="mt-10 text-sm text-neutral-500">
+            {(ownedAlbums?.length ?? 0) === 0 && (
+              <p className="mt-6 text-sm text-neutral-500">
                 Create an album with the{" "}
                 <span className="font-medium text-[#0071e3]">+</span> button and
                 start collecting environments — for example, a “Summer Hacks”
@@ -120,17 +164,24 @@ export default function AlbumsPage() {
               </p>
             )}
 
-            {!user && (
-              <p className="mt-10 text-sm text-neutral-500">
-                <Link href="/signup" className="text-[#0071e3]">
-                  Sign up
-                </Link>{" "}
-                or{" "}
-                <Link href="/signin" className="text-[#0071e3]">
-                  sign in
-                </Link>{" "}
-                to create albums and claim a public profile.
+            <h2 className="mt-12 text-[22px] font-bold tracking-tight">
+              Shared Albums
+            </h2>
+            {(sharedAlbums?.length ?? 0) === 0 ? (
+              <p className="mt-3 text-sm text-neutral-500">
+                Albums others invite you to show up here after you accept from
+                Notifications.
               </p>
+            ) : (
+              <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
+                {(sharedAlbums ?? []).map((album) => (
+                  <AlbumCard
+                    key={album.id}
+                    album={album}
+                    places={resolveAlbumPlaces(album.placeIds, placeById)}
+                  />
+                ))}
+              </ul>
             )}
           </>
         )}
@@ -170,12 +221,13 @@ function AlbumCard({ album, places }: { album: Album; places: Place[] }) {
   return (
     <li>
       <Link href={`/album/${album.id}`} className="group block">
-        <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
+        <div className="relative aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
           <AlbumCover
             coverUrl={album.coverUrl}
             places={places}
             alt={album.name}
           />
+          <AlbumCollaborators album={album} />
         </div>
         <p className="mt-2 truncate text-[15px] font-medium">{album.name}</p>
         <p className="text-sm text-neutral-500">
