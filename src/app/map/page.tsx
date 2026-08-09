@@ -123,84 +123,123 @@ export default function MapPage() {
 
   const scopeLabel =
     scope.kind === "public"
-      ? "Public"
+      ? "Everyone"
       : scope.kind === "personal"
-        ? "Personal"
+        ? "Yours"
         : (albums.find((a) => a.id === scope.albumId)?.name ?? "Album");
+
+  const locationHint = liveLoading
+    ? "Finding you…"
+    : liveError
+      ? "Location off"
+      : liveLocation
+        ? "Location on"
+        : null;
 
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-white text-[#1d1d1f]">
       <div className="relative flex min-h-[calc(100dvh-8.5rem)] flex-1">
-        <button
-          onClick={() => setSidebarOpen((v) => !v)}
-          className="absolute right-4 top-3 z-20 rounded-full bg-white/95 px-3 py-1.5 text-[13px] font-medium text-[#0071e3] shadow ring-1 ring-black/10 transition hover:bg-white"
-        >
-          {sidebarOpen ? "Hide filters" : "Filters"}
-        </button>
+        {!sidebarOpen && (
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="absolute left-4 top-3 z-20 rounded-full bg-white/95 px-3.5 py-2 text-[13px] font-medium text-[#1d1d1f] shadow-md ring-1 ring-black/8 transition hover:bg-white"
+          >
+            Places
+          </button>
+        )}
 
         {sidebarOpen && (
-          <aside className="absolute inset-y-0 left-0 z-10 flex w-[min(100%,18rem)] flex-col border-r border-black/10 bg-white/95 shadow-xl backdrop-blur-xl sm:static sm:shadow-none">
-            <div className="border-b border-black/5 px-4 py-3">
-              <p className="text-[13px] font-semibold">Heatmap scope</p>
-              <p className="mt-0.5 text-[12px] text-neutral-500">
-                {scopeLabel}
-                {` · ${located.length} on the map`}
-                {byName > 0 && ` · ${byName} placed by name`}
-                {pending > 0 && ` · ${pending} resolving…`}
-                {unplaceable > 0 && ` · ${unplaceable} without a location`}
-                {liveLoading && " · locating…"}
-                {liveError && " · location off"}
-              </p>
+          <aside className="absolute inset-y-0 left-0 z-10 flex w-[min(100%,17.5rem)] flex-col bg-white/92 shadow-[8px_0_32px_rgba(0,0,0,0.06)] backdrop-blur-2xl sm:static sm:shadow-none sm:ring-1 sm:ring-black/6">
+            <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
+              <div className="min-w-0">
+                <p className="text-[17px] font-semibold tracking-tight">
+                  Places
+                </p>
+                <p className="mt-1 text-[12px] leading-snug text-neutral-500">
+                  {scopeLabel}
+                  <span className="text-neutral-300"> · </span>
+                  {located.length} on the map
+                  {byName > 0 && ` · ${byName} by name`}
+                  {pending > 0 && ` · ${pending} resolving…`}
+                  {unplaceable > 0 && ` · ${unplaceable} no location`}
+                  {locationHint && (
+                    <>
+                      <span className="text-neutral-300"> · </span>
+                      {locationHint}
+                    </>
+                  )}
+                </p>
+              </div>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                aria-label="Close places panel"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-[#1d1d1f]"
+              >
+                <CloseIcon />
+              </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-2 py-2">
-              <FilterButton
-                active={scope.kind === "public"}
-                onClick={() => setScope({ kind: "public" })}
-                title="Public"
-                subtitle="Everyone’s captures, plus sample spots"
-              />
-              <FilterButton
-                active={scope.kind === "personal"}
-                onClick={() => {
-                  if (!user) {
-                    router.push("/signin");
-                    return;
-                  }
-                  setScope({ kind: "personal" });
-                }}
-                title="Personal"
-                subtitle={user ? "Every album combined" : "Sign in required"}
-              />
 
-              <p className="mb-1 mt-4 px-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-                Albums
-              </p>
-              {!user && (
-                <p className="px-2 py-2 text-[12px] text-neutral-500">
-                  <Link href="/signin" className="text-[#0071e3]">
-                    Sign in
-                  </Link>{" "}
-                  or{" "}
-                  <Link href="/signup" className="text-[#0071e3]">
-                    sign up
-                  </Link>{" "}
-                  to filter by your albums.
-                </p>
-              )}
-              {user && albums.length === 0 && (
-                <p className="px-2 py-2 text-[12px] text-neutral-500">
-                  No albums yet. Create one in Library.
-                </p>
-              )}
-              {albums.map((album) => (
+            <div className="flex-1 overflow-y-auto px-3 pb-6">
+              <div className="space-y-1">
                 <FilterButton
-                  key={album.id}
-                  active={scope.kind === "album" && scope.albumId === album.id}
-                  onClick={() => setScope({ kind: "album", albumId: album.id })}
-                  title={album.name}
-                  subtitle={`${album.placeIds?.length ?? 0} environments`}
+                  active={scope.kind === "public"}
+                  onClick={() => setScope({ kind: "public" })}
+                  title="Everyone"
+                  subtitle="All geotagged places"
                 />
-              ))}
+                <FilterButton
+                  active={scope.kind === "personal"}
+                  onClick={() => {
+                    if (!user) {
+                      router.push("/signin");
+                      return;
+                    }
+                    setScope({ kind: "personal" });
+                  }}
+                  title="Yours"
+                  subtitle={
+                    user ? "Every album combined" : "Sign in to view"
+                  }
+                />
+              </div>
+
+              <div className="mt-6">
+                <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
+                  Albums
+                </p>
+                {!user && (
+                  <p className="px-2 py-1.5 text-[12px] leading-relaxed text-neutral-500">
+                    <Link href="/signin" className="font-medium text-[#0071e3]">
+                      Sign in
+                    </Link>{" "}
+                    to browse by album.
+                  </p>
+                )}
+                {user && albums.length === 0 && (
+                  <p className="px-2 py-1.5 text-[12px] leading-relaxed text-neutral-500">
+                    No albums yet — make one in Library.
+                  </p>
+                )}
+                <div className="space-y-1">
+                  {albums.map((album) => (
+                    <FilterButton
+                      key={album.id}
+                      active={
+                        scope.kind === "album" && scope.albumId === album.id
+                      }
+                      onClick={() =>
+                        setScope({ kind: "album", albumId: album.id })
+                      }
+                      title={album.name}
+                      subtitle={`${album.placeIds?.length ?? 0} ${
+                        (album.placeIds?.length ?? 0) === 1
+                          ? "place"
+                          : "places"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           </aside>
         )}
@@ -258,18 +297,28 @@ function FilterButton({
   return (
     <button
       onClick={onClick}
-      className={`mb-1 w-full rounded-xl px-3 py-2.5 text-left transition ${
+      className={`w-full rounded-2xl px-3.5 py-3 text-left transition ${
         active
-          ? "bg-[#0071e3] text-white"
-          : "text-[#1d1d1f] hover:bg-neutral-100"
+          ? "bg-[#0071e3] text-white shadow-sm shadow-[#0071e3]/25"
+          : "text-[#1d1d1f] hover:bg-neutral-100/90"
       }`}
     >
-      <p className="text-[14px] font-medium">{title}</p>
+      <p className="text-[14px] font-medium tracking-tight">{title}</p>
       <p
-        className={`text-[12px] ${active ? "text-white/80" : "text-neutral-500"}`}
+        className={`mt-0.5 text-[12px] leading-snug ${
+          active ? "text-white/75" : "text-neutral-500"
+        }`}
       >
         {subtitle}
       </p>
     </button>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden>
+      <path d="M5.22 5.22a.75.75 0 0 1 1.06 0L10 8.94l3.72-3.72a.75.75 0 1 1 1.06 1.06L11.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06L10 11.06l-3.72 3.72a.75.75 0 0 1-1.06-1.06L8.94 10 5.22 6.28a.75.75 0 0 1 0-1.06Z" />
+    </svg>
   );
 }
