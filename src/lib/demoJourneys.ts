@@ -48,19 +48,15 @@ export const DEMO_OWNED_JOURNEYS: DemoJourney[] = [
     coverUrl: "/demo-journeys/fishing.png",
     placeCount: 8,
   },
+  {
+    id: "demo-summer-nights",
+    name: "summer nights",
+    coverUrl: "/demo-journeys/summer-nights.png",
+    placeCount: 10,
+  },
 ];
 
 export const DEMO_SHARED_JOURNEYS: DemoJourney[] = [
-  {
-    id: "demo-summerhacks-2026",
-    name: "SummerHacks2026",
-    coverUrl: "/demo-journeys/summer-nights.png",
-    placeCount: 24,
-    shared: {
-      faceCount: 3,
-      peopleCount: 12,
-    },
-  },
   {
     id: "demo-bishop-allen-grad",
     name: "bishop allen grad",
@@ -72,3 +68,8 @@ export const DEMO_SHARED_JOURNEYS: DemoJourney[] = [
     },
   },
 ];
+
+/** Real shared journeys that should sit ahead of the demo bishop allen card. */
+export function isPinnedBeforeDemoShared(albumName: string) {
+  return albumName.trim().toLowerCase().replace(/\s+/g, "") === "summerhacks2026";
+}

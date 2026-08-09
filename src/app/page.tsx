@@ -25,6 +25,7 @@ import {
   DEMO_OWNED_JOURNEYS,
   DEMO_SHARED_JOURNEYS,
   canSeeDemoJourneys,
+  isPinnedBeforeDemoShared,
   type DemoJourney,
 } from "@/lib/demoJourneys";
 import AlbumCover from "@/components/AlbumCover";
@@ -230,24 +231,13 @@ export default function AlbumsPage() {
                   from Notifications.
                 </p>
               ) : (
-                <ul className="mt-5 grid grid-cols-4 gap-x-6 gap-y-7">
-                  {showDemoJourneys &&
-                    DEMO_SHARED_JOURNEYS.map((journey) => (
-                      <DemoJourneyCard
-                        key={journey.id}
-                        journey={journey}
-                        faces={demoFaces}
-                      />
-                    ))}
-                  {(sharedAlbums ?? []).map((album) => (
-                    <AlbumCard
-                      key={album.id}
-                      album={album}
-                      places={resolveAlbumPlaces(album.placeIds, placeById)}
-                      onRemove={() => setLeaving(album)}
-                    />
-                  ))}
-                </ul>
+                <SharedJourneysGrid
+                  sharedAlbums={sharedAlbums ?? []}
+                  placeById={placeById}
+                  showDemoJourneys={showDemoJourneys}
+                  demoFaces={demoFaces}
+                  onLeave={setLeaving}
+                />
               )}
             </div>
           </>
@@ -433,6 +423,60 @@ function AlbumCard({
         </Link>
       </div>
     </li>
+  );
+}
+
+/**
+ * Shared section order: real SummerHacks2026 first, then the demo bishop
+ * allen card, then everything else.
+ */
+function SharedJourneysGrid({
+  sharedAlbums,
+  placeById,
+  showDemoJourneys,
+  demoFaces,
+  onLeave,
+}: {
+  sharedAlbums: Album[];
+  placeById: Map<string, Place>;
+  showDemoJourneys: boolean;
+  demoFaces: Profile[];
+  onLeave: (album: Album) => void;
+}) {
+  const pinned = sharedAlbums.filter((album) =>
+    isPinnedBeforeDemoShared(album.name),
+  );
+  const rest = sharedAlbums.filter(
+    (album) => !isPinnedBeforeDemoShared(album.name),
+  );
+
+  return (
+    <ul className="mt-5 grid grid-cols-4 gap-x-6 gap-y-7">
+      {pinned.map((album) => (
+        <AlbumCard
+          key={album.id}
+          album={album}
+          places={resolveAlbumPlaces(album.placeIds, placeById)}
+          onRemove={() => onLeave(album)}
+        />
+      ))}
+      {showDemoJourneys &&
+        DEMO_SHARED_JOURNEYS.map((journey) => (
+          <DemoJourneyCard
+            key={journey.id}
+            journey={journey}
+            faces={demoFaces}
+          />
+        ))}
+      {rest.map((album) => (
+        <AlbumCard
+          key={album.id}
+          album={album}
+          places={resolveAlbumPlaces(album.placeIds, placeById)}
+          onRemove={() => onLeave(album)}
+        />
+      ))}
+    </ul>
   );
 }
 
