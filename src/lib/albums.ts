@@ -31,6 +31,19 @@ export function canEditAlbum(album: Album, uid: string | undefined): boolean {
   return Boolean(uid) && albumMemberIds(album).includes(uid as string);
 }
 
+/**
+ * Members always contribute; a public journey also takes places from any
+ * signed-in visitor — contribution is the point of making one public. This
+ * covers adding only: removing places and editing stay membership-scoped.
+ */
+export function canContributeToAlbum(
+  album: Album,
+  uid: string | undefined,
+): boolean {
+  if (!uid) return false;
+  return canEditAlbum(album, uid) || albumVisibility(album) === "public";
+}
+
 /** Owner, collaborator, pending invitee, or a public journey anyone may open. */
 export function canViewAlbum(album: Album, uid: string | undefined): boolean {
   if (!uid) return false;
@@ -68,6 +81,32 @@ export function subscribeToAlbumsByOwner(
   onError?: (error: Error) => void,
 ) {
   const q = query(collection(db, "albums"), where("ownerId", "==", ownerId));
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        sortByCreatedDesc(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Album),
+        ),
+      );
+    },
+    onError,
+  );
+}
+
+/**
+ * Every public journey, newest first — the pool the Feed draws from. The
+ * visibility filter is what makes the query provably readable under rules
+ * that refuse strangers private journeys.
+ */
+export function subscribeToPublicAlbums(
+  onChange: (albums: Album[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const q = query(
+    collection(db, "albums"),
+    where("visibility", "==", "public"),
+  );
   return onSnapshot(
     q,
     (snap) => {

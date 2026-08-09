@@ -8,7 +8,7 @@ import { signOut, useAuthProfile } from "@/lib/auth";
 import { shouldHideAppChrome } from "@/lib/appChrome";
 import { useNotifications } from "@/lib/notifications";
 
-type Tab = "library" | "discover" | "map";
+type Tab = "library" | "feed" | "discover" | "map";
 
 /**
  * The whole of Atlas's navigation, in one 64px bar — mount once from the root
@@ -36,6 +36,7 @@ export default function AppTopBar() {
 
         <nav className="flex h-full items-center gap-1">
           <NavLink href="/" label="Library" active={current === "library"} />
+          <NavLink href="/feed" label="Feed" active={current === "feed"} />
           <NavLink
             href="/discover"
             label="Discover"
@@ -147,6 +148,9 @@ function NavLink({
 }
 
 function tabForPath(pathname: string): Tab | null {
+  if (pathname === "/feed" || pathname.startsWith("/feed/")) {
+    return "feed";
+  }
   if (pathname === "/discover" || pathname.startsWith("/discover/")) {
     return "discover";
   }

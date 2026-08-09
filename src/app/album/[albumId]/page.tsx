@@ -12,6 +12,7 @@ import {
 import {
   addPlacesToAlbum,
   albumVisibility,
+  canContributeToAlbum,
   canEditAlbum,
   ensurePlacesLinkedToAlbum,
   removePlacesFromAlbum,
@@ -148,11 +149,24 @@ export default function AlbumPage({
     );
   }, [places, album, sharedPlaces, isRecents]);
 
+  // What "Add Existing Place" offers is always the viewer's own uploads —
+  // `places` holds the album owner's, which on someone else's public journey
+  // is not who is contributing.
+  const [myPlaces, setMyPlaces] = useState<Place[] | null>(null);
+  useEffect(() => {
+    if (!isFirebaseConfigured || !user) return;
+    if (placesOwnerId === user.uid) return;
+    return subscribeToPlacesByUploader(user.uid, setMyPlaces, () =>
+      setMyPlaces([]),
+    );
+  }, [user, placesOwnerId]);
+
   const candidates = useMemo(() => {
-    if (isRecents || !places) return [];
+    const mine = placesOwnerId === user?.uid ? places : myPlaces;
+    if (isRecents || !mine) return [];
     const inAlbum = new Set(album?.placeIds ?? []);
-    return places.filter((p) => !inAlbum.has(p.id));
-  }, [places, album, isRecents]);
+    return mine.filter((p) => !inAlbum.has(p.id));
+  }, [places, myPlaces, placesOwnerId, user, album, isRecents]);
 
   if (!isRecents && album === null) {
     return (
@@ -180,6 +194,10 @@ export default function AlbumPage({
   const readyPlaces = albumPlaces ?? [];
   // Recents is a view of your own uploads, so it is always yours to add to.
   const canEdit = isRecents || (album ? canEditAlbum(album, user?.uid) : false);
+  // Public journeys take places from anyone signed in; adding is the one
+  // thing contribution opens — removing and editing stay membership-scoped.
+  const canContribute =
+    canEdit || (album ? canContributeToAlbum(album, user?.uid) : false);
   // ?new=1 so the entry point is always a blank form, never the saved capture.
   const captureHref = isRecents
     ? "/capture?new=1"
@@ -248,7 +266,7 @@ export default function AlbumPage({
                 </Link>
               )}
 
-              {canEdit &&
+              {canContribute &&
                 (isRecents ? (
                   // Recents holds no album to file into, so the only way to add
                   // to it is to capture something new.
@@ -270,7 +288,7 @@ export default function AlbumPage({
                 ))}
 
               <div className="relative">
-                {canEdit && (
+                {canContribute && (
                   <button
                     onClick={() => setMenuOpen((v) => !v)}
                     aria-label="More"
@@ -348,7 +366,7 @@ export default function AlbumPage({
               >
                 Capture a Place
               </Link>
-            ) : canEdit ? (
+            ) : canContribute ? (
               <button
                 onClick={() => setShowPicker(true)}
                 className="mt-3 inline-flex h-10 items-center rounded-full bg-[#14161A] px-5 text-[15px] font-medium text-white transition hover:bg-[#2B2F36]"

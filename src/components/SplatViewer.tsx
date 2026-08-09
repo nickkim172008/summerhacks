@@ -11,20 +11,25 @@ import type { EntryPoint } from "@/lib/types";
 export interface SplatViewerProps {
   splatUrl: string;
   entryPoint?: EntryPoint;
+  /** Fired once the splat has decoded — for posters that fade out over it. */
+  onReady?: () => void;
 }
 
 export default function SplatViewer({
   splatUrl,
   entryPoint,
+  onReady,
 }: SplatViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // A latest-value ref so the load callback never closes over a stale prop.
+  // Latest-value refs so the load callbacks never close over stale props.
   const entryPointRef = useRef(entryPoint);
+  const onReadyRef = useRef(onReady);
   useEffect(() => {
     entryPointRef.current = entryPoint;
+    onReadyRef.current = onReady;
   });
 
   useEffect(() => {
@@ -101,15 +106,19 @@ export default function SplatViewer({
     scene.add(splat);
 
     // The only handle on a load that never arrives: SplatMesh takes no onError.
-    void splat.initialized.catch((error: unknown) => {
-      console.error("[splat] failed", resolvedUrl, error);
-      if (!mounted) return;
-      setLoadError(
-        error instanceof Error && error.message
-          ? error.message
-          : "This place could not be loaded.",
-      );
-    });
+    void splat.initialized
+      .then(() => {
+        if (mounted) onReadyRef.current?.();
+      })
+      .catch((error: unknown) => {
+        console.error("[splat] failed", resolvedUrl, error);
+        if (!mounted) return;
+        setLoadError(
+          error instanceof Error && error.message
+            ? error.message
+            : "This place could not be loaded.",
+        );
+      });
 
     const resizeObserver = new ResizeObserver(() => {
       const { clientWidth, clientHeight } = container;

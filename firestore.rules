@@ -91,6 +91,18 @@ service cloud.firestore {
              && albumContentUnchanged();
     }
 
+    // Anyone signed in may add places to a public journey — contribution is
+    // the point of making one public. Only placeIds may change, and only by
+    // growing: nothing gets renamed, removed, re-covered, or made private on
+    // this path, and membership stays exactly as it was.
+    function contributingToPublicAlbum() {
+      return signedIn()
+             && resource.data.get('visibility', 'private') == 'public'
+             && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['placeIds'])
+             && request.resource.data.placeIds.hasAll(resource.data.placeIds);
+    }
+
     function ownsPlace() {
       return signedIn() && resource.data.uploaderId == request.auth.uid;
     }
@@ -176,9 +188,9 @@ service cloud.firestore {
     }
 
     // Private journeys stay with the owner, members, and pending invitees.
-    // Public ones are readable by anyone signed in (e.g. from a profile) but
-    // collaborating still requires membership. Writing stays owner/member
-    // scoped as before; only the owner may flip visibility.
+    // Public ones are readable by anyone signed in (e.g. from a profile or
+    // the Feed), and anyone signed in may add places to them — everything
+    // else still requires membership, and only the owner flips visibility.
     match /albums/{albumId} {
       allow create: if signedIn()
                     && request.resource.data.ownerId == request.auth.uid
@@ -195,6 +207,7 @@ service cloud.firestore {
                         || acceptingOwnInvite()
                         || decliningOwnInvite()
                         || leavingOwnMembership()
+                        || contributingToPublicAlbum()
                         || (editsAlbum()
                             && nextMemberIds() == albumMemberIds()
                             && nextPendingIds() == albumPendingIds()
