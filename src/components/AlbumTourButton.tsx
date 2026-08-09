@@ -19,9 +19,16 @@ export default function AlbumTourButton({
       href={`/map?album=${albumId}&tour=1`}
       aria-label={`Play the ${name} walkthrough`}
       title="Play walkthrough"
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] text-[#0071e3] ring-1 ring-black/8 transition hover:bg-neutral-100"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[rgba(20,22,26,0.14)] bg-white text-[#14161A] transition hover:bg-[rgba(20,22,26,0.05)]"
     >
-      <span aria-hidden>▶</span>
+      <svg
+        viewBox="0 0 24 24"
+        className="h-3 w-3"
+        fill="currentColor"
+        aria-hidden
+      >
+        <path d="M8 5v14l11-7z" />
+      </svg>
     </Link>
   );
 }

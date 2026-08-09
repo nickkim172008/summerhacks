@@ -1,28 +1,76 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #1d1d1f;
+  /* Surfaces */
+  --canvas: #faf9f7;
+  --surface: #ffffff;
+
+  /* Ink */
+  --ink: #14161a;
+  --ink-70: #4a4f57;
+  --ink-55: #6b7178;
+  --ink-placeholder: #8a9098;
+
+  /* Rules */
+  --line: rgba(20, 22, 26, 0.09);
+  --line-strong: rgba(20, 22, 26, 0.14);
+
+  /* Atlas blue does three jobs: where you are, what you chose, and the one
+     action a screen is for. Everything else is ink. */
+  --accent: #0071e3;
+  --accent-soft: rgba(0, 113, 227, 0.08);
+  --danger: #c0362c;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
-    "Helvetica Neue", "Segoe UI", sans-serif;
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-70: var(--ink-70);
+  --color-ink-55: var(--ink-55);
+  --color-ink-placeholder: var(--ink-placeholder);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+
+  /* Archivo carries everything the app says. Newsreader carries only the names
+     a person gave something — journeys, places, people. */
+  --font-sans: var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
-    "Helvetica Neue", "Segoe UI", sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Browser GPS “you are here” marker on the Map tab */
+/* Not optional: the focus ring is the second job Atlas blue does. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The one thing in this design that moves on its own: a reconstruction that is
+   still running. Shared so the album grid and the capture queue pulse alike. */
+@keyframes atlas-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.atlas-pulse {
+  animation: atlas-pulse 2.4s ease-in-out infinite;
+}
+
+/* Browser GPS “you are here” marker on the Map tab — a live position is job #1
+   for blue, so this one keeps it. */
 .live-location-dot {
   position: relative;
   width: 18px;
@@ -34,7 +82,7 @@ body {
   border-radius: 999px;
   background: #0071e3;
   border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 4px rgba(20, 22, 26, 0.25);
 }
 .live-location-pulse {
   position: absolute;
@@ -57,9 +105,9 @@ body {
 /* Sign-in / sign-up atmosphere */
 .auth-shell {
   background:
-    radial-gradient(120% 80% at 10% -10%, #dce9ff 0%, transparent 55%),
+    radial-gradient(120% 80% at 10% -10%, rgba(0, 113, 227, 0.12) 0%, transparent 55%),
     radial-gradient(90% 70% at 100% 0%, #ffe8d6 0%, transparent 50%),
-    linear-gradient(180deg, #f7f8fb 0%, #eef2f7 45%, #f8f6f2 100%);
+    linear-gradient(180deg, #fbfaf8 0%, #f4f3f0 45%, #faf9f7 100%);
 }
 
 .auth-glow {
@@ -98,7 +146,7 @@ body {
 }
 
 .auth-brand {
-  background: linear-gradient(120deg, #1d1d1f 20%, #3a4a63 55%, #0071e3 100%);
+  background: linear-gradient(120deg, #14161a 20%, #3a4a63 55%, #0071e3 100%);
   background-size: 180% 180%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -116,12 +164,12 @@ body {
 }
 
 .auth-cta {
-  box-shadow: 0 12px 30px rgba(29, 29, 31, 0.16);
+  box-shadow: 0 12px 30px rgba(20, 22, 26, 0.16);
 }
 
 .auth-cta:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 16px 36px rgba(29, 29, 31, 0.2);
+  box-shadow: 0 16px 36px rgba(20, 22, 26, 0.2);
 }
 
 .auth-cta:active:not(:disabled) {
@@ -158,6 +206,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .atlas-pulse,
   .auth-glow,
   .auth-brand,
   .auth-rise,
@@ -165,5 +214,8 @@ body {
   .auth-cta {
     animation: none !important;
     transition: none !important;
+  }
+  .atlas-pulse {
+    opacity: 1;
   }
 }

@@ -51,34 +51,36 @@ export default function TrashPage() {
   }
 
   return (
-    <main className="min-h-screen bg-white pb-24 text-[#1d1d1f]">
-      <div className="mx-auto max-w-5xl px-6">
+    <main className="min-h-screen bg-[#FAF9F7] text-[#14161A]">
+      <div className="mx-auto max-w-[1152px] px-8 pb-16">
+        {/* The back affordance is a row at the top of the column now, not a bar
+            of its own: one line of chrome instead of two. */}
         <Link
           href="/"
-          className="inline-flex items-center gap-1 pt-6 text-[15px] text-[#0071e3]"
+          className="inline-flex items-center gap-1.5 pt-6 text-[13px] font-medium text-[#4A4F57] transition hover:text-[#14161A]"
         >
-          <span aria-hidden className="text-xl leading-none">
-            ‹
-          </span>
-          Journeys
+          <ChevronLeftIcon />
+          Library
         </Link>
-        <h1 className="mt-4 text-[34px] font-bold tracking-tight">
+        <h1 className="mt-5 font-display text-[40px] font-normal leading-[40px] tracking-[-0.02em]">
           Recently Deleted
         </h1>
-        <p className="mt-2 text-sm text-neutral-500">
+        <p className="mt-3 max-w-[62ch] text-[15px] leading-6 text-[#4A4F57]">
           Deleted places stay here until you remove them for good. Taking
           one out of a journey never puts it here — that only takes it out of the
           journey.
         </p>
 
-        {error && <p className="mt-6 text-sm text-red-500">{error}</p>}
+        {error && (
+          <p className="mt-6 text-[15px] text-[#C0362C]">{error}</p>
+        )}
 
         {(loading || places === null) && (
-          <p className="mt-10 text-sm text-neutral-500">Loading…</p>
+          <p className="mt-10 text-[15px] text-[#6B7178]">Loading…</p>
         )}
 
         {places?.length === 0 && (
-          <p className="mt-10 text-sm text-neutral-500">
+          <p className="mt-10 text-[15px] text-[#6B7178]">
             Nothing in the trash.
           </p>
         )}
@@ -88,18 +90,18 @@ export default function TrashPage() {
             {places.map((place) => (
               <li
                 key={place.id}
-                className="flex items-center gap-4 rounded-2xl border border-black/10 px-4 py-3"
+                className="flex items-center gap-4 rounded-2xl border border-[rgba(20,22,26,0.09)] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(20,22,26,0.04)]"
               >
-                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-neutral-100">
+                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[rgba(20,22,26,0.05)]">
                   <PlaceThumb place={place} />
                 </div>
-                <p className="min-w-0 flex-1 truncate text-[15px] font-medium">
+                <p className="min-w-0 flex-1 truncate font-display text-[19px] font-normal leading-6 tracking-[-0.01em]">
                   {place.name}
                 </p>
 
                 {confirming === place.id ? (
                   <div className="flex shrink-0 items-center gap-3">
-                    <span className="text-sm text-neutral-500">
+                    <span className="text-[13px] text-[#6B7178]">
                       Delete for good?
                     </span>
                     <button
@@ -111,19 +113,19 @@ export default function TrashPage() {
                           "Could not delete that place.",
                         )
                       }
-                      className="rounded-full bg-red-500 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                      className="h-9 rounded-full bg-[#C0362C] px-4 text-[14px] font-medium text-white transition hover:bg-[#A82F26] disabled:opacity-50"
                     >
                       {busy === place.id ? "Deleting…" : "Delete"}
                     </button>
                     <button
                       onClick={() => setConfirming(null)}
-                      className="text-sm text-[#0071e3]"
+                      className="text-[14px] font-medium text-[#4A4F57] transition hover:text-[#14161A]"
                     >
                       Cancel
                     </button>
                   </div>
                 ) : (
-                  <div className="flex shrink-0 items-center gap-3">
+                  <div className="flex shrink-0 items-center gap-2">
                     <button
                       disabled={busy === place.id}
                       onClick={() =>
@@ -133,13 +135,13 @@ export default function TrashPage() {
                           "Could not restore that place.",
                         )
                       }
-                      className="text-sm text-[#0071e3] disabled:opacity-50"
+                      className="h-9 rounded-full border border-[rgba(20,22,26,0.14)] bg-white px-4 text-[14px] font-medium text-[#14161A] transition hover:bg-[rgba(20,22,26,0.05)] disabled:opacity-50"
                     >
                       Restore
                     </button>
                     <button
                       onClick={() => setConfirming(place.id)}
-                      className="text-sm text-red-500"
+                      className="h-9 rounded-full px-3 text-[14px] font-medium text-[#C0362C] transition hover:bg-[rgba(192,54,44,0.08)]"
                     >
                       Delete Forever
                     </button>
@@ -151,5 +153,23 @@ export default function TrashPage() {
         )}
       </div>
     </main>
+  );
+}
+
+/** The back-row glyph, at the 14px the design draws it. */
+function ChevronLeftIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M15 5l-7 7 7 7" />
+    </svg>
   );
 }

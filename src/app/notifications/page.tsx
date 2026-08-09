@@ -41,30 +41,32 @@ export default function NotificationsPage() {
   }, [user]);
 
   return (
-    <main className="min-h-screen bg-white pb-24 text-[#1d1d1f]">
-      <div className="mx-auto max-w-2xl px-6">
-        <h1 className="mt-8 text-[34px] font-bold tracking-tight">
+    <main className="min-h-screen bg-[#FAF9F7] text-[#14161A]">
+      <div className="mx-auto max-w-[1152px] px-8 pb-16">
+        <h1 className="mt-10 font-display text-[40px] font-normal leading-[40px] tracking-[-0.02em]">
           Notifications
         </h1>
 
         {authLoading || !user ? (
-          <p className="mt-6 text-neutral-500">Loading…</p>
+          <p className="mt-8 text-[15px] text-[#6B7178]">Loading…</p>
         ) : items.length === 0 ? (
           <div className="mt-16 text-center">
-            <p className="text-[17px] font-semibold">Nothing yet</p>
-            <p className="mx-auto mt-2 max-w-xs text-sm text-neutral-500">
+            <p className="text-[20px] font-semibold leading-[26px] tracking-[-0.01em]">
+              Nothing yet
+            </p>
+            <p className="mx-auto mt-2 max-w-sm text-[15px] leading-6 text-[#6B7178]">
               New followers show up here, along with places captured by
               the people you follow and journey invites waiting on a reply.
             </p>
             <Link
               href="/discover"
-              className="mt-5 inline-block rounded-full bg-[#0071e3] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#0077ed]"
+              className="mt-6 inline-flex h-10 items-center rounded-full bg-[#14161A] px-5 text-[15px] font-medium text-white transition hover:bg-[#2A2E35]"
             >
               Find people to follow
             </Link>
           </div>
         ) : (
-          <ul className="mt-6 divide-y divide-black/5">
+          <ul className="mt-8 divide-y divide-[rgba(20,22,26,0.09)]">
             {items.map((item) => (
               <NotificationRow
                 key={item.id}
@@ -120,11 +122,11 @@ function NotificationRow({
           textClassName="text-[15px]"
         />
       ) : (
-        <div className="h-11 w-11 shrink-0 rounded-full bg-neutral-100" />
+        <div className="h-11 w-11 shrink-0 rounded-full bg-[rgba(20,22,26,0.05)]" />
       )}
 
       <div className="min-w-0 flex-1">
-        <p className="text-[15px] leading-snug">
+        <p className="text-[15px] leading-6">
           <span className="font-medium">{name}</span>
           {item.kind === "follow" ? (
             " started following you."
@@ -135,21 +137,23 @@ function NotificationRow({
             </>
           )}
         </p>
-        <p className="mt-0.5 text-[13px] text-neutral-500">
+        <p className="mt-0.5 text-[13px] leading-[18px] tabular-nums text-[#6B7178]">
           {item.at > 0 ? timeAgo(item.at) : "Just now"}
         </p>
       </div>
 
       {item.kind === "place" && (
-        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-neutral-100">
+        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-[rgba(20,22,26,0.05)]">
           <PlaceThumb place={item.place} />
         </div>
       )}
 
       {isNew && (
+        // The notification dot is the one place blue marks "there is something
+        // new here" — the same mark the bell in the top bar carries.
         <span
           aria-label="New"
-          className="h-2 w-2 shrink-0 rounded-full bg-[#0071e3]"
+          className="h-2 w-2 shrink-0 rounded-full bg-[#0071E3]"
         />
       )}
     </>
@@ -163,12 +167,12 @@ function NotificationRow({
       {target ? (
         <Link
           href={target}
-          className="flex items-center gap-3 py-3 transition hover:opacity-70"
+          className="flex items-center gap-4 py-4 transition hover:opacity-70"
         >
           {body}
         </Link>
       ) : (
-        <div className="flex items-center gap-3 py-3">{body}</div>
+        <div className="flex items-center gap-4 py-4">{body}</div>
       )}
     </li>
   );
@@ -217,8 +221,8 @@ function AlbumInviteRow({
   }
 
   return (
-    <div className="py-3">
-      <div className="flex items-center gap-3">
+    <div className="py-4">
+      <div className="flex items-center gap-4">
         {actor ? (
           <Avatar
             profile={actor}
@@ -226,16 +230,16 @@ function AlbumInviteRow({
             textClassName="text-[15px]"
           />
         ) : (
-          <div className="h-11 w-11 shrink-0 rounded-full bg-neutral-100" />
+          <div className="h-11 w-11 shrink-0 rounded-full bg-[rgba(20,22,26,0.05)]" />
         )}
 
         <div className="min-w-0 flex-1">
-          <p className="text-[15px] leading-snug">
+          <p className="text-[15px] leading-6">
             <span className="font-medium">{name}</span>
             {" invited you to "}
             <span className="font-medium">{item.album.name}</span>.
           </p>
-          <p className="mt-0.5 text-[13px] text-neutral-500">
+          <p className="mt-0.5 text-[13px] leading-[18px] tabular-nums text-[#6B7178]">
             {item.at > 0 ? timeAgo(item.at) : "Just now"}
           </p>
         </div>
@@ -243,17 +247,17 @@ function AlbumInviteRow({
         {isNew && (
           <span
             aria-label="New"
-            className="h-2 w-2 shrink-0 rounded-full bg-[#0071e3]"
+            className="h-2 w-2 shrink-0 rounded-full bg-[#0071E3]"
           />
         )}
       </div>
 
-      <div className="mt-3 flex items-center gap-2 pl-14">
+      <div className="mt-3 flex items-center gap-2 pl-[60px]">
         <button
           type="button"
           onClick={() => void accept()}
           disabled={busy !== null}
-          className="rounded-full bg-[#0071e3] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
+          className="h-9 rounded-full bg-[#14161A] px-4 text-[14px] font-medium text-white transition hover:bg-[#2A2E35] disabled:opacity-40"
         >
           {busy === "accept" ? "Joining…" : "Accept"}
         </button>
@@ -261,13 +265,13 @@ function AlbumInviteRow({
           type="button"
           onClick={() => void decline()}
           disabled={busy !== null}
-          className="rounded-full border border-black/10 px-4 py-1.5 text-[13px] font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-40"
+          className="h-9 rounded-full border border-[rgba(20,22,26,0.14)] bg-white px-4 text-[14px] font-medium text-[#4A4F57] transition hover:bg-[rgba(20,22,26,0.05)] disabled:opacity-40"
         >
           {busy === "decline" ? "…" : "Decline"}
         </button>
       </div>
       {error && (
-        <p className="mt-2 pl-14 text-[13px] text-red-500">{error}</p>
+        <p className="mt-2 pl-[60px] text-[13px] text-[#C0362C]">{error}</p>
       )}
     </div>
   );

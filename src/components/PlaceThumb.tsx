@@ -3,14 +3,15 @@ import { canOptimizeImage } from "@/lib/imageHosts";
 import type { Place } from "@/lib/types";
 
 /* Splats rarely have thumbnails yet, so fall back to a stable
-   per-place gradient — keeps the grid colorful like a photo library. */
+   per-place gradient — keeps the grid colorful like a photo library.
+   Muted to sit under the new neutrals rather than shout over them. */
 const GRADIENTS = [
-  "from-sky-400 to-indigo-500",
-  "from-amber-300 to-orange-500",
-  "from-emerald-400 to-teal-600",
-  "from-rose-400 to-pink-600",
-  "from-violet-400 to-purple-600",
-  "from-cyan-400 to-blue-600",
+  "bg-[linear-gradient(140deg,#8FB6D9,#5F6FA8)]",
+  "bg-[linear-gradient(140deg,#E3C58F,#C78A54)]",
+  "bg-[linear-gradient(140deg,#8EC3AC,#4C8478)]",
+  "bg-[linear-gradient(140deg,#D9A1A8,#A3607A)]",
+  "bg-[linear-gradient(140deg,#A89ECD,#6B5F9C)]",
+  "bg-[linear-gradient(140deg,#8FC6D4,#4B7EA6)]",
 ];
 
 function gradientFor(id: string) {
@@ -41,7 +42,7 @@ export default function PlaceThumb({ place }: { place: Place }) {
   }
   return (
     <div
-      className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${gradientFor(place.id)}`}
+      className={`flex h-full w-full items-center justify-center ${gradientFor(place.id)}`}
     >
       <svg
         viewBox="0 0 24 24"

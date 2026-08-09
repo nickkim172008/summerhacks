@@ -177,23 +177,27 @@ export default function PlacesMap({
   if (error === "missing-key") {
     return (
       <div
-        className={`flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-sm text-neutral-500 ${className}`}
+        className={`flex h-full flex-col items-center justify-center gap-3 bg-[#FAF9F7] px-8 text-center text-[15px] leading-6 text-[#6B7178] ${className}`}
       >
         <p>Add your Google Maps key to show the map + heatmap.</p>
-        <p>
+        <p className="max-w-[62ch]">
           Set{" "}
-          <code className="text-[#1d1d1f]">
+          <code className="rounded bg-[rgba(20,22,26,0.05)] px-1.5 py-0.5 text-[13px] text-[#14161A]">
             NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
           </code>{" "}
-          in <code className="text-[#1d1d1f]">.env.local</code>, enable{" "}
-          <strong className="font-medium text-[#1d1d1f]">
+          in{" "}
+          <code className="rounded bg-[rgba(20,22,26,0.05)] px-1.5 py-0.5 text-[13px] text-[#14161A]">
+            .env.local
+          </code>
+          , enable{" "}
+          <strong className="font-medium text-[#14161A]">
             Maps JavaScript API
           </strong>
           , and restart the server.
         </p>
         <Link
           href="https://console.cloud.google.com/google/maps-apis"
-          className="text-[#0071e3]"
+          className="text-[14px] font-medium text-[#14161A] transition hover:text-[#4A4F57]"
         >
           Google Cloud Maps APIs →
         </Link>
@@ -204,11 +208,11 @@ export default function PlacesMap({
   return (
     <div className={`relative h-full w-full ${className}`}>
       <div ref={containerRef} className="absolute inset-0 h-full w-full" />
-      <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-white/95 px-3 py-1 text-[11px] font-medium text-[#1d1d1f] shadow ring-1 ring-black/10">
+      <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-[rgba(250,249,247,0.92)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] tabular-nums text-[#4A4F57] shadow-[0_1px_2px_rgba(20,22,26,0.06)] ring-1 ring-[rgba(20,22,26,0.09)] backdrop-blur">
         Heatmap on · {places.length} spots
       </div>
       {error && error !== "missing-key" && (
-        <div className="absolute inset-x-4 bottom-24 z-10 rounded-xl bg-white/95 px-4 py-3 text-center text-sm text-red-600 shadow-lg ring-1 ring-black/10">
+        <div className="absolute inset-x-4 bottom-24 z-10 rounded-2xl bg-white px-4 py-3 text-center text-[15px] text-[#C0362C] shadow-[0_12px_28px_-18px_rgba(20,22,26,0.4)] ring-1 ring-[rgba(20,22,26,0.09)]">
           Map error: {error}
         </div>
       )}
@@ -231,6 +235,8 @@ function ensureLiveMarker(
       icon: {
         path: libs.SymbolPath.CIRCLE,
         scale: 9,
+        // Where you are is the first job Atlas blue does, so this marker keeps
+        // it while the rest of the map has gone to ink.
         fillColor: "#0071e3",
         fillOpacity: 1,
         strokeColor: "#ffffff",

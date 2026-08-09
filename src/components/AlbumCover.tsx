@@ -43,7 +43,9 @@ export default function AlbumCover({
   if (tiles.length < MOSAIC_TILES) return <PlaceThumb place={tiles[0]} />;
 
   return (
-    <div className="grid h-full w-full grid-cols-2 grid-rows-2">
+    // A hairline of canvas between the quadrants, so four environments read as
+    // four rather than as one busy rectangle.
+    <div className="grid h-full w-full grid-cols-2 grid-rows-2 gap-[1px] bg-[#FAF9F7]">
       {tiles.map((place) => (
         <div key={place.id} className="overflow-hidden">
           <PlaceThumb place={place} />
@@ -55,7 +57,7 @@ export default function AlbumCover({
 
 function EmptyCover() {
   return (
-    <div className="flex h-full w-full items-center justify-center text-neutral-300">
+    <div className="flex h-full w-full items-center justify-center bg-[rgba(20,22,26,0.05)] text-[#6B7178]">
       <svg
         viewBox="0 0 24 24"
         fill="currentColor"

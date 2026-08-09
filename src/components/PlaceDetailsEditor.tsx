@@ -140,14 +140,14 @@ export default function PlaceDetailsEditor({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 text-[#1d1d1f] shadow-2xl">
-        <h2 className="text-[22px] font-semibold tracking-tight">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,22,26,0.35)] p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 text-[#14161A] shadow-[0_24px_60px_-30px_rgba(20,22,26,0.5)]">
+        <h2 className="font-display text-[22px] leading-[28px] tracking-[-0.01em]">
           Edit place
         </h2>
 
         <div className="mt-5 flex items-center gap-4">
-          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-neutral-100 ring-1 ring-black/5">
+          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-[rgba(20,22,26,0.05)] ring-1 ring-[rgba(20,22,26,0.09)]">
             {preview ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -163,7 +163,7 @@ export default function PlaceDetailsEditor({
           </div>
           <div className="min-w-0">
             <p className="text-[13px] font-medium">Thumbnail</p>
-            <p className="mt-0.5 text-[12px] leading-snug text-neutral-500">
+            <p className="mt-0.5 text-[12px] leading-snug text-[#6B7178]">
               What this shows in journey grids. Taken off the walkthrough unless
               you pick something else.
             </p>
@@ -179,7 +179,7 @@ export default function PlaceDetailsEditor({
                 type="button"
                 onClick={() => imageRef.current?.click()}
                 disabled={busy !== null}
-                className="text-[#0071e3] transition hover:opacity-70 disabled:opacity-40"
+                className="text-[#14161A] transition hover:opacity-70 disabled:opacity-40"
               >
                 Choose image
               </button>
@@ -188,7 +188,7 @@ export default function PlaceDetailsEditor({
                   type="button"
                   onClick={clearImage}
                   disabled={busy !== null}
-                  className="text-neutral-500 transition hover:text-neutral-800 disabled:opacity-40"
+                  className="text-[#4A4F57] transition hover:text-[#14161A] disabled:opacity-40"
                 >
                   Remove
                 </button>
@@ -202,7 +202,7 @@ export default function PlaceDetailsEditor({
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-black/10 bg-neutral-50 px-4 py-2.5 text-[15px] font-normal outline-none focus:border-[#0071e3]"
+            className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[15px] font-normal outline-none transition placeholder:text-[#8A9098] focus:border-[#0071E3]"
           />
         </label>
 
@@ -212,7 +212,7 @@ export default function PlaceDetailsEditor({
             value={locationName}
             onChange={(e) => setLocationName(e.target.value)}
             placeholder="Toronto, or High Park, or a room"
-            className="mt-1 w-full rounded-xl border border-black/10 bg-neutral-50 px-4 py-2.5 text-[15px] font-normal outline-none focus:border-[#0071e3]"
+            className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[15px] font-normal outline-none transition placeholder:text-[#8A9098] focus:border-[#0071E3]"
           />
         </label>
 
@@ -224,7 +224,7 @@ export default function PlaceDetailsEditor({
               onChange={(e) => setLat(e.target.value)}
               inputMode="decimal"
               placeholder="43.652"
-              className="mt-1 w-full rounded-xl border border-black/10 bg-neutral-50 px-4 py-2.5 font-mono text-[14px] font-normal outline-none focus:border-[#0071e3]"
+              className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[14px] font-normal tabular-nums outline-none transition placeholder:text-[#8A9098] focus:border-[#0071E3]"
             />
           </label>
           <label className="flex-1 text-[13px] font-medium">
@@ -234,13 +234,13 @@ export default function PlaceDetailsEditor({
               onChange={(e) => setLng(e.target.value)}
               inputMode="decimal"
               placeholder="-79.405"
-              className="mt-1 w-full rounded-xl border border-black/10 bg-neutral-50 px-4 py-2.5 font-mono text-[14px] font-normal outline-none focus:border-[#0071e3]"
+              className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[14px] font-normal tabular-nums outline-none transition placeholder:text-[#8A9098] focus:border-[#0071E3]"
             />
           </label>
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3">
-          <p className="text-[12px] text-neutral-500">
+          <p className="text-[12px] text-[#6B7178]">
             {coords
               ? "Plotted exactly here."
               : locationName.trim()
@@ -251,34 +251,34 @@ export default function PlaceDetailsEditor({
             <button
               onClick={nameFromCoords}
               disabled={!coords || busy !== null}
-              className="text-[13px] font-medium text-[#0071e3] disabled:opacity-40"
+              className="text-[13px] font-medium text-[#14161A] transition hover:opacity-70 disabled:opacity-40"
             >
               {busy === "naming" ? "Naming…" : "Name the point"}
             </button>
             <button
               onClick={lookUp}
               disabled={!locationName.trim() || busy !== null}
-              className="text-[13px] font-medium text-[#0071e3] disabled:opacity-40"
+              className="text-[13px] font-medium text-[#14161A] transition hover:opacity-70 disabled:opacity-40"
             >
               {busy === "looking" ? "Looking up…" : "Use the name"}
             </button>
           </div>
         </div>
 
-        {error && <p className="mt-4 text-[13px] text-red-600">{error}</p>}
+        {error && <p className="mt-4 text-[13px] text-[#C0362C]">{error}</p>}
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button
             onClick={onClose}
             disabled={busy === "saving"}
-            className="rounded-full border border-black/10 px-5 py-2 text-[15px] transition hover:bg-neutral-50 disabled:opacity-40"
+            className="px-2 py-2 text-[15px] text-[#4A4F57] transition hover:text-[#14161A] disabled:opacity-40"
           >
             Cancel
           </button>
           <button
             onClick={save}
             disabled={busy !== null}
-            className="rounded-full bg-[#0071e3] px-5 py-2 text-[15px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
+            className="rounded-full bg-[#14161A] px-5 py-2 text-[15px] font-medium text-white transition hover:bg-[#2A2E35] disabled:opacity-40"
           >
             {busy === "saving" ? "Saving…" : "Save"}
           </button>

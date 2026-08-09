@@ -10,7 +10,7 @@ import type { Album, Profile } from "@/lib/types";
 const MAX_FACES = 4;
 
 /**
- * Collaborator faces for the bottom-right of an album cover in the library.
+ * Collaborator faces for the bottom-left of an album cover in the library.
  * Decorative only — the cover itself is the link into the album, so these are
  * not nested profile links. Owner first, then everyone else in membership
  * order.
@@ -47,10 +47,10 @@ export default function AlbumCollaborators({ album }: { album: Album }) {
   const extra = profiles.length - shown.length;
 
   return (
-    <div className="pointer-events-none absolute bottom-2 right-2 flex items-center">
+    <div className="pointer-events-none absolute bottom-2.5 left-2.5 flex items-center">
       <div className="flex flex-row-reverse">
         {extra > 0 && (
-          <span className="relative z-0 -ml-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-[10px] font-semibold text-white ring-2 ring-white/90 sm:h-8 sm:w-8 sm:text-[11px]">
+          <span className="relative z-0 -ml-[7px] flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[rgba(20,22,26,0.72)] text-[10px] font-semibold tabular-nums text-white shadow-[0_0_0_2px_#FAF9F7]">
             +{extra}
           </span>
         )}
@@ -62,13 +62,13 @@ export default function AlbumCollaborators({ album }: { album: Album }) {
                 ? `@${profile.username} · owner`
                 : `@${profile.username}`
             }
-            className="relative -ml-2 first:ml-0 rounded-full ring-2 ring-white/90"
+            className="relative -ml-[7px] first:ml-0 rounded-full shadow-[0_0_0_2px_#FAF9F7]"
             style={{ zIndex: shown.length - index }}
           >
             <Avatar
               profile={profile}
-              className="h-7 w-7 sm:h-8 sm:w-8"
-              textClassName="text-[10px] sm:text-[11px]"
+              className="h-[22px] w-[22px]"
+              textClassName="text-[10px]"
             />
           </span>
         ))}

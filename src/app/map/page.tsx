@@ -9,7 +9,7 @@ import { useAuthProfile } from "@/lib/auth";
 const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+    <div className="flex h-full items-center justify-center bg-[#FAF9F7] text-[15px] text-[#6B7178]">
       Loading map…
     </div>
   ),
@@ -209,27 +209,28 @@ function MapView() {
   const noticeVisible = useTransientNotice(notice);
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col bg-white text-[#1d1d1f]">
-      <div className="relative flex h-[calc(100dvh-3.25rem)] flex-1">
+    <main className="flex min-h-0 flex-1 flex-col bg-[#FAF9F7] text-[#14161A]">
+      {/* One 64px bar above, and nothing below it any more. */}
+      <div className="relative flex h-[calc(100dvh-4rem)] flex-1">
         {!sidebarOpen && (
           <button
             onClick={() => setSidebarOpen(true)}
-            className="absolute left-4 top-3 z-20 rounded-full bg-white/95 px-3.5 py-2 text-[13px] font-medium text-[#1d1d1f] shadow-md ring-1 ring-black/8 transition hover:bg-white"
+            className="absolute left-4 top-3 z-20 h-9 rounded-full border border-[rgba(20,22,26,0.14)] bg-[rgba(255,255,255,0.92)] px-4 text-[14px] font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)] backdrop-blur transition hover:bg-white"
           >
             Places
           </button>
         )}
 
         {sidebarOpen && (
-          <aside className="absolute inset-y-0 left-0 z-10 flex w-[min(100%,17.5rem)] flex-col bg-white/92 shadow-[8px_0_32px_rgba(0,0,0,0.06)] backdrop-blur-2xl sm:static sm:shadow-none sm:ring-1 sm:ring-black/6">
+          <aside className="absolute inset-y-0 left-0 z-10 flex w-[min(100%,17.5rem)] flex-col bg-[rgba(255,255,255,0.92)] shadow-[8px_0_32px_rgba(20,22,26,0.06)] backdrop-blur-2xl sm:static sm:border-r sm:border-[rgba(20,22,26,0.09)] sm:shadow-none">
             <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
-              <p className="min-w-0 text-[17px] font-semibold tracking-tight">
+              <p className="min-w-0 text-[20px] font-semibold leading-[26px] tracking-[-0.01em]">
                 Places
               </p>
               <button
                 onClick={() => setSidebarOpen(false)}
                 aria-label="Close places panel"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-[#1d1d1f]"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#6B7178] transition hover:bg-[rgba(20,22,26,0.05)] hover:text-[#14161A]"
               >
                 <CloseIcon />
               </button>
@@ -260,19 +261,22 @@ function MapView() {
               </div>
 
               <div className="mt-6">
-                <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
+                <p className="mb-2 px-2 text-[11px] font-semibold uppercase leading-3 tracking-[0.12em] text-[#6B7178]">
                   Journeys
                 </p>
                 {!user && (
-                  <p className="px-2 py-1.5 text-[12px] leading-relaxed text-neutral-500">
-                    <Link href="/signin" className="font-medium text-[#0071e3]">
+                  <p className="px-2 py-1.5 text-[13px] leading-[18px] text-[#6B7178]">
+                    <Link
+                      href="/signin"
+                      className="font-medium text-[#14161A] transition hover:text-[#4A4F57]"
+                    >
                       Sign in
                     </Link>{" "}
                     to browse by journey.
                   </p>
                 )}
                 {user && albums.length === 0 && (
-                  <p className="px-2 py-1.5 text-[12px] leading-relaxed text-neutral-500">
+                  <p className="px-2 py-1.5 text-[13px] leading-[18px] text-[#6B7178]">
                     No journeys yet — make one in Library.
                   </p>
                 )}
@@ -308,7 +312,7 @@ function MapView() {
             liveLocation={liveLocation}
             weightOf={showTimeline ? heatWeightOf : undefined}
             focus={tourIntro.focus}
-            className="absolute inset-x-0 top-0 bottom-[calc(3rem+env(safe-area-inset-bottom))]"
+            className="absolute inset-0"
           />
 
           {/* Spelled out rather than left as an icon: a tour button elsewhere
@@ -318,10 +322,10 @@ function MapView() {
               timelineOpen ? closeTimeline() : setTimelineOpen(true)
             }
             aria-pressed={timelineOpen}
-            className={`absolute left-3 top-12 z-[2] flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium shadow-md ring-1 transition ${
+            className={`absolute left-3 top-14 z-[2] flex h-9 items-center gap-1.5 rounded-full px-4 text-[14px] font-medium shadow-[0_1px_2px_rgba(20,22,26,0.06)] ring-1 backdrop-blur transition ${
               timelineOpen
-                ? "bg-[#0071e3] text-white ring-[#0071e3]/30"
-                : "bg-white/95 text-[#1d1d1f] ring-black/8 hover:bg-white"
+                ? "bg-[#14161A] text-white ring-[#14161A]"
+                : "bg-[rgba(255,255,255,0.92)] text-[#14161A] ring-[rgba(20,22,26,0.14)] hover:bg-white"
             }`}
           >
             <ClockIcon />
@@ -330,7 +334,7 @@ function MapView() {
 
           {notice && !showTimeline && (
             <div
-              className="pointer-events-none absolute bottom-20 left-1/2 z-[1] max-w-sm -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-center text-[12px] text-neutral-600 shadow-md ring-1 ring-black/10 transition-opacity duration-700"
+              className="pointer-events-none absolute bottom-10 left-1/2 z-[1] max-w-sm -translate-x-1/2 rounded-full bg-[rgba(255,255,255,0.92)] px-4 py-2 text-center text-[13px] leading-[18px] text-[#4A4F57] shadow-[0_1px_2px_rgba(20,22,26,0.06)] ring-1 ring-[rgba(20,22,26,0.09)] backdrop-blur transition-opacity duration-700"
               style={{ opacity: noticeVisible ? 1 : 0 }}
             >
               {notice}
@@ -397,10 +401,10 @@ function FilterButton({
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`flex w-full items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${
+      className={`flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition ${
         active
-          ? "border-[#0071e3] bg-[#0071e3] text-white shadow-sm shadow-[#0071e3]/25"
-          : "border-black/10 bg-white text-[#1d1d1f] hover:border-black/20 hover:bg-neutral-50"
+          ? "border-[#14161A] bg-[#14161A] text-white"
+          : "border-[rgba(20,22,26,0.09)] bg-white text-[#14161A] hover:border-[rgba(20,22,26,0.14)] hover:bg-[rgba(20,22,26,0.03)]"
       }`}
     >
       <span
@@ -409,8 +413,8 @@ function FilterButton({
           toggle ? "rounded-[5px]" : "rounded-full"
         } ${
           active
-            ? "border-white bg-white text-[#0071e3]"
-            : "border-black/25 bg-white"
+            ? "border-white bg-white text-[#14161A]"
+            : "border-[rgba(20,22,26,0.25)] bg-white"
         }`}
       >
         {active &&
@@ -425,17 +429,15 @@ function FilterButton({
               />
             </svg>
           ) : (
-            <span className="h-2 w-2 rounded-full bg-[#0071e3]" />
+            <span className="h-2 w-2 rounded-full bg-[#14161A]" />
           ))}
       </span>
 
       <span className="min-w-0 flex-1">
-        <span className="block text-[14px] font-medium tracking-tight">
-          {title}
-        </span>
+        <span className="block text-[14px] font-medium">{title}</span>
         <span
-          className={`mt-0.5 block text-[12px] leading-snug ${
-            active ? "text-white/75" : "text-neutral-500"
+          className={`mt-0.5 block text-[13px] leading-[18px] ${
+            active ? "text-white/75" : "text-[#6B7178]"
           }`}
         >
           {subtitle}

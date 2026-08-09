@@ -14,6 +14,19 @@ import { subscribeToFollowingIds } from "@/lib/follows";
 import Avatar from "@/components/Avatar";
 import type { Album, Profile } from "@/lib/types";
 
+/**
+ * Who is on this journey, said the way a person would: "You, @mira and @jonah".
+ * Reads the faces that are already loaded — no extra lookup.
+ */
+function describeMembers(members: Profile[], viewerId: string) {
+  const names = members.map((profile) =>
+    profile.id === viewerId ? "You" : `@${profile.username}`,
+  );
+  if (names.length === 0) return "";
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 export default function AlbumMembers({
   album,
   viewerId,
@@ -183,42 +196,59 @@ export default function AlbumMembers({
   }
 
   return (
-    <div className="mt-4">
-      <div className="flex flex-wrap items-center gap-3">
+    <div>
+      <div className="flex flex-wrap items-center gap-2.5">
         {members === null ? (
-          <span className="text-[13px] text-neutral-400">Loading people…</span>
+          <span className="text-[15px] text-[#6B7178]">Loading people…</span>
         ) : (
-          members.map((profile) => (
-            <span key={profile.id} className="group relative">
-              <Link
-                href={`/u/${profile.username}`}
-                title={
-                  profile.id === album.ownerId
-                    ? `@${profile.username} · owner`
-                    : `@${profile.username}`
-                }
-                className="block rounded-full ring-black/10 transition hover:ring-2"
-              >
-                <Avatar profile={profile} />
-              </Link>
-              {isOwner && profile.id !== album.ownerId && (
-                <button
-                  onClick={() => remove(profile)}
-                  disabled={busy}
-                  aria-label={`Remove @${profile.username}`}
-                  className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-neutral-700 text-[10px] leading-none text-white group-hover:flex"
+          <>
+            {/* A facepile rather than a row: the journey is theirs together. */}
+            <div className="flex items-center">
+              {members.map((profile) => (
+                <span
+                  key={profile.id}
+                  className="group relative -ml-[9px] first:ml-0 hover:z-10"
                 >
-                  ×
-                </button>
-              )}
-            </span>
-          ))
+                  <Link
+                    href={`/u/${profile.username}`}
+                    title={
+                      profile.id === album.ownerId
+                        ? `@${profile.username} · owner`
+                        : `@${profile.username}`
+                    }
+                    className="block rounded-full shadow-[0_0_0_2px_#FAF9F7] transition-opacity duration-150 hover:opacity-90"
+                  >
+                    <Avatar
+                      profile={profile}
+                      className="h-7 w-7"
+                      textClassName="text-[11px]"
+                    />
+                  </Link>
+                  {isOwner && profile.id !== album.ownerId && (
+                    <button
+                      onClick={() => remove(profile)}
+                      disabled={busy}
+                      aria-label={`Remove @${profile.username}`}
+                      className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-[#14161A] text-[10px] leading-none text-white group-hover:flex"
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+            {members.length > 0 && (
+              <span className="text-[13px] text-[#6B7178]">
+                {describeMembers(members, viewerId)}
+              </span>
+            )}
+          </>
         )}
 
         {isOwner && !inviting && (
           <button
             onClick={() => setInviting(true)}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-black/20 text-[15px] leading-none text-[#0071e3] transition hover:border-[#0071e3]"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-[rgba(20,22,26,0.24)] text-[15px] leading-none text-[#4A4F57] transition-colors duration-150 hover:border-[rgba(20,22,26,0.4)] hover:text-[#14161A]"
             aria-label="Invite someone"
             title="Invite someone"
           >
@@ -229,14 +259,14 @@ export default function AlbumMembers({
 
       {isOwner && pending && pending.length > 0 && (
         <div className="mt-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
+          <p className="text-[11px] font-semibold uppercase leading-[12px] tracking-[0.12em] text-[#6B7178]">
             Pending
           </p>
           <ul className="mt-1.5 space-y-1">
             {pending.map((profile) => (
               <li
                 key={profile.id}
-                className="flex items-center gap-2 text-[13px] text-neutral-600"
+                className="flex items-center gap-2 text-[13px] text-[#4A4F57]"
               >
                 <Avatar
                   profile={profile}
@@ -245,13 +275,13 @@ export default function AlbumMembers({
                 />
                 <span className="min-w-0 flex-1 truncate">
                   @{profile.username}
-                  <span className="text-neutral-400"> · waiting</span>
+                  <span className="text-[#6B7178]"> · waiting</span>
                 </span>
                 <button
                   type="button"
                   onClick={() => remove(profile)}
                   disabled={busy}
-                  className="text-[12px] text-neutral-400 transition hover:text-neutral-700 disabled:opacity-40"
+                  className="text-[12px] text-[#6B7178] transition-colors duration-150 hover:text-[#14161A] disabled:opacity-40"
                 >
                   Cancel
                 </button>
@@ -279,12 +309,12 @@ export default function AlbumMembers({
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              className="min-w-0 flex-1 rounded-lg border border-black/10 bg-neutral-50 px-3 py-1.5 text-[15px] outline-none focus:border-[#0071e3]"
+              className="min-w-0 flex-1 rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-3 py-1.5 text-[15px] text-[#14161A] outline-none transition-colors duration-150 placeholder:text-[#8A9098] focus:border-[#0071E3]"
             />
             <button
               onClick={invite}
               disabled={!handle.trim() || busy}
-              className="shrink-0 text-[15px] font-semibold text-[#0071e3] disabled:opacity-40"
+              className="shrink-0 text-[15px] font-semibold text-[#14161A] disabled:opacity-40"
             >
               {busy ? "Inviting…" : "Invite"}
             </button>
@@ -293,33 +323,33 @@ export default function AlbumMembers({
                 setInviting(false);
                 setError(null);
               }}
-              className="shrink-0 text-[15px] text-neutral-500"
+              className="shrink-0 text-[15px] text-[#4A4F57] transition-colors duration-150 hover:text-[#14161A]"
             >
               Cancel
             </button>
           </div>
 
           {followed === null ? (
-            <p className="mt-2 text-[13px] text-neutral-400">
+            <p className="mt-2 text-[15px] text-[#6B7178]">
               Loading who you follow…
             </p>
           ) : suggestions.length > 0 ? (
-            <ul className="mt-2 overflow-hidden rounded-lg ring-1 ring-black/5">
+            <ul className="mt-2 overflow-hidden rounded-xl border border-[rgba(20,22,26,0.09)] bg-white">
               {suggestions.map((profile) => (
                 <li key={profile.id}>
                   <button
                     onClick={() => inviteProfile(profile)}
                     disabled={busy}
-                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition hover:bg-neutral-50 disabled:opacity-40"
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition-colors duration-150 hover:bg-[rgba(20,22,26,0.05)] disabled:opacity-40"
                   >
                     <Avatar
                       profile={profile}
                       className="h-7 w-7"
                       textClassName="text-[12px]"
                     />
-                    <span className="min-w-0 flex-1 truncate text-[14px]">
+                    <span className="min-w-0 flex-1 truncate font-display text-[15px] tracking-[-0.01em] text-[#14161A]">
                       {profile.displayName}
-                      <span className="ml-1.5 text-[13px] text-neutral-500">
+                      <span className="ml-1.5 font-sans text-[13px] text-[#6B7178]">
                         @{profile.username}
                       </span>
                     </span>
@@ -328,7 +358,7 @@ export default function AlbumMembers({
               ))}
             </ul>
           ) : (
-            <p className="mt-2 text-[13px] text-neutral-400">
+            <p className="mt-2 text-[13px] text-[#6B7178]">
               {followed.length === 0
                 ? "You’re not following anyone yet — type a username instead."
                 : typed
@@ -343,7 +373,7 @@ export default function AlbumMembers({
         <div className="mt-3">
           {confirmLeave ? (
             <div className="flex flex-wrap items-center gap-3 text-[13px]">
-              <span className="text-neutral-600">
+              <span className="text-[#4A4F57]">
                 Leave this journey? You’ll lose access until you’re invited
                 again.
               </span>
@@ -351,7 +381,7 @@ export default function AlbumMembers({
                 type="button"
                 onClick={leave}
                 disabled={busy}
-                className="font-semibold text-red-600 transition hover:text-red-700 disabled:opacity-40"
+                className="font-semibold text-[#C0362C] transition-opacity duration-150 hover:opacity-80 disabled:opacity-40"
               >
                 {busy ? "Leaving…" : "Leave"}
               </button>
@@ -359,7 +389,7 @@ export default function AlbumMembers({
                 type="button"
                 onClick={() => setConfirmLeave(false)}
                 disabled={busy}
-                className="text-neutral-500 transition hover:text-neutral-700 disabled:opacity-40"
+                className="text-[#4A4F57] transition-colors duration-150 hover:text-[#14161A] disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -368,7 +398,7 @@ export default function AlbumMembers({
             <button
               type="button"
               onClick={() => setConfirmLeave(true)}
-              className="text-[13px] text-neutral-500 transition hover:text-neutral-800"
+              className="text-[13px] text-[#6B7178] transition-colors duration-150 hover:text-[#14161A]"
             >
               Leave journey
             </button>
@@ -376,7 +406,7 @@ export default function AlbumMembers({
         </div>
       )}
 
-      {error && <p className="mt-2 text-[13px] text-red-500">{error}</p>}
+      {error && <p className="mt-2 text-[13px] text-[#C0362C]">{error}</p>}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Place } from "@/lib/types";
 import { storedAssetUrl } from "@/lib/assetUrl";
+import Avatar from "./Avatar";
 import TourChrome, { type TourChromeProps } from "./TourChrome";
 
 const SplatViewer = dynamic(() => import("./SplatViewer"), { ssr: false });
@@ -14,11 +15,31 @@ export const FADE_MS = 350;
 /** Slow enough that the room's sound arrives rather than switches on. */
 const AUDIO_FADE_IN_MS = 2000;
 
+/** Smoked glass, so chrome reads over a bright window and a dark corner alike. */
+const GLASS =
+  "border border-[rgba(255,255,255,0.16)] bg-[rgba(14,16,19,0.5)] backdrop-blur-[14px]";
+const GLASS_HOVER =
+  "transition-colors duration-150 ease-[ease] hover:bg-[rgba(14,16,19,0.68)]";
+
+/**
+ * The transport's shape. Decorative: this screen has no waveform for the track
+ * and is not going to analyse one for a scrubber. The bars carry one true
+ * thing — how far into the recording you are — and nothing else.
+ */
+const METER_BARS = [
+  38, 64, 92, 50, 76, 34, 58, 44, 70, 52, 86, 40, 62, 30, 74, 48,
+];
+
 export interface PlaceExperienceProps {
   place: Place;
   /** Who captured this, when their profile could be resolved. */
   uploader?: { username: string; displayName: string } | null;
   onExit?: () => void;
+  /**
+   * Where leaving lands, said out loud on the button. Nothing here goes looking
+   * for it: whoever renders the viewer already knows which way is out.
+   */
+  backLabel?: string;
   /** Offered to whoever captured this, to correct its name or where it sits. */
   onEdit?: () => void;
   /**
@@ -38,6 +59,7 @@ export default function PlaceExperience({
   place,
   uploader,
   onExit,
+  backLabel = "Library",
   onEdit,
   tour,
   onLookingChange,
@@ -128,6 +150,11 @@ export default function PlaceExperience({
         <SplatViewer splatUrl={place.splatUrl} entryPoint={place.entryPoint} />
       </div>
 
+      {/* Two scrims, one at each end, so white chrome holds against a bright
+          window or a pale wall. Never in the way of a drag. */}
+      <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.42)_0%,transparent_22%)]" />
+      <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(to_top,rgba(0,0,0,0.55)_0%,transparent_42%)]" />
+
       <div
         className="pointer-events-none absolute inset-0 z-30 bg-black transition-opacity"
         style={{
@@ -141,51 +168,82 @@ export default function PlaceExperience({
       {onExit && (
         <button
           onClick={exit}
-          className="absolute left-4 top-4 z-50 flex items-center gap-1 rounded-full bg-white/90 px-4 py-2 text-[15px] text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
+          className={`absolute left-6 top-5 z-50 flex h-[38px] items-center gap-2 rounded-full px-[18px] text-[14px] font-medium text-white ${GLASS} ${GLASS_HOVER}`}
         >
-          <span aria-hidden className="text-xl leading-none">
-            ‹
-          </span>
-          Back
+          <ChevronLeftGlyph />
+          {backLabel}
         </button>
       )}
 
-      {onEdit && (
-        <button
-          onClick={onEdit}
-          className="absolute right-4 top-4 z-50 rounded-full bg-white/90 px-4 py-2 text-[15px] text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
-        >
-          Edit
-        </button>
+      {(tour || onEdit) && (
+        <div className="absolute right-6 top-5 z-50 flex items-center gap-2.5">
+          {tour && (
+            <span
+              className={`flex h-[38px] items-center rounded-full px-4 text-[13px] tabular-nums text-[rgba(255,255,255,0.78)] ${GLASS}`}
+            >
+              {tour.index + 1} of {tour.total}
+              {/* Said out loud, because a ring that has stopped filling looks
+                  identical to one that is simply slow. */}
+              {tour.paused && " · paused"}
+            </span>
+          )}
+
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              aria-label="Edit"
+              className={`flex h-[38px] w-[38px] items-center justify-center rounded-full text-white ${GLASS} ${GLASS_HOVER}`}
+            >
+              <PencilGlyph />
+            </button>
+          )}
+        </div>
       )}
 
       {/* Everything known about the capture, out of the way in the corner —
           the scene is the point, and a title card in front of it was a door to
           open before anyone could look. */}
-      <div className="pointer-events-none absolute bottom-4 left-4 z-20 max-w-[min(24rem,calc(100%-2rem))]">
-        <div className="pointer-events-auto rounded-2xl bg-neutral-900/85 p-4 backdrop-blur">
-          <h1 className="text-[17px] font-semibold leading-tight">
+      <div className="pointer-events-none absolute bottom-6 left-6 z-20 w-[420px] max-w-[calc(100%-3rem)]">
+        <div className="pointer-events-auto rounded-[18px] border border-[rgba(255,255,255,0.1)] bg-[rgba(14,16,19,0.62)] p-5 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.9)] backdrop-blur-[20px]">
+          {captured.when && (
+            // Rendered in the visitor's locale and time zone, neither of
+            // which the server shares, so the two passes legitimately differ.
+            <p
+              suppressHydrationWarning
+              className="text-[11px] font-semibold uppercase leading-[12px] tracking-[0.12em] text-[rgba(255,255,255,0.42)]"
+            >
+              {captured.when}
+            </p>
+          )}
+
+          <h1 className="font-display mt-2 text-[32px] font-normal leading-[1.05] tracking-[-0.02em] text-white">
             {place.name}
           </h1>
 
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-neutral-400">
-            {uploader && (
-              <Link
-                href={`/u/${uploader.username}`}
-                className="pointer-events-auto text-sky-400 transition hover:text-sky-300"
-              >
-                by @{uploader.username}
-              </Link>
-            )}
-            {captured && (
-              // Rendered in the visitor's locale and time zone, neither of
-              // which the server shares, so the two passes legitimately differ.
-              <span suppressHydrationWarning>{captured}</span>
-            )}
-          </div>
+          {(uploader || captured.where) && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px] text-[rgba(255,255,255,0.6)]">
+              {uploader && (
+                <>
+                  <Avatar
+                    profile={uploader}
+                    className="h-5 w-5"
+                    textClassName="text-[9px]"
+                  />
+                  <Link
+                    href={`/u/${uploader.username}`}
+                    className="text-white transition-colors duration-150 ease-[ease] hover:text-[rgba(255,255,255,0.72)]"
+                  >
+                    @{uploader.username}
+                  </Link>
+                </>
+              )}
+              {uploader && captured.where && <span aria-hidden>·</span>}
+              {captured.where && <span>{captured.where}</span>}
+            </div>
+          )}
 
           {showPlayer && place.audioUrl && (
-            <div className="mt-3">
+            <div className="mt-[18px] border-t border-[rgba(255,255,255,0.1)] pt-4">
               <AmbientPlayer
                 key={place.id}
                 url={storedAssetUrl(place.audioUrl)}
@@ -311,14 +369,23 @@ function AmbientPlayer({
 
   if (failed) {
     return (
-      <p className="text-sm text-neutral-400">
+      <p className="text-[13px] text-[rgba(255,255,255,0.6)]">
         The sound recorded here could not be loaded.
       </p>
     );
   }
 
+  // How much of the meter is behind you. The bars are drawn, not measured, so
+  // this is the only thing about them that has to be true.
+  const heard =
+    duration > 0
+      ? Math.round(
+          (Math.min(position, duration) / duration) * METER_BARS.length,
+        )
+      : 0;
+
   return (
-    <div className="flex w-full min-w-0 items-center gap-2.5">
+    <div className="flex w-full min-w-0 items-center gap-3.5">
       <audio
         ref={audioRef}
         src={url}
@@ -343,46 +410,132 @@ function AmbientPlayer({
       <button
         onClick={togglePlay}
         aria-label={playing ? "Pause" : "Play"}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-xs text-black"
+        className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-white text-[#14161A] transition-colors duration-150 ease-[ease] hover:bg-[rgba(255,255,255,0.86)]"
       >
-        {playing ? "❚❚" : "▶"}
+        {playing ? <PauseGlyph /> : <PlayGlyph />}
       </button>
 
-      <span className="w-9 shrink-0 text-right text-xs tabular-nums text-neutral-400">
-        {formatTime(position)}
-      </span>
+      {/* The meter is a picture; the range over it is the control. It stays a
+          real range so the keyboard, the screen reader and a plain click all
+          land on the same thing they always did. */}
+      {/* The range itself is invisible, so the ring it would have shown on
+          focus is borrowed by the meter it sits over. */}
+      <div className="relative min-w-0 flex-1 focus-within:[outline:2px_solid_#FFFFFF] focus-within:[outline-offset:4px]">
+        <div aria-hidden className="flex h-[22px] items-end gap-[2px]">
+          {METER_BARS.map((height, bar) => (
+            <div
+              key={bar}
+              style={{ height: `${height}%` }}
+              className={`flex-1 rounded-[1px] ${
+                bar < heard
+                  ? "bg-[rgba(255,255,255,0.9)]"
+                  : "bg-[rgba(255,255,255,0.28)]"
+              }`}
+            />
+          ))}
+        </div>
 
-      <input
-        type="range"
-        aria-label="Playback position"
-        min={0}
-        max={duration}
-        step={0.01}
-        value={Math.min(position, duration)}
-        onChange={(e) => {
-          // Seeking moves the official playback position at once, so the next
-          // timeupdate agrees with the thumb rather than dragging it back.
-          const next = Number(e.target.value);
-          setPosition(next);
-          if (audioRef.current) audioRef.current.currentTime = next;
-        }}
-        className="min-w-0 flex-1 cursor-pointer accent-white"
-      />
+        <input
+          type="range"
+          aria-label="Playback position"
+          min={0}
+          max={duration}
+          step={0.01}
+          value={Math.min(position, duration)}
+          onChange={(e) => {
+            // Seeking moves the official playback position at once, so the next
+            // timeupdate agrees with the thumb rather than dragging it back.
+            const next = Number(e.target.value);
+            setPosition(next);
+            if (audioRef.current) audioRef.current.currentTime = next;
+          }}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+      </div>
 
-      <span className="w-9 shrink-0 text-xs tabular-nums text-neutral-400">
-        {formatTime(duration)}
+      <span className="shrink-0 text-[11px] tabular-nums text-[rgba(255,255,255,0.45)]">
+        {formatTime(position)} / {formatTime(duration)}
       </span>
 
       <button
         onClick={() => setLoop((v) => !v)}
         aria-pressed={loop}
-        className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
-          loop ? "bg-white text-black" : "bg-neutral-800 text-neutral-300"
+        className={`shrink-0 rounded-full px-[11px] py-[5px] text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors duration-150 ease-[ease] ${
+          loop
+            ? "bg-white text-[#14161A]"
+            : "border border-[rgba(255,255,255,0.16)] bg-[rgba(14,16,19,0.5)] text-[rgba(255,255,255,0.7)]"
         }`}
       >
         Loop
       </button>
     </div>
+  );
+}
+
+/* The glyphs the chrome needs, drawn here rather than pulled in — six paths do
+   not want a dependency. */
+
+function ChevronLeftGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M15 5l-7 7 7 7" />
+    </svg>
+  );
+}
+
+function PencilGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function PlayGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="13"
+      height="13"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M7 4.5l12 7.5-12 7.5z" />
+    </svg>
+  );
+}
+
+function PauseGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="13"
+      height="13"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z" />
+    </svg>
   );
 }
 
@@ -414,30 +567,33 @@ function formatTime(seconds: number) {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
-/** When and where the walkthrough was filmed, as far as it is known. */
-function describeCapture(place: Place) {
-  const parts: string[] = [];
-
+/**
+ * When and where the walkthrough was filmed, as far as it is known. Kept apart
+ * rather than joined: the card gives the date its own line above the title and
+ * the place its own line below it.
+ */
+function describeCapture(place: Place): {
+  when: string | null;
+  where: string | null;
+} {
+  let when: string | null = null;
   if (place.capturedAt) {
-    const when = new Date(place.capturedAt);
+    const at = new Date(place.capturedAt);
     // Dates typed in by hand reach here unparsed, so a bad one is shown as-is
     // rather than as "Invalid Date".
-    parts.push(
-      Number.isNaN(when.getTime())
-        ? place.capturedAt
-        : when.toLocaleString(undefined, {
-            dateStyle: "long",
-            timeStyle: "short",
-          }),
-    );
+    when = Number.isNaN(at.getTime())
+      ? place.capturedAt
+      : at.toLocaleString(undefined, {
+          dateStyle: "long",
+          timeStyle: "short",
+        });
   }
 
-  if (place.locationName) parts.push(place.locationName);
+  let where: string | null = null;
+  if (place.locationName) where = place.locationName;
   else if (place.location) {
-    parts.push(
-      `${place.location.lat.toFixed(4)}, ${place.location.lng.toFixed(4)}`,
-    );
+    where = `${place.location.lat.toFixed(4)}, ${place.location.lng.toFixed(4)}`;
   }
 
-  return parts.join(" · ");
+  return { when, where };
 }

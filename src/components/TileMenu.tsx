@@ -63,7 +63,7 @@ export default function TileMenu({ items }: { items: TileMenuItem[] }) {
         setOpen(true);
       }}
       onMouseLeave={scheduleClose}
-      className="absolute right-1.5 top-1.5 z-20 md:opacity-0 md:transition md:group-hover:opacity-100 md:focus-within:opacity-100"
+      className="absolute right-2.5 top-2.5 z-20 md:opacity-0 md:transition-opacity md:duration-150 md:group-hover:opacity-100 md:focus-within:opacity-100"
     >
       <button
         type="button"
@@ -75,12 +75,12 @@ export default function TileMenu({ items }: { items: TileMenuItem[] }) {
           clearCloseTimer();
           setOpen((v) => !v);
         }}
-        className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-[15px] font-bold leading-none text-[#1d1d1f] shadow-sm backdrop-blur transition hover:bg-white"
+        className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-[rgba(250,249,247,0.92)] text-[13px] font-bold leading-none text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.12)] backdrop-blur transition-colors duration-150 hover:bg-[#FAF9F7]"
       >
         ⋯
       </button>
       {open && (
-        <div className="absolute right-0 top-8 w-36 overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-black/10">
+        <div className="absolute right-0 top-8 w-36 overflow-hidden rounded-2xl border border-[rgba(20,22,26,0.09)] bg-white shadow-[0_12px_28px_-18px_rgba(20,22,26,0.4)]">
           {items.map((item) => (
             <button
               key={item.label}
@@ -92,10 +92,10 @@ export default function TileMenu({ items }: { items: TileMenuItem[] }) {
                 setOpen(false);
                 item.onClick();
               }}
-              className={`block w-full px-3.5 py-2.5 text-left text-[14px] transition hover:bg-neutral-50 ${
+              className={`block w-full px-3.5 py-2.5 text-left text-[14px] transition-colors duration-150 hover:bg-[rgba(20,22,26,0.05)] ${
                 item.danger
-                  ? "font-medium text-red-500"
-                  : "text-[#1d1d1f]"
+                  ? "font-medium text-[#C0362C]"
+                  : "text-[#14161A]"
               }`}
             >
               {item.label}

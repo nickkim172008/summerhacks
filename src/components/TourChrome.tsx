@@ -19,6 +19,11 @@ export interface TourChromeProps {
 const RING_RADIUS = 13;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 
+/** The same smoked glass the rest of the viewer's chrome is cut from. */
+const GLASS =
+  "border border-[rgba(255,255,255,0.16)] bg-[rgba(14,16,19,0.5)] backdrop-blur-[14px]";
+const GLASS_BUTTON = `${GLASS} transition-colors duration-150 ease-[ease] hover:bg-[rgba(14,16,19,0.68)] disabled:opacity-40`;
+
 /**
  * The controls a hands-off walkthrough needs, laid over whichever capture is
  * playing. It owns no timing of its own — the countdown arrives as `progress`
@@ -42,46 +47,81 @@ export default function TourChrome({
     <>
       <button
         onClick={onExit}
-        className="absolute left-4 top-4 z-50 flex items-center gap-1 rounded-full bg-white/90 px-4 py-2 text-[15px] text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
+        className={`absolute left-6 top-5 z-50 flex h-[38px] items-center gap-2 rounded-full px-[18px] text-[14px] font-medium text-white ${GLASS_BUTTON}`}
       >
-        <span aria-hidden className="text-xl leading-none">
-          ‹
-        </span>
+        <svg
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M15 5l-7 7 7 7" />
+        </svg>
         Exit
       </button>
 
       {/* Clear of Exit rather than centred over it: on a narrow screen there is
-          not room for both on one line, so this drops below instead. */}
-      <div className="pointer-events-none absolute inset-x-0 top-16 z-40 flex justify-center px-4 sm:top-4 sm:px-24">
-        <div className="max-w-full rounded-full bg-neutral-900/85 px-4 py-2 text-center backdrop-blur">
-          <p className="truncate text-[15px] font-medium leading-tight text-white">
+          not room for both on one line, so this drops below instead. The step
+          count sits with the rest of the viewer's chrome, top right. */}
+      <div className="pointer-events-none absolute inset-x-0 top-[70px] z-40 flex justify-center px-6 sm:top-5 sm:px-48">
+        <div
+          className={`flex h-[38px] max-w-full items-center rounded-full px-4 ${GLASS}`}
+        >
+          <p className="truncate text-[14px] font-medium leading-none text-white">
             {albumName}
-          </p>
-          <p className="text-[13px] leading-tight text-neutral-400">
-            {index + 1} of {total}
-            {/* Said out loud, because a ring that has stopped filling looks
-                identical to one that is simply slow. */}
-            {paused && " · paused"}
           </p>
         </div>
       </div>
 
-      <div className="absolute bottom-4 right-4 z-50 flex items-center gap-2">
+      <div className="absolute bottom-6 right-6 z-50 flex items-center gap-2.5">
+        {/* The one instruction this screen needs. Dropped on a narrow window,
+            where the controls already fill the row. */}
+        <span
+          className={`hidden h-[38px] items-center rounded-full px-4 text-[13px] text-[rgba(255,255,255,0.78)] sm:flex ${GLASS}`}
+        >
+          Drag to look around
+        </span>
+
         <button
           onClick={onTogglePause}
           disabled={fading}
           aria-label={
             paused ? "Resume the walkthrough" : "Pause the walkthrough"
           }
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-900/85 text-[13px] text-white backdrop-blur transition hover:bg-neutral-900 disabled:opacity-40"
+          className={`flex h-[38px] w-[38px] items-center justify-center rounded-full text-white ${GLASS_BUTTON}`}
         >
-          {paused ? "▶" : "❚❚"}
+          {paused ? (
+            <svg
+              viewBox="0 0 24 24"
+              width="13"
+              height="13"
+              fill="currentColor"
+              aria-hidden
+            >
+              <path d="M7 4.5l12 7.5-12 7.5z" />
+            </svg>
+          ) : (
+            <svg
+              viewBox="0 0 24 24"
+              width="13"
+              height="13"
+              fill="currentColor"
+              aria-hidden
+            >
+              <path d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z" />
+            </svg>
+          )}
         </button>
 
         <button
           onClick={onPrevious}
           disabled={!onPrevious || fading}
-          className="rounded-full bg-neutral-900/85 px-4 py-2.5 text-[15px] text-white backdrop-blur transition hover:bg-neutral-900 disabled:opacity-40"
+          className={`flex h-[38px] items-center rounded-full px-[18px] text-[14px] font-medium text-white ${GLASS_BUTTON}`}
         >
           Previous
         </button>
@@ -89,10 +129,23 @@ export default function TourChrome({
         <button
           onClick={onNext}
           disabled={fading}
-          className="flex items-center gap-2 rounded-full bg-[#0071e3] py-2 pl-3 pr-4 text-[15px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
+          className="flex h-[38px] items-center gap-2 rounded-full bg-[#0071E3] px-5 text-[14px] font-medium text-white shadow-[0_6px_18px_-8px_rgba(0,113,227,0.8)] transition-colors duration-150 ease-[ease] hover:bg-[#0077ED] disabled:opacity-40"
         >
           <CountdownRing progress={progress} />
-          {last ? "Finish" : "Next"}
+          {last ? "Finish" : "Next place"}
+          <svg
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M9 5l7 7-7 7" />
+          </svg>
         </button>
       </div>
     </>

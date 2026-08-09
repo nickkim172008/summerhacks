@@ -31,6 +31,16 @@ import { canOptimizeImage } from "@/lib/imageHosts";
 import { formatPlaceDate } from "@/lib/places";
 import type { Album, Place, Profile } from "@/lib/types";
 
+/* Two lists live on this page, so the control over them has two segments. A
+   profile has no map view to switch to, and a third segment that switched to
+   nothing would be a control that does nothing. */
+type ProfileTab = "journeys" | "places";
+
+const TABS: { key: ProfileTab; label: string }[] = [
+  { key: "journeys", label: "Journeys" },
+  { key: "places", label: "Places" },
+];
+
 export default function ProfilePage({
   params,
 }: {
@@ -46,6 +56,7 @@ export default function ProfilePage({
   const [followers, setFollowers] = useState<number | null>(null);
   const [following, setFollowing] = useState<number | null>(null);
   const [followList, setFollowList] = useState<FollowListKind | null>(null);
+  const [tab, setTab] = useState<ProfileTab>("journeys");
 
   useEffect(() => {
     return subscribeToProfileByUsername(username, setProfile);
@@ -95,154 +106,195 @@ export default function ProfilePage({
   // These places belong to a profile rather than an album, so name the profile
   // as the way back out of them.
   const fromProfile = `?from=${encodeURIComponent(`/u/${username}`)}`;
+  const joined = profile ? joinedMonth(profile) : null;
 
   if (!loading && profile === null) {
     return (
-      <main className="flex h-screen flex-col items-center justify-center gap-3 bg-white text-[#1d1d1f]">
-        <p>@{username} doesn&apos;t exist.</p>
-        <Link href="/" className="text-[#0071e3]">
-          Back to Journeys
+      <main className="flex h-screen flex-col items-center justify-center gap-3 bg-[#FAF9F7] px-8 text-[#14161A]">
+        <p className="text-[15px] text-[#6B7178]">
+          @{username} doesn&apos;t exist.
+        </p>
+        <Link
+          href="/"
+          className="text-[15px] font-medium text-[#14161A] transition-colors duration-150 hover:text-[#4A4F57]"
+        >
+          Back to Library
         </Link>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
-      <nav className="sticky top-0 z-20 border-b border-black/10 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
+    <main className="min-h-screen bg-[#FAF9F7] text-[#14161A]">
+      <div className="mx-auto max-w-[1152px] px-8 py-10">
+        <div className="flex items-center justify-between gap-4">
           <Link
             href="/"
-            className="flex items-center gap-1 text-[17px] text-[#0071e3]"
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#4A4F57] transition-colors duration-150 hover:text-[#14161A]"
           >
-            <span aria-hidden className="text-xl leading-none">
-              ‹
-            </span>
-            Journeys
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M15 5l-7 7 7 7" />
+            </svg>
+            Library
           </Link>
           {isOwn && myProfile && (
-            <span className="text-[13px] text-neutral-500">Your profile</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B7178]">
+              Your profile
+            </span>
           )}
         </div>
-      </nav>
 
-      <div className="mx-auto max-w-5xl px-6">
         {loading || !profile ? (
-          <p className="mt-10 text-neutral-500">Loading…</p>
+          <p className="mt-10 text-[15px] text-[#6B7178]">Loading…</p>
         ) : (
           <>
-            <header className="mt-8 flex items-center gap-4">
+            <header className="mt-5 flex items-start gap-7 border-b border-[rgba(20,22,26,0.09)] pb-7">
               <ProfileAvatar profile={profile} editable={isOwn} />
-              <div>
-                <h1 className="text-[28px] font-bold tracking-tight">
+              <div className="min-w-0 flex-1">
+                <h1 className="font-display text-[40px] font-normal leading-[40px] tracking-[-0.02em]">
                   {profile.displayName}
                 </h1>
-                <p className="text-[15px] text-neutral-500">
+                <p className="mt-2 text-[15px] text-[#6B7178]">
                   @{profile.username}
+                  {joined && ` · joined ${joined}`}
                 </p>
                 {isOwn && (
-                  <p className="mt-0.5 text-[12px] text-neutral-400">
+                  <p className="mt-1 text-[13px] text-[#6B7178]">
                     Tap the photo to change it
                   </p>
                 )}
+
+                <BioSection profile={profile} editable={isOwn} />
+
+                <dl className="mt-5 flex gap-9">
+                  <Stat label="Places" value={places?.length ?? null} />
+                  <Stat
+                    label="Followers"
+                    value={followers}
+                    onClick={() => setFollowList("followers")}
+                  />
+                  <Stat
+                    label="Following"
+                    value={following}
+                    onClick={() => setFollowList("following")}
+                  />
+                </dl>
               </div>
               {!isOwn && user && (
-                <FollowButton followerId={user.uid} followingId={profile.id} />
+                <div className="flex flex-none items-center gap-2.5">
+                  <FollowButton followerId={user.uid} followingId={profile.id} />
+                </div>
               )}
             </header>
 
-            <BioSection profile={profile} editable={isOwn} />
+            <div className="mt-6 flex w-max items-center gap-0.5 rounded-full bg-[rgba(20,22,26,0.05)] p-[3px]">
+              {TABS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  aria-pressed={tab === key}
+                  className={`rounded-full px-4 py-1.5 text-[13px] transition-colors duration-150 ${
+                    tab === key
+                      ? "bg-white font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)]"
+                      : "text-[#4A4F57] hover:text-[#14161A]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-            <dl className="mt-6 flex gap-8">
-              <Stat label="Places" value={places?.length ?? null} />
-              <Stat
-                label="Followers"
-                value={followers}
-                onClick={() => setFollowList("followers")}
-              />
-              <Stat
-                label="Following"
-                value={following}
-                onClick={() => setFollowList("following")}
-              />
-            </dl>
-
-            <section className="mt-10">
-              <h2 className="text-[22px] font-bold tracking-tight">Journeys</h2>
-              {albumsError ? (
-                <p className="mt-3 text-sm text-amber-600">{albumsError}</p>
-              ) : albums === null ? (
-                <p className="mt-3 text-sm text-neutral-500">Loading…</p>
-              ) : albums.length === 0 ? (
-                <p className="mt-3 text-sm text-neutral-500">No journeys yet.</p>
-              ) : (
-                <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
-                  {albums.map((album) => (
-                    <li key={album.id}>
-                      <Link href={`/album/${album.id}`} className="group block">
-                        <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
-                          <AlbumCover
-                            coverUrl={album.coverUrl}
-                            places={resolveAlbumPlaces(
-                              album.placeIds,
-                              placeById,
-                            )}
-                            alt={album.name}
-                          />
-                        </div>
-                        <p className="mt-2 truncate text-[15px] font-medium">
-                          {album.name}
-                        </p>
-                        <p className="text-sm text-neutral-500">
-                          {album.placeIds?.length ?? 0}
-                        </p>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section className="mt-12">
-              <h2 className="text-[22px] font-bold tracking-tight">
-                Places
-              </h2>
-              {placesError ? (
-                <p className="mt-3 text-sm text-amber-600">{placesError}</p>
-              ) : places === null ? (
-                <p className="mt-3 text-sm text-neutral-500">Loading…</p>
-              ) : places.length === 0 ? (
-                <p className="mt-3 text-sm text-neutral-500">
-                  No places yet.
-                </p>
-              ) : (
-                <ul className="mt-4 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5">
-                  {places.map((place) => {
-                    const taken = formatPlaceDate(place);
-                    return (
-                      <li key={place.id}>
-                        <Link
-                          href={`/place/${place.id}${fromProfile}`}
-                          className="group relative block aspect-square overflow-hidden bg-neutral-100"
-                        >
-                          <PlaceThumb place={place} />
-                          <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-6 text-white opacity-0 transition group-hover:opacity-100">
-                            <span className="block truncate text-xs font-medium">
-                              {place.name}
-                            </span>
-                            {taken && (
-                              <span className="block truncate text-[11px] font-normal text-white/85">
-                                {taken}
+            {tab === "journeys" ? (
+              <section className="mt-6" aria-label="Journeys">
+                {albumsError ? (
+                  <p className="text-[15px] text-[#C0362C]">{albumsError}</p>
+                ) : albums === null ? (
+                  <p className="text-[15px] text-[#6B7178]">Loading…</p>
+                ) : albums.length === 0 ? (
+                  <p className="text-[15px] text-[#6B7178]">No journeys yet.</p>
+                ) : (
+                  <ul className="grid grid-cols-4 gap-x-6 gap-y-7">
+                    {albums.map((album) => {
+                      const count = album.placeIds?.length ?? 0;
+                      return (
+                        <li key={album.id}>
+                          <Link
+                            href={`/album/${album.id}`}
+                            className="group block"
+                          >
+                            <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-[rgba(20,22,26,0.05)] shadow-[0_1px_2px_rgba(20,22,26,0.06),0_12px_28px_-18px_rgba(20,22,26,0.4)] transition-opacity duration-150 group-hover:opacity-90">
+                              <AlbumCover
+                                coverUrl={album.coverUrl}
+                                places={resolveAlbumPlaces(
+                                  album.placeIds,
+                                  placeById,
+                                )}
+                                alt={album.name}
+                              />
+                            </div>
+                            <p className="mt-3 truncate font-display text-[19px] leading-[24px] tracking-[-0.01em]">
+                              {album.name}
+                            </p>
+                            <p className="mt-0.5 text-[13px] text-[#6B7178] tabular-nums">
+                              {count} {count === 1 ? "place" : "places"}
+                            </p>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+            ) : (
+              <section className="mt-6" aria-label="Places">
+                {placesError ? (
+                  <p className="text-[15px] text-[#C0362C]">{placesError}</p>
+                ) : places === null ? (
+                  <p className="text-[15px] text-[#6B7178]">Loading…</p>
+                ) : places.length === 0 ? (
+                  <p className="text-[15px] text-[#6B7178]">No places yet.</p>
+                ) : (
+                  <ul className="grid grid-cols-6 gap-3">
+                    {places.map((place) => {
+                      const taken = formatPlaceDate(place);
+                      return (
+                        <li key={place.id}>
+                          <Link
+                            href={`/place/${place.id}${fromProfile}`}
+                            className="group relative block aspect-square overflow-hidden rounded-xl bg-[rgba(20,22,26,0.05)]"
+                          >
+                            <PlaceThumb place={place} />
+                            {/* The dense grid has no room for a caption under
+                                each tile, so this one keeps its hover label. */}
+                            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[rgba(20,22,26,0.72)] to-transparent px-2.5 pb-2 pt-7 text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                              <span className="block truncate text-[12px] font-medium">
+                                {place.name}
                               </span>
-                            )}
-                          </span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
+                              {taken && (
+                                <span className="block truncate text-[11px] font-normal text-white/85">
+                                  {taken}
+                                </span>
+                              )}
+                            </span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+            )}
           </>
         )}
       </div>
@@ -256,6 +308,16 @@ export default function ProfilePage({
       )}
     </main>
   );
+}
+
+/** “joined March 2026”, off the createdAt the profile doc already carries. */
+function joinedMonth(profile: Profile): string | null {
+  const ms = profile.createdAt?.toMillis?.();
+  if (!ms) return null;
+  return new Date(ms).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function ProfileAvatar({
@@ -290,12 +352,12 @@ function ProfileAvatar({
       src={profile.photoURL}
       alt=""
       fill
-      sizes="80px"
+      sizes="96px"
       unoptimized={!canOptimizeImage(profile.photoURL)}
       className="object-cover"
     />
   ) : (
-    <span className="text-xl font-semibold text-neutral-500">
+    <span className="text-[34px] font-semibold text-[#6B7178]">
       {profile.username.slice(0, 1).toUpperCase()}
     </span>
   );
@@ -306,7 +368,7 @@ function ProfileAvatar({
     // which is what made another person's albums look like they sat on top of
     // a blown-up profile picture.
     return (
-      <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100">
+      <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[rgba(20,22,26,0.05)] shadow-[0_0_0_1px_rgba(20,22,26,0.08)]">
         {face}
       </div>
     );
@@ -326,15 +388,15 @@ function ProfileAvatar({
         onClick={() => inputRef.current?.click()}
         disabled={busy}
         aria-label="Change profile photo"
-        className="group relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-neutral-100 transition hover:ring-2 hover:ring-[#0071e3]/40 disabled:opacity-60"
+        className="group relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-[rgba(20,22,26,0.05)] shadow-[0_0_0_1px_rgba(20,22,26,0.08)] transition-opacity duration-150 disabled:opacity-60"
       >
         {face}
-        <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+        <span className="absolute inset-0 flex items-center justify-center bg-[rgba(20,22,26,0.45)] text-[12px] font-medium text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
           {busy ? "…" : "Edit"}
         </span>
       </button>
       {error && (
-        <p className="mt-2 max-w-[10rem] text-[11px] leading-snug text-red-500">
+        <p className="mt-2 max-w-24 text-[11px] leading-snug text-[#C0362C]">
           {error}
         </p>
       )}
@@ -353,10 +415,12 @@ function Stat({
 }) {
   const body = (
     <>
-      <dd className="text-[22px] font-bold tracking-tight tabular-nums">
+      <dd className="text-[22px] font-semibold leading-none tracking-[-0.01em] tabular-nums">
         {value ?? "—"}
       </dd>
-      <dt className="text-[13px] text-neutral-500">{label}</dt>
+      <dt className="mt-1 text-[12px] font-semibold uppercase tracking-[0.1em] text-[#6B7178]">
+        {label}
+      </dt>
     </>
   );
 
@@ -367,7 +431,7 @@ function Stat({
   return (
     <button
       onClick={onClick}
-      className="text-left transition hover:opacity-60"
+      className="text-left transition-opacity duration-150 hover:opacity-60"
       aria-label={`View ${label.toLowerCase()}`}
     >
       {body}
@@ -404,10 +468,10 @@ function FollowButton({
     <button
       onClick={toggle}
       disabled={isFollowing === null || busy}
-      className={`ml-auto rounded-full px-5 py-2 text-[15px] font-medium transition disabled:opacity-40 ${
+      className={`h-10 rounded-full px-[26px] text-[15px] font-medium transition-colors duration-150 disabled:opacity-40 ${
         isFollowing
-          ? "border border-black/10 hover:bg-neutral-50"
-          : "bg-[#0071e3] text-white hover:bg-[#0077ed]"
+          ? "border border-[rgba(20,22,26,0.14)] bg-white text-[#14161A] hover:bg-[#F1EFEC]"
+          : "bg-[#14161A] text-white hover:bg-[#2B2F36]"
       }`}
     >
       {isFollowing ? "Following" : "Follow"}
@@ -443,17 +507,17 @@ function BioSection({
 
   if (editing) {
     return (
-      <div className="mt-6 max-w-lg">
+      <div className="mt-3.5 max-w-[56ch]">
         <textarea
           autoFocus
           rows={3}
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, BIO_MAX_LENGTH))}
           placeholder="Tell people about the places you capture."
-          className="w-full resize-none rounded-xl border border-black/10 bg-neutral-50 px-3 py-2 text-[15px] outline-none focus:border-[#0071e3]"
+          className="w-full resize-none rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-3 py-2 text-[15px] leading-[1.65] text-[#14161A] outline-none transition-colors duration-150 placeholder:text-[#8A9098] focus:border-[rgba(20,22,26,0.24)]"
         />
         <div className="mt-2 flex items-center justify-between">
-          <span className="text-[12px] text-neutral-400">
+          <span className="text-[12px] tabular-nums text-[#6B7178]">
             {draft.length}/{BIO_MAX_LENGTH}
           </span>
           <div className="flex gap-4 text-[14px]">
@@ -463,14 +527,14 @@ function BioSection({
                 setEditing(false);
               }}
               disabled={saving}
-              className="text-neutral-500 transition hover:text-neutral-700"
+              className="text-[#4A4F57] transition-colors duration-150 hover:text-[#14161A] disabled:opacity-40"
             >
               Cancel
             </button>
             <button
               onClick={save}
               disabled={saving}
-              className="font-semibold text-[#0071e3] transition hover:text-[#0077ed] disabled:opacity-40"
+              className="font-semibold text-[#14161A] transition-opacity duration-150 hover:opacity-70 disabled:opacity-40"
             >
               {saving ? "Saving…" : "Save"}
             </button>
@@ -482,14 +546,14 @@ function BioSection({
 
   if (profile.bio) {
     return (
-      <div className="mt-6 max-w-lg">
-        <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
+      <div className="mt-3.5 max-w-[56ch]">
+        <p className="whitespace-pre-wrap text-[15px] leading-[1.65] text-[#14161A]">
           {profile.bio}
         </p>
         {editable && (
           <button
             onClick={() => setEditing(true)}
-            className="mt-2 text-[13px] text-[#0071e3]"
+            className="mt-2 text-[13px] font-medium text-[#4A4F57] transition-colors duration-150 hover:text-[#14161A]"
           >
             Edit bio
           </button>
@@ -501,7 +565,7 @@ function BioSection({
   return editable ? (
     <button
       onClick={() => setEditing(true)}
-      className="mt-6 text-[15px] text-neutral-400 transition hover:text-neutral-600"
+      className="mt-3.5 text-[15px] text-[#6B7178] transition-colors duration-150 hover:text-[#14161A]"
     >
       + Add a bio
     </button>

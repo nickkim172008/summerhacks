@@ -42,15 +42,15 @@ export default function DevPage() {
       {/* Moving between captures used to be a hotspot inside the scene. With
           those gone the harness still needs a way to swap fixtures, so it says
           so plainly instead. */}
-      <div className="absolute bottom-4 right-4 z-50 flex gap-2">
+      <div className="absolute bottom-6 right-6 z-50 flex gap-2.5">
         {Object.values(places).map((place) => (
           <button
             key={place.id}
             onClick={() => setPlaceId(place.id)}
-            className={`rounded-full px-4 py-2 text-sm font-medium backdrop-blur transition ${
+            className={`flex h-[38px] items-center rounded-full px-[18px] text-[14px] font-medium backdrop-blur-[14px] transition-colors duration-150 ease-[ease] ${
               place.id === placeId
-                ? "bg-white text-black"
-                : "bg-white/20 text-white hover:bg-white/30"
+                ? "border border-transparent bg-white text-[#14161A]"
+                : "border border-[rgba(255,255,255,0.16)] bg-[rgba(14,16,19,0.5)] text-white hover:bg-[rgba(14,16,19,0.68)]"
             }`}
           >
             {place.name}

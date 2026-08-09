@@ -81,60 +81,62 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
   }
 
   return (
-    <main className="auth-shell relative flex min-h-screen flex-col overflow-hidden text-[#1d1d1f]">
+    <main className="auth-shell relative flex min-h-screen flex-col overflow-hidden text-[#14161A]">
       <div aria-hidden className="auth-glow auth-glow-a" />
       <div aria-hidden className="auth-glow auth-glow-b" />
       <div aria-hidden className="auth-grain" />
 
       {/* The switch to the other mode lives under the form, next to the line
           that explains it — offering it twice on one screen just competes. */}
-      <nav className="relative z-10 mx-auto flex w-full max-w-5xl items-center px-6 py-5">
+      <nav className="relative z-10 flex w-full items-center px-8 py-5">
         <Link
           href="/"
           aria-label="Atlas home"
           className="transition hover:opacity-80"
         >
-          <AtlasLogo priority className="h-auto w-[92px]" />
+          <AtlasLogo priority className="h-auto w-[78px]" />
         </Link>
       </nav>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 pb-16 pt-6">
+      <div className="relative z-10 mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-8 pb-16 pt-6">
         <div className="auth-rise">
           <AtlasLogo
             priority
-            className="h-auto w-[min(100%,22rem)] drop-shadow-sm"
+            className="h-auto w-[min(100%,18rem)] drop-shadow-sm"
           />
-          <h1 className="mt-6 text-[28px] font-semibold tracking-tight text-[#1d1d1f] sm:text-[32px]">
+          <h1 className="auth-brand mt-8 font-display text-[40px] font-normal leading-[42px] tracking-[-0.02em]">
             {copy.title}
           </h1>
-          <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-neutral-600">
+          <p className="mt-3 max-w-sm text-[15px] leading-6 text-[#4A4F57]">
             {copy.subtitle}
           </p>
         </div>
 
         {!isFirebaseConfigured && (
-          <p className="auth-rise-delay mt-8 text-sm text-amber-700">
+          <p className="auth-rise-delay mt-8 text-[13px] leading-[18px] text-amber-700">
             Firebase isn&apos;t configured. Add your keys to{" "}
-            <code className="rounded bg-black/5 px-1.5 py-0.5">.env.local</code>{" "}
+            <code className="rounded bg-[rgba(20,22,26,0.05)] px-1.5 py-0.5">
+              .env.local
+            </code>{" "}
             and restart the server.
           </p>
         )}
 
         {loading ? (
-          <p className="auth-rise-delay mt-12 text-sm text-neutral-500">
+          <p className="auth-rise-delay mt-12 text-[15px] text-[#6B7178]">
             Checking session…
           </p>
         ) : user ? (
           <div className="auth-rise-delay mt-12 space-y-4">
-            <p className="text-sm text-neutral-600">
+            <p className="text-[15px] leading-6 text-[#4A4F57]">
               Signed in as{" "}
-              <span className="font-medium text-[#1d1d1f]">
+              <span className="font-medium text-[#14161A]">
                 {user.displayName ?? user.email}
               </span>
             </p>
             <button
               onClick={() => signOut()}
-              className="w-full rounded-full border border-black/10 bg-white/70 px-6 py-3 text-[15px] font-medium backdrop-blur transition hover:bg-white"
+              className="h-12 w-full rounded-full border border-[rgba(20,22,26,0.14)] bg-white/70 px-6 text-[15px] font-medium text-[#14161A] backdrop-blur transition hover:bg-white"
             >
               Sign Out
             </button>
@@ -144,7 +146,7 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
             <button
               onClick={handleGoogle}
               disabled={!isFirebaseConfigured || busy}
-              className="auth-cta group flex w-full items-center justify-center gap-3 rounded-full bg-[#1d1d1f] px-6 py-3.5 text-[15px] font-medium text-white transition hover:bg-black disabled:opacity-40"
+              className="auth-cta group flex h-14 w-full items-center justify-center gap-3 rounded-full bg-[#14161A] px-6 text-[15px] font-medium text-white transition hover:bg-[#2A2E35] disabled:opacity-40"
             >
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white">
                 <GoogleMark />
@@ -153,16 +155,16 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
             </button>
 
             {error && (
-              <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-600">
+              <p className="rounded-2xl bg-[rgba(192,54,44,0.08)] px-4 py-3 text-[14px] leading-relaxed text-[#C0362C]">
                 {error}
               </p>
             )}
 
-            <p className="text-center text-[13px] text-neutral-500">
+            <p className="text-center text-[13px] leading-[18px] text-[#6B7178]">
               {copy.switchText}{" "}
               <Link
                 href={copy.switchHref}
-                className="font-medium text-[#0071e3] transition hover:text-[#0077ed]"
+                className="font-medium text-[#14161A] transition hover:text-[#4A4F57]"
               >
                 {copy.switchLabel}
               </Link>

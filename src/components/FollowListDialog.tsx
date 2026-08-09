@@ -59,20 +59,22 @@ export default function FollowListDialog({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 sm:items-center sm:p-6"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[rgba(20,22,26,0.35)] sm:items-center sm:p-6"
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label={TITLE[kind]}
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-[0_24px_60px_-30px_rgba(20,22,26,0.5)] sm:rounded-2xl"
       >
-        <div className="flex items-center justify-between border-b border-black/10 px-5 py-3">
-          <h3 className="text-[17px] font-semibold">{TITLE[kind]}</h3>
+        <div className="flex items-center justify-between border-b border-[rgba(20,22,26,0.09)] px-5 py-3.5">
+          <h3 className="font-display text-[22px] font-normal leading-none tracking-[-0.01em]">
+            {TITLE[kind]}
+          </h3>
           <button
             onClick={onClose}
-            className="text-[17px] text-[#0071e3] transition hover:opacity-70"
+            className="text-[15px] font-medium text-[#14161A] transition-opacity duration-150 hover:opacity-70"
           >
             Done
           </button>
@@ -80,19 +82,19 @@ export default function FollowListDialog({
 
         <div className="overflow-y-auto px-5">
           {edges === null ? (
-            <p className="py-10 text-center text-sm text-neutral-500">
+            <p className="py-10 text-center text-[15px] text-[#6B7178]">
               Loading…
             </p>
           ) : denied ? (
-            <p className="py-10 text-center text-sm text-amber-600">
+            <p className="py-10 text-center text-[15px] text-[#C0362C]">
               Couldn&apos;t load this list.
             </p>
           ) : edges.length === 0 ? (
-            <p className="py-10 text-center text-sm text-neutral-500">
+            <p className="py-10 text-center text-[15px] text-[#6B7178]">
               {EMPTY[kind]}
             </p>
           ) : (
-            <ul className="divide-y divide-black/5">
+            <ul className="divide-y divide-[rgba(20,22,26,0.09)]">
               {otherIds.map((id) => {
                 const profile = profiles[id];
                 return (
@@ -101,18 +103,18 @@ export default function FollowListDialog({
                       <Link
                         href={`/u/${profile.username}`}
                         onClick={onClose}
-                        className="flex items-center gap-3 py-3 transition hover:opacity-70"
+                        className="flex items-center gap-3 py-3 transition-opacity duration-150 hover:opacity-70"
                       >
                         <Avatar
                           profile={profile}
-                          className="h-10 w-10"
+                          className="h-10 w-10 shadow-[0_0_0_1px_rgba(20,22,26,0.08)]"
                           textClassName="text-[14px]"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[15px] font-medium">
+                          <p className="truncate font-display text-[17px] leading-[22px] tracking-[-0.01em]">
                             {profile.displayName}
                           </p>
-                          <p className="truncate text-[13px] text-neutral-500">
+                          <p className="truncate text-[13px] text-[#6B7178]">
                             @{profile.username}
                           </p>
                         </div>
@@ -121,8 +123,8 @@ export default function FollowListDialog({
                       // Resolved to null means the account is gone; still
                       // undefined means the lookup is in flight.
                       <div className="flex items-center gap-3 py-3">
-                        <div className="h-10 w-10 shrink-0 rounded-full bg-neutral-100" />
-                        <p className="text-[15px] text-neutral-400">
+                        <div className="h-10 w-10 shrink-0 rounded-full bg-[rgba(20,22,26,0.05)]" />
+                        <p className="text-[15px] text-[#6B7178]">
                           {profile === null ? "Deleted account" : "Loading…"}
                         </p>
                       </div>

@@ -129,6 +129,13 @@ export interface CaptureRunnerProps {
   mode: RunnerMode;
 }
 
+/**
+ * The picker's input lives here, beside `addVideos` and the remount key, but the
+ * control that opens it is the "Choose videos" pill in the page's header row —
+ * so the two are joined by id rather than by nesting.
+ */
+export const CAPTURE_INPUT_ID = "capture-videos";
+
 export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
   const { user } = useAuth();
   const isNew = mode === "new";
@@ -620,56 +627,44 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
   return (
     <>
       {isNew && (
-        <div className="mt-8 flex flex-col gap-4">
-          <label className="flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed border-black/20 bg-neutral-50 px-4 py-8 text-center transition hover:border-[#0071e3]">
-            <span className="text-[15px] font-medium text-[#0071e3]">
-              Choose Videos
-            </span>
-            <span className="text-xs text-neutral-500">
-              One continuous walkthrough per place
-            </span>
-            <input
-              key={formKey}
-              type="file"
-              accept="video/*"
-              multiple
-              onChange={(e) => addVideos(e.target.files)}
-              className="hidden"
-            />
-          </label>
-
-          <button
-            onClick={() => dispatch({ type: "start-requested" })}
-            disabled={!canStart(queue.items)}
-            className="rounded-full bg-[#0071e3] px-6 py-2.5 font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
-          >
-            Start Capture
-          </button>
+        <>
+          {/* Opened by the "Choose videos" pill in the header row, which is this
+              input's label. Remounting on formKey is what lets the same file be
+              picked twice: the element holds on to its selection otherwise. */}
+          <input
+            key={formKey}
+            id={CAPTURE_INPUT_ID}
+            type="file"
+            accept="video/*"
+            multiple
+            onChange={(e) => addVideos(e.target.files)}
+            className="sr-only"
+          />
 
           {!isFirebaseConfigured && !DEMO_CAPTURE && (
-            <p className="text-sm text-amber-600">
+            <p className="mt-6 rounded-xl border border-[rgba(138,90,18,0.25)] bg-[rgba(138,90,18,0.06)] px-4 py-3 text-[13px] leading-[18px] text-[#8A5A12]">
               Firebase isn&apos;t configured, so finished places
               can&apos;t be saved. Capture still works — each one renders here
               and can be downloaded.
             </p>
           )}
-        </div>
+        </>
       )}
 
       {previewed?.splat && (
         <section className="mt-10">
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
-              <h2 className="text-[22px] font-semibold tracking-tight">
+              <h2 className="font-display text-[22px] leading-[28px] tracking-[-0.01em] text-[#14161A]">
                 {previewed.splat.name}
               </h2>
-              <p className="text-sm text-neutral-500">
+              <p className="mt-1 text-[13px] text-[#6B7178]">
                 Drag to look around.
               </p>
             </div>
             <button
               onClick={() => dispatch({ type: "previewed", id: null })}
-              className="text-[15px] text-[#0071e3]"
+              className="text-[14px] font-medium text-[#4A4F57] transition hover:text-[#14161A]"
             >
               Close Preview
             </button>
@@ -677,7 +672,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           {/* One viewer for the whole queue: each is a WebGL2 context, which is
                 costly enough that this repo turns StrictMode off to avoid a
                 second. Keyed by row so switching previews rebuilds the scene. */}
-          <div className="mt-4 h-[60vh] overflow-hidden rounded-2xl bg-black ring-1 ring-black/10">
+          <div className="mt-4 h-[60vh] overflow-hidden rounded-2xl bg-black ring-1 ring-[rgba(20,22,26,0.09)]">
             <SplatViewer
               key={previewed.id}
               splatUrl={previewed.splat.url}
@@ -686,12 +681,35 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
         </section>
       )}
 
+      {/* What the two notes under the queue used to say, said once, above it:
+          how long this takes is on the page already, and what is left is that
+          each capture stands on its own. */}
+      {isNew && queue.items.length > 0 && (
+        <div className="mt-6 flex flex-wrap items-baseline justify-between gap-6 border-t border-[rgba(20,22,26,0.09)] pt-4">
+          <h2 className="text-[20px] font-semibold leading-[26px] tracking-[-0.01em] text-[#14161A]">
+            In flight
+          </h2>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {running > 0 && (
+              <span className="rounded-full bg-[rgba(20,22,26,0.05)] px-[11px] py-[5px] text-[11px] font-semibold uppercase leading-3 tracking-[0.08em] tabular-nums text-[#4A4F57]">
+                {running} transferring
+              </span>
+            )}
+            <p className="text-[13px] text-[#6B7178]">
+              Each one saves on its own · safe to close this tab
+            </p>
+          </div>
+        </div>
+      )}
+
       <CaptureQueue
         items={queue.items}
         previewId={queue.previewId}
         now={now}
         albumId={albumId}
         canSave={isFirebaseConfigured}
+        canStart={canStart(queue.items)}
+        layout={isNew ? "rows" : "tiles"}
         onRename={(id, name) => dispatch({ type: "renamed", id, name })}
         onWhenChange={(id, whenLocal) =>
           dispatch({
@@ -705,24 +723,11 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           dispatch({ type: "location-named", id, locationName })
         }
         onPreview={(id) => dispatch({ type: "previewed", id })}
+        onStart={() => dispatch({ type: "start-requested" })}
         onSave={(id) => dispatch({ type: "save-requested", id })}
         onRetry={(id) => dispatch({ type: "retried", id })}
         onRemove={remove}
       />
-
-      {waiting && (
-        <p className="mt-6 text-sm text-neutral-500">
-          Reconstruction takes 30–90 minutes and keeps going without you — close
-          this tab and come back, and these will still be here.
-        </p>
-      )}
-      {running > 0 && (
-        <p className="mt-2 text-sm text-neutral-500">
-          {running === 1
-            ? "1 capture is transferring right now — leave this tab open until it finishes."
-            : `${running} captures are transferring right now — leave this tab open until they finish.`}
-        </p>
-      )}
     </>
   );
 }

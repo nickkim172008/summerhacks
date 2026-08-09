@@ -227,7 +227,7 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
   }, [place, index, total, travelTo, exit]);
 
   if (!isFirebaseConfigured) {
-    return <Curtain>Walkthroughs need Firebase configured.</Curtain>;
+    return <Curtain error>Walkthroughs need Firebase configured.</Curtain>;
   }
 
   if (album === null) {
@@ -271,12 +271,40 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
   );
 }
 
-function Curtain({ children, href }: { children: ReactNode; href?: string }) {
+function Curtain({
+  children,
+  href,
+  error,
+}: {
+  children: ReactNode;
+  href?: string;
+  error?: boolean;
+}) {
   return (
-    <main className="flex h-screen flex-col items-center justify-center gap-3 bg-black px-6 text-center text-neutral-400">
-      <p>{children}</p>
+    <main className="flex h-screen flex-col items-center justify-center gap-4 bg-[#FAF9F7] px-8 text-center">
+      <p
+        className={`text-[15px] ${error ? "text-[#C0362C]" : "text-[#6B7178]"}`}
+      >
+        {children}
+      </p>
       {href && (
-        <Link href={href} className="text-sky-400 underline">
+        <Link
+          href={href}
+          className="flex items-center gap-1.5 text-[13px] font-medium text-[#4A4F57] transition-colors duration-150 ease-[ease] hover:text-[#14161A]"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
           Back
         </Link>
       )}

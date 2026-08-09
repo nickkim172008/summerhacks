@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,6 +8,7 @@ import {
   subscribeToPlacesByUploader,
 } from "@/lib/places";
 import {
+  albumMemberIds,
   createAlbum,
   deleteAlbum,
   leaveAlbum,
@@ -23,6 +24,14 @@ import AlbumCollaborators from "@/components/AlbumCollaborators";
 import TileMenu, { type TileMenuItem } from "@/components/TileMenu";
 import type { Album, Place } from "@/lib/types";
 
+/** The library counts things constantly; "1 places" is not worth shipping. */
+function countLabel(n: number, singular: string, plural: string) {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
+/** Which of the two lists on this page the segmented control is pointing at. */
+type Segment = "journeys" | "shared";
+
 export default function AlbumsPage() {
   const router = useRouter();
   const { user, loading: authLoading, needsUsername } = useAuthProfile();
@@ -36,6 +45,9 @@ export default function AlbumsPage() {
   const [deleting, setDeleting] = useState<Album | null>(null);
   const [leaving, setLeaving] = useState<Album | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [segment, setSegment] = useState<Segment>("journeys");
+  const journeysRef = useRef<HTMLUListElement>(null);
+  const sharedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -103,53 +115,105 @@ export default function AlbumsPage() {
       ownedAlbums === null ||
       sharedAlbums === null);
 
+  function startNewAlbum() {
+    if (!user) {
+      router.push("/signin");
+      return;
+    }
+    if (needsUsername) {
+      router.push("/setup");
+      return;
+    }
+    setShowNewAlbum(true);
+  }
+
+  /** The control only ever points at what is already on the page. */
+  function showSegment(next: Segment) {
+    setSegment(next);
+    const target = next === "shared" ? sharedRef.current : journeysRef.current;
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
-    <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
-      <div className="mx-auto max-w-5xl px-6">
-        <div className="mt-8 flex items-center justify-between gap-3">
-          <h2 className="text-[22px] font-bold tracking-tight">My Journeys</h2>
-          <div className="flex items-center gap-4">
+    <main className="min-h-screen bg-[#FAF9F7] text-[#14161A]">
+      <div className="mx-auto max-w-[1152px] px-8 py-10">
+        <div className="flex items-end justify-between gap-8">
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B7178] tabular-nums">
+              {countLabel(ownPlaces?.length ?? 0, "place", "places")} ·{" "}
+              {countLabel(ownedAlbums?.length ?? 0, "journey", "journeys")}
+            </p>
+            <h1 className="font-display text-[44px] font-normal leading-[44px] tracking-[-0.02em]">
+              Your library
+            </h1>
+          </div>
+          <div className="flex flex-none items-center gap-2">
+            <div className="flex items-center gap-0.5 rounded-full bg-[rgba(20,22,26,0.05)] p-[3px]">
+              <button
+                type="button"
+                aria-pressed={segment === "journeys"}
+                onClick={() => showSegment("journeys")}
+                className={`rounded-full px-[14px] py-1.5 text-[13px] transition-colors duration-150 ${
+                  segment === "journeys"
+                    ? "bg-white font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)]"
+                    : "text-[#4A4F57] hover:text-[#14161A]"
+                }`}
+              >
+                Journeys
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/album/recents")}
+                className="rounded-full px-[14px] py-1.5 text-[13px] text-[#4A4F57] transition-colors duration-150 hover:text-[#14161A]"
+              >
+                All places
+              </button>
+              <button
+                type="button"
+                aria-pressed={segment === "shared"}
+                onClick={() => showSegment("shared")}
+                className={`rounded-full px-[14px] py-1.5 text-[13px] transition-colors duration-150 ${
+                  segment === "shared"
+                    ? "bg-white font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)]"
+                    : "text-[#4A4F57] hover:text-[#14161A]"
+                }`}
+              >
+                Shared
+              </button>
+            </div>
             <Link
               href="/trash"
               aria-label="Recently Deleted"
               title="Recently Deleted"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-[#0071e3] transition hover:bg-neutral-200"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-[rgba(20,22,26,0.14)] bg-white text-[#4A4F57] transition-colors duration-150 hover:text-[#14161A]"
             >
               <TrashGlyph />
             </Link>
-            <button
-              onClick={() => {
-                if (!user) {
-                  router.push("/signin");
-                  return;
-                }
-                if (needsUsername) {
-                  router.push("/setup");
-                  return;
-                }
-                setShowNewAlbum(true);
-              }}
-              aria-label="New Journey"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-xl leading-none text-[#0071e3] transition hover:bg-neutral-200"
-            >
-              +
-            </button>
           </div>
         </div>
 
         {error && (
-          <p className="mt-6 text-sm text-amber-600">
-            Not connected. Copy <code>.env.local.example</code> to{" "}
-            <code>.env.local</code>, fill in the Firebase keys, and restart the
-            dev server.
+          <p className="mt-8 max-w-[62ch] text-[15px] leading-6 text-[#C0362C]">
+            Not connected. Copy{" "}
+            <code className="rounded bg-[rgba(20,22,26,0.05)] px-1 py-0.5 text-[13px] text-[#14161A]">
+              .env.local.example
+            </code>{" "}
+            to{" "}
+            <code className="rounded bg-[rgba(20,22,26,0.05)] px-1 py-0.5 text-[13px] text-[#14161A]">
+              .env.local
+            </code>
+            , fill in the Firebase keys, and restart the dev server.
           </p>
         )}
 
-        {loading && <p className="mt-6 text-neutral-500">Loading…</p>}
+        {loading && <p className="mt-8 text-[15px] text-[#6B7178]">Loading…</p>}
 
         {!error && !loading && (
           <>
-            <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
+            <ul
+              ref={journeysRef}
+              className="mt-8 scroll-mt-20 grid grid-cols-4 gap-x-6 gap-y-7"
+            >
               <RecentsCard places={ownPlaces ?? []} />
               {(ownedAlbums ?? []).map((album) => (
                 <AlbumCard
@@ -160,42 +224,48 @@ export default function AlbumsPage() {
                   onDelete={() => setDeleting(album)}
                 />
               ))}
+              <NewJourneyCard onClick={startNewAlbum} />
             </ul>
 
             {(ownedAlbums?.length ?? 0) === 0 && (
-              <p className="mt-6 text-sm text-neutral-500">
+              <p className="mt-6 max-w-[62ch] text-[15px] leading-6 text-[#4A4F57]">
                 Create a journey with the{" "}
-                <span className="font-medium text-[#0071e3]">+</span> button and
+                <span className="font-medium text-[#14161A]">+</span> button and
                 start capturing places — for example, a “Summer Hacks” journey
                 for the whole trip.
               </p>
             )}
 
-            <h2 className="mt-12 text-[22px] font-bold tracking-tight">
-              Shared Journeys
-            </h2>
-            {(sharedAlbums?.length ?? 0) === 0 ? (
-              <p className="mt-3 text-sm text-neutral-500">
-                Journeys others invite you to show up here after you accept from
-                Notifications.
-              </p>
-            ) : (
-              <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
-                {(sharedAlbums ?? []).map((album) => (
-                  <AlbumCard
-                    key={album.id}
-                    album={album}
-                    places={resolveAlbumPlaces(album.placeIds, placeById)}
-                    onRemove={() => setLeaving(album)}
-                  />
-                ))}
-              </ul>
-            )}
+            <div
+              ref={sharedRef}
+              className="mt-12 scroll-mt-20 border-t border-[rgba(20,22,26,0.09)] pt-6"
+            >
+              <h2 className="text-[20px] font-semibold leading-[26px] tracking-[-0.01em]">
+                Shared with you
+              </h2>
+              {(sharedAlbums?.length ?? 0) === 0 ? (
+                <p className="mt-3 max-w-[62ch] text-[15px] leading-6 text-[#4A4F57]">
+                  Journeys others invite you to show up here after you accept
+                  from Notifications.
+                </p>
+              ) : (
+                <ul className="mt-5 grid grid-cols-4 gap-x-6 gap-y-7">
+                  {(sharedAlbums ?? []).map((album) => (
+                    <AlbumCard
+                      key={album.id}
+                      album={album}
+                      places={resolveAlbumPlaces(album.placeIds, placeById)}
+                      onRemove={() => setLeaving(album)}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
           </>
         )}
 
         {actionError && (
-          <p className="mt-4 text-sm text-red-500">{actionError}</p>
+          <p className="mt-6 text-[14px] text-[#C0362C]">{actionError}</p>
         )}
       </div>
 
@@ -279,12 +349,32 @@ function TrashGlyph() {
       strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="h-[18px] w-[18px]"
+      className="h-4 w-4"
     >
       <path d="M4 7h16M10 4h4M9 7v12M15 7v12M6 7l1 13h10l1-13" />
     </svg>
   );
 }
+
+function PlusGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      className="h-5 w-5"
+      aria-hidden
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+/** 4:3, 16px radius, raised — the one piece of media on this screen. */
+const COVER_CLASS =
+  "absolute inset-0 overflow-hidden rounded-2xl bg-[rgba(20,22,26,0.05)] shadow-[0_1px_2px_rgba(20,22,26,0.06),0_12px_28px_-18px_rgba(20,22,26,0.4)] transition-opacity duration-150 hover:opacity-90";
 
 function AlbumCard({
   album,
@@ -318,14 +408,17 @@ function AlbumCard({
     });
   }
 
+  const placeCount = album.placeIds?.length ?? 0;
+  const peopleCount = albumMemberIds(album).length;
+
   return (
     <li>
       <div className="group relative">
         {/* Menu sits outside the clipped cover so the dropdown isn’t cut off. */}
-        <div className="relative aspect-square">
+        <div className="relative aspect-[4/3]">
           <Link
             href={`/album/${album.id}`}
-            className="absolute inset-0 overflow-hidden rounded-2xl bg-neutral-100"
+            className={COVER_CLASS}
             aria-label={album.name}
           >
             <AlbumCover
@@ -337,10 +430,15 @@ function AlbumCard({
           </Link>
           <TileMenu items={items} />
         </div>
-        <Link href={`/album/${album.id}`} className="mt-2 block">
-          <p className="truncate text-[15px] font-medium">{album.name}</p>
-          <p className="text-sm text-neutral-500">
-            {album.placeIds?.length ?? 0}
+        <Link href={`/album/${album.id}`} className="mt-3 block">
+          <p className="truncate font-display text-[19px] font-normal leading-6 tracking-[-0.01em]">
+            {album.name}
+          </p>
+          <p className="mt-0.5 truncate text-[13px] leading-[18px] text-[#6B7178] tabular-nums">
+            {countLabel(placeCount, "place", "places")}
+            {peopleCount > 1
+              ? ` · ${countLabel(peopleCount, "person", "people")}`
+              : ""}
           </p>
         </Link>
       </div>
@@ -351,16 +449,59 @@ function AlbumCard({
 function RecentsCard({ places }: { places: Place[] }) {
   return (
     <li>
-      <Link href="/album/recents" className="group block">
-        <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
-          <AlbumCover places={places} alt="Recents" />
+      <Link href="/album/recents" className="block">
+        <div className="relative aspect-[4/3]">
+          <div className={COVER_CLASS}>
+            <AlbumCover places={places} alt="Recents" />
+          </div>
+          <span className="pointer-events-none absolute left-2.5 top-2.5 rounded-full bg-[rgba(250,249,247,0.92)] px-2.5 py-1 text-[10px] font-semibold uppercase leading-none tracking-[0.1em] text-[#14161A]">
+            Recents
+          </span>
         </div>
-        <p className="mt-2 truncate text-[15px] font-medium">Recents</p>
-        <p className="text-sm text-neutral-500">{places.length}</p>
+        <p className="mt-3 truncate font-display text-[19px] font-normal leading-6 tracking-[-0.01em]">
+          Everything
+        </p>
+        <p className="mt-0.5 truncate text-[13px] leading-[18px] text-[#6B7178] tabular-nums">
+          {countLabel(places.length, "place", "places")} · newest first
+        </p>
       </Link>
     </li>
   );
 }
+
+function NewJourneyCard({ onClick }: { onClick: () => void }) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[rgba(20,22,26,0.18)] bg-[rgba(20,22,26,0.02)] text-[#6B7178] transition-colors duration-150 hover:border-[rgba(20,22,26,0.28)] hover:text-[#4A4F57]"
+      >
+        <PlusGlyph />
+        <span className="text-[13px] font-medium text-[#4A4F57]">
+          New journey
+        </span>
+      </button>
+      <p className="mt-3 max-w-[24ch] text-[13px] leading-[1.5] text-[#6B7178]">
+        Group places into a story someone can walk through.
+      </p>
+    </li>
+  );
+}
+
+const DIALOG_SCRIM =
+  "fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,22,26,0.35)] p-6";
+const DIALOG_PANEL =
+  "w-full max-w-[380px] rounded-2xl bg-white p-6 shadow-[0_24px_60px_-30px_rgba(20,22,26,0.5)]";
+const DIALOG_TITLE =
+  "font-display text-[22px] font-normal leading-7 tracking-[-0.01em]";
+const DIALOG_BODY = "mt-2 text-[14px] leading-5 text-[#4A4F57]";
+const DIALOG_INPUT =
+  "mt-4 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-3.5 py-2.5 text-[15px] text-[#14161A] outline-none transition-colors duration-150 placeholder:text-[#8A9098] focus:border-[#0071E3]";
+const DIALOG_CANCEL =
+  "rounded-full px-4 py-2 text-[14px] font-medium text-[#4A4F57] transition-colors duration-150 hover:bg-[rgba(20,22,26,0.05)] disabled:opacity-40";
+const DIALOG_CONFIRM =
+  "rounded-full px-4 py-2 text-[14px] font-medium text-white transition-opacity duration-150 disabled:opacity-40";
 
 function NewAlbumDialog({
   onCancel,
@@ -379,33 +520,26 @@ function NewAlbumDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6">
-      <div className="w-full max-w-xs overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="px-5 pt-5 pb-4 text-center">
-          <h3 className="text-[17px] font-semibold">New Journey</h3>
-          <p className="mt-1 text-[13px] text-neutral-500">
-            Enter a name for this journey.
-          </p>
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && save()}
-            placeholder="Title"
-            className="mt-3 w-full rounded-lg border border-black/10 bg-neutral-50 px-3 py-1.5 text-[15px] outline-none focus:border-[#0071e3]"
-          />
-        </div>
-        <div className="grid grid-cols-2 divide-x divide-black/10 border-t border-black/10 text-[17px]">
-          <button
-            onClick={onCancel}
-            className="py-2.5 text-[#0071e3] transition hover:bg-neutral-50"
-          >
+    <div className={DIALOG_SCRIM}>
+      <div className={DIALOG_PANEL}>
+        <h3 className={DIALOG_TITLE}>New Journey</h3>
+        <p className={DIALOG_BODY}>Enter a name for this journey.</p>
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+          placeholder="Title"
+          className={DIALOG_INPUT}
+        />
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button onClick={onCancel} className={DIALOG_CANCEL}>
             Cancel
           </button>
           <button
             onClick={save}
             disabled={!name.trim() || saving}
-            className="py-2.5 font-semibold text-[#0071e3] transition hover:bg-neutral-50 disabled:opacity-40"
+            className={`${DIALOG_CONFIRM} bg-[#14161A]`}
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -434,33 +568,26 @@ function RenameAlbumDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6">
-      <div className="w-full max-w-xs overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="px-5 pt-5 pb-4 text-center">
-          <h3 className="text-[17px] font-semibold">Edit Journey</h3>
-          <p className="mt-1 text-[13px] text-neutral-500">
-            Change the name of this journey.
-          </p>
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && save()}
-            placeholder="Title"
-            className="mt-3 w-full rounded-lg border border-black/10 bg-neutral-50 px-3 py-1.5 text-[15px] outline-none focus:border-[#0071e3]"
-          />
-        </div>
-        <div className="grid grid-cols-2 divide-x divide-black/10 border-t border-black/10 text-[17px]">
-          <button
-            onClick={onCancel}
-            className="py-2.5 text-[#0071e3] transition hover:bg-neutral-50"
-          >
+    <div className={DIALOG_SCRIM}>
+      <div className={DIALOG_PANEL}>
+        <h3 className={DIALOG_TITLE}>Edit Journey</h3>
+        <p className={DIALOG_BODY}>Change the name of this journey.</p>
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+          placeholder="Title"
+          className={DIALOG_INPUT}
+        />
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button onClick={onCancel} className={DIALOG_CANCEL}>
             Cancel
           </button>
           <button
             onClick={save}
             disabled={!name.trim() || saving}
-            className="py-2.5 font-semibold text-[#0071e3] transition hover:bg-neutral-50 disabled:opacity-40"
+            className={`${DIALOG_CONFIRM} bg-[#14161A]`}
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -488,16 +615,12 @@ function ConfirmDialog({
   const [busy, setBusy] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6">
-        <h2 className="text-[17px] font-semibold">{title}</h2>
-        <p className="mt-2 text-sm text-neutral-500">{body}</p>
-        <div className="mt-5 flex justify-end gap-3">
-          <button
-            onClick={onCancel}
-            disabled={busy}
-            className="text-[15px] text-[#0071e3] disabled:opacity-40"
-          >
+    <div className={DIALOG_SCRIM}>
+      <div className={`${DIALOG_PANEL} max-w-[420px]`}>
+        <h2 className={DIALOG_TITLE}>{title}</h2>
+        <p className={DIALOG_BODY}>{body}</p>
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button onClick={onCancel} disabled={busy} className={DIALOG_CANCEL}>
             Cancel
           </button>
           <button
@@ -506,8 +629,8 @@ function ConfirmDialog({
               await onConfirm();
             }}
             disabled={busy}
-            className={`rounded-full px-4 py-1.5 text-[15px] font-medium text-white disabled:opacity-40 ${
-              danger ? "bg-red-500" : "bg-[#0071e3]"
+            className={`${DIALOG_CONFIRM} ${
+              danger ? "bg-[#C0362C]" : "bg-[#14161A]"
             }`}
           >
             {busy ? "Working…" : confirmLabel}

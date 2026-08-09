@@ -87,25 +87,23 @@ export default function TimelineBar({
   return (
     <div
       className="pointer-events-none fixed inset-x-0 z-30 flex justify-center px-3"
-      // Clear of the tab bar rather than a slab across the bottom: the map is
-      // the thing being looked at, and the timeline is a control on it. The
-      // extra 0.75rem is breathing room — flush against the tabs it read as
-      // part of them.
-      style={{ bottom: "calc(3.75rem + env(safe-area-inset-bottom))" }}
+      // Floating clear of the bottom edge rather than a slab across it: the map
+      // is the thing being looked at, and the timeline is a control on it.
+      style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}
     >
-      <div className="pointer-events-auto flex w-full max-w-3xl items-center gap-2.5 rounded-full bg-white/90 py-1.5 pl-1.5 pr-2.5 shadow-lg ring-1 ring-black/10 backdrop-blur-xl">
+      <div className="pointer-events-auto flex w-full max-w-3xl items-center gap-2.5 rounded-full bg-[rgba(255,255,255,0.92)] py-1.5 pl-1.5 pr-2.5 shadow-[0_12px_28px_-18px_rgba(20,22,26,0.4)] ring-1 ring-[rgba(20,22,26,0.09)] backdrop-blur-xl">
         <button
           onClick={timeline.toggle}
           disabled={entries.length === 0}
           aria-label={playing ? "Pause timeline" : "Play timeline"}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0071e3] text-white transition hover:bg-[#0077ed] disabled:bg-neutral-200 disabled:text-neutral-400"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#14161A] text-white transition hover:bg-[#2A2E35] disabled:bg-[rgba(20,22,26,0.05)] disabled:text-[#6B7178]"
         >
           {playing ? <PauseIcon /> : <PlayIcon />}
         </button>
 
         {span ? (
           <>
-            <span className="shrink-0 text-[10px] tabular-nums text-neutral-400">
+            <span className="shrink-0 text-[11px] tabular-nums text-[#6B7178]">
               {formatStamp(span.start, spansDays)}
             </span>
 
@@ -136,9 +134,9 @@ export default function TimelineBar({
               }}
               className="relative h-7 min-w-0 flex-1 cursor-pointer touch-none select-none"
             >
-              <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-neutral-200" />
+              <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-[rgba(20,22,26,0.09)]" />
               <div
-                className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-[#0071e3]/40"
+                className="absolute left-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-[rgba(20,22,26,0.3)]"
                 style={{ width: `${playPct}%` }}
               />
 
@@ -156,19 +154,19 @@ export default function TimelineBar({
               ))}
 
               <div
-                className="pointer-events-none absolute top-0 h-full w-[2px] -translate-x-1/2 rounded-full bg-[#1d1d1f]"
+                className="pointer-events-none absolute top-0 h-full w-[2px] -translate-x-1/2 rounded-full bg-[#14161A]"
                 style={{ left: `${playPct}%` }}
               >
-                <span className="absolute -top-[3px] left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#1d1d1f] ring-2 ring-white" />
+                <span className="absolute -top-[3px] left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#14161A] ring-2 ring-white" />
                 {/* The clock rides the playhead rather than sitting in a row of
                     its own, which is a whole line of screen back. */}
-                <span className="absolute -top-[19px] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#1d1d1f] px-1.5 py-px text-[10px] font-medium tabular-nums text-white">
+                <span className="absolute -top-[19px] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#14161A] px-1.5 py-px text-[10px] font-medium tabular-nums text-white">
                   {formatClock(playheadMs)}
                 </span>
               </div>
             </div>
 
-            <span className="shrink-0 text-[10px] tabular-nums text-neutral-400">
+            <span className="shrink-0 text-[11px] tabular-nums text-[#6B7178]">
               {formatStamp(span.end, spansDays)}
             </span>
 
@@ -176,18 +174,18 @@ export default function TimelineBar({
                 is no second line left to put it on. */}
             <span
               title={exclusionNote(entries.length, scopeCount, offMap, undated)}
-              className="shrink-0 text-[13px] font-medium tabular-nums text-[#1d1d1f]"
+              className="shrink-0 text-[13px] font-medium tabular-nums text-[#14161A]"
             >
               {reachedOnMap}/{onMap.length}
               {offMap + undated > 0 && (
-                <span className="ml-1 text-[10px] font-normal text-neutral-500">
+                <span className="ml-1 text-[11px] font-normal text-[#6B7178]">
                   +{offMap + undated} off
                 </span>
               )}
             </span>
           </>
         ) : (
-          <span className="min-w-0 flex-1 truncate text-[12px] text-neutral-500">
+          <span className="min-w-0 flex-1 truncate text-[13px] text-[#6B7178]">
             {exclusionNote(entries.length, scopeCount, offMap, undated)}
           </span>
         )}
@@ -195,7 +193,7 @@ export default function TimelineBar({
         <button
           onClick={onClose}
           aria-label="Close timeline"
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-[#1d1d1f]"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#6B7178] transition hover:bg-[rgba(20,22,26,0.05)] hover:text-[#14161A]"
         >
           <CloseIcon />
         </button>
@@ -243,18 +241,18 @@ function Tick({
           // difference the second row exists to explain.
           allFilmed
             ? anyReached
-              ? "bg-[#0071e3]"
-              : "bg-neutral-300"
+              ? "bg-[#14161A]"
+              : "bg-[rgba(20,22,26,0.22)]"
             : anyReached
-              ? "border-[2px] border-[#0071e3] bg-white"
-              : "border-[2px] border-neutral-300 bg-white"
+              ? "border-[2px] border-[#14161A] bg-white"
+              : "border-[2px] border-[rgba(20,22,26,0.22)] bg-white"
         }`}
         style={{ opacity: anyReached ? 0.45 + 0.55 * reached : 1 }}
       >
         {count > 1 && (
           <span
-            className={`block text-center text-[9px] font-semibold leading-4 ${
-              allFilmed ? "text-white" : "text-[#0071e3]"
+            className={`block text-center text-[9px] font-semibold leading-4 tabular-nums ${
+              allFilmed ? "text-white" : "text-[#14161A]"
             }`}
           >
             {count}
@@ -264,27 +262,29 @@ function Tick({
 
       {hovered && (
         <div
-          className="pointer-events-none absolute bottom-full z-10 mb-2.5 w-max max-w-[16rem] space-y-1 rounded-xl bg-white px-3 py-2 shadow-lg ring-1 ring-black/10"
+          className="pointer-events-none absolute bottom-full z-10 mb-2.5 w-max max-w-[16rem] space-y-1.5 rounded-xl bg-white px-3 py-2.5 shadow-[0_12px_28px_-18px_rgba(20,22,26,0.4)] ring-1 ring-[rgba(20,22,26,0.09)]"
           style={tickTooltipAnchor(pct)}
         >
           {cluster.entries.slice(0, 4).map((entry) => (
             <p key={entry.id} className="text-[11px] leading-snug">
-              <span className="font-medium text-[#1d1d1f]">{entry.name}</span>
+              <span className="font-display text-[15px] leading-5 text-[#14161A]">
+                {entry.name}
+              </span>
               <br />
-              <span className="tabular-nums text-neutral-500">
+              <span className="tabular-nums text-[#6B7178]">
                 {formatStamp(entry.at, spansDays)}
               </span>
-              <span className="text-neutral-300"> · </span>
-              <span className="text-neutral-500">
+              <span className="text-[rgba(20,22,26,0.25)]"> · </span>
+              <span className="text-[#6B7178]">
                 {entry.source === "filmed" ? "filmed" : "uploaded"}
               </span>
               {!entry.hasLocation && (
-                <span className="text-neutral-400"> · no location</span>
+                <span className="text-[#6B7178]"> · no location</span>
               )}
             </p>
           ))}
           {count > 4 && (
-            <p className="text-[11px] text-neutral-400">
+            <p className="text-[11px] text-[#6B7178]">
               +{count - 4} more at this moment
             </p>
           )}

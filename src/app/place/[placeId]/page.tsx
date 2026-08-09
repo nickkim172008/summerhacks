@@ -31,6 +31,13 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
   const albumId = search.get("album");
   const from = sitePath(search.get("from"));
   const exitHref = albumId ? `/album/${albumId}` : (from ?? "/");
+  // Named from the link that opened this, not from a read: the journey's own
+  // title would cost a fetch the viewer would be waiting on.
+  const exitLabel = albumId
+    ? albumId === "recents"
+      ? "Recents"
+      : "Journey"
+    : "Library";
   const { user } = useAuth();
   // undefined while loading, null once we know it isn't there.
   const [place, setPlace] = useState<Place | null | undefined>();
@@ -81,9 +88,27 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
 
   if (place === null) {
     return (
-      <main className="flex h-screen flex-col items-center justify-center gap-3 bg-black text-white">
-        <p>That place doesn&apos;t exist.</p>
-        <Link href={exitHref} className="text-sky-400 underline">
+      <main className="flex h-screen flex-col items-center justify-center gap-4 bg-[#FAF9F7] px-8 text-center">
+        <p className="text-[15px] text-[#6B7178]">
+          That place doesn&apos;t exist.
+        </p>
+        <Link
+          href={exitHref}
+          className="flex items-center gap-1.5 text-[13px] font-medium text-[#4A4F57] transition-colors duration-150 ease-[ease] hover:text-[#14161A]"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M15 5l-7 7 7 7" />
+          </svg>
           Back
         </Link>
       </main>
@@ -92,7 +117,7 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
 
   if (!place) {
     return (
-      <main className="flex h-screen items-center justify-center bg-black text-neutral-400">
+      <main className="flex h-screen items-center justify-center bg-[#FAF9F7] px-8 text-[15px] text-[#6B7178]">
         Loading…
       </main>
     );
@@ -104,6 +129,7 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
         place={place}
         uploader={uploader}
         onExit={() => router.push(exitHref)}
+        backLabel={exitLabel}
         onEdit={
           user?.uid === place.uploaderId ? () => setEditing(true) : undefined
         }
