@@ -143,7 +143,7 @@ export default function PlaceDetailsEditor({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 text-[#1d1d1f] shadow-2xl">
         <h2 className="text-[22px] font-semibold tracking-tight">
-          Edit environment
+          Edit place
         </h2>
 
         <div className="mt-5 flex items-center gap-4">
@@ -164,7 +164,7 @@ export default function PlaceDetailsEditor({
           <div className="min-w-0">
             <p className="text-[13px] font-medium">Thumbnail</p>
             <p className="mt-0.5 text-[12px] leading-snug text-neutral-500">
-              What this shows in album grids. Taken off the walkthrough unless
+              What this shows in journey grids. Taken off the walkthrough unless
               you pick something else.
             </p>
             <input

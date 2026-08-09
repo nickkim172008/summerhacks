@@ -231,7 +231,7 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
   }
 
   if (album === null) {
-    return <Curtain href={exitHref}>That album doesn&apos;t exist.</Curtain>;
+    return <Curtain href={exitHref}>That journey doesn&apos;t exist.</Curtain>;
   }
 
   if (!steps) return <Curtain>Loading…</Curtain>;
@@ -240,8 +240,8 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
     return (
       <Curtain href={exitHref}>
         {user
-          ? "Nothing in this album can be walked through yet."
-          : "Sign in to walk through this album."}
+          ? "Nothing in this journey can be walked through yet."
+          : "Sign in to walk through this journey."}
       </Curtain>
     );
   }

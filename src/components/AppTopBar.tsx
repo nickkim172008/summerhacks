@@ -21,12 +21,24 @@ export default function AppTopBar() {
           mark belongs at the edge of the screen, not at the edge of the content.
           Constrained, it floated inwards on a wide display and read as though it
           had been centred by accident. */}
-      <div className="flex h-13 items-center justify-between px-6 py-3">
-        <Link href="/" aria-label="Atlas home" className="shrink-0">
-          <AtlasLogo priority className="h-auto w-[92px]" />
-        </Link>
+      <div className="flex h-13 items-center justify-between gap-4 px-6 py-3">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <Link href="/" aria-label="Atlas home" className="shrink-0">
+            <AtlasLogo priority className="h-auto w-[92px]" />
+          </Link>
+          <p className="min-w-0 text-[11px] font-medium leading-snug tracking-tight text-neutral-500 sm:truncate sm:text-[12px] md:text-[13px]">
+            <span className="sm:hidden">
+              Capture a Place.
+              <br />
+              Build a Journey.
+            </span>
+            <span className="hidden sm:inline">
+              Capture a Place. Build a Journey. Explore Atlas.
+            </span>
+          </p>
+        </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           {loading ? null : profile ? (
             <>
               <NotificationsBell uid={profile.id} />

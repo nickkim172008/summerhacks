@@ -40,14 +40,14 @@ function CaptureFlow() {
             <span aria-hidden className="text-xl leading-none">
               ‹
             </span>
-            {albumId ? "Album" : "Albums"}
+            {albumId ? "Journey" : "Journeys"}
           </Link>
         </div>
       </nav>
 
       <div className="mx-auto max-w-3xl px-6">
         <h1 className="mt-8 text-[34px] font-bold tracking-tight">
-          New Environments
+          New Places
         </h1>
         <p className="mt-2 text-sm text-neutral-500">
           Pick one slow walkthrough video per space — each under{" "}
@@ -55,7 +55,7 @@ function CaptureFlow() {
           or smaller. They reconstruct in parallel, and each one saves on its
           own.
           {albumId
-            ? " Everything you save here joins this album, and you can watch it reconstruct there."
+            ? " Everything you save here joins this journey, and you can watch it reconstruct there."
             : " You can watch them reconstruct in Recents."}
         </p>
 

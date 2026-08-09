@@ -53,8 +53,8 @@ export default function NotificationsPage() {
           <div className="mt-16 text-center">
             <p className="text-[17px] font-semibold">Nothing yet</p>
             <p className="mx-auto mt-2 max-w-xs text-sm text-neutral-500">
-              New followers show up here, along with environments captured by
-              the people you follow and album invites waiting on a reply.
+              New followers show up here, along with places captured by
+              the people you follow and journey invites waiting on a reply.
             </p>
             <Link
               href="/discover"
@@ -199,7 +199,7 @@ function AlbumInviteRow({
       await acceptAlbumInvite(item.album, viewerId);
       router.push(`/album/${item.album.id}`);
     } catch {
-      setError("Couldn’t join that album.");
+      setError("Couldn’t join that journey.");
       setBusy(null);
     }
   }

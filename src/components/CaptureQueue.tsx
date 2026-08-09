@@ -73,7 +73,7 @@ function CaptureRow({
               value={item.name}
               onChange={(e) => onRename(item.id, e.target.value)}
               placeholder="What is this place called?"
-              aria-label="Environment name"
+              aria-label="Place name"
               className="w-full rounded-lg border border-transparent bg-neutral-50 px-2.5 py-1.5 text-[15px] font-medium outline-none focus:border-[#0071e3]"
             />
           ) : (
@@ -116,7 +116,7 @@ function CaptureRow({
       {editing && item.phase !== "blocked" && (
         <section className="mt-3 flex flex-col gap-3 rounded-xl border border-black/10 px-3.5 py-3">
           <p className="text-xs text-neutral-500">
-            Kept with the environment. Anything the video did not carry is yours
+            Kept with the place. Anything the video did not carry is yours
             to correct, fill in, or leave blank.
           </p>
 
@@ -234,7 +234,7 @@ function RowActions({
           disabled={!canSave}
           className="rounded-full bg-[#0071e3] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
         >
-          {albumId ? "Add to Album" : "Save"}
+          {albumId ? "Add to Journey" : "Save"}
         </button>
       )}
       {item.phase === "saved" && item.placeId && (
@@ -329,7 +329,7 @@ function describePhase(item: CaptureItem) {
         ? "Checking on it…"
         : `${KIRI_STATUS_LABEL[item.status]}.`;
     case "downloading":
-      return "Downloading your environment…";
+      return "Downloading your place…";
     case "previewable":
       return "Ready to save";
     case "saving":

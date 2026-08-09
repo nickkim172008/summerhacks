@@ -64,14 +64,14 @@ export default function ProfilePage({
     setPlacesError(null);
     const unsubAlbums = subscribeToAlbumsByOwner(profile.id, setAlbums, () => {
       setAlbums([]);
-      setAlbumsError("Couldn’t load albums (check Firestore rules).");
+      setAlbumsError("Couldn’t load journeys (check Firestore rules).");
     });
     const unsubPlaces = subscribeToPlacesByUploader(
       profile.id,
       setPlaces,
       () => {
         setPlaces([]);
-        setPlacesError("Couldn’t load environments (check Firestore rules).");
+        setPlacesError("Couldn’t load places (check Firestore rules).");
       },
     );
     const unsubFollowers = subscribeToFollowerCount(profile.id, setFollowers);
@@ -100,7 +100,7 @@ export default function ProfilePage({
       <main className="flex h-screen flex-col items-center justify-center gap-3 bg-white text-[#1d1d1f]">
         <p>@{username} doesn&apos;t exist.</p>
         <Link href="/" className="text-[#0071e3]">
-          Back to Albums
+          Back to Journeys
         </Link>
       </main>
     );
@@ -117,7 +117,7 @@ export default function ProfilePage({
             <span aria-hidden className="text-xl leading-none">
               ‹
             </span>
-            Albums
+            Journeys
           </Link>
           {isOwn && myProfile && (
             <span className="text-[13px] text-neutral-500">Your profile</span>
@@ -153,7 +153,7 @@ export default function ProfilePage({
             <BioSection profile={profile} editable={isOwn} />
 
             <dl className="mt-6 flex gap-8">
-              <Stat label="Environments" value={places?.length ?? null} />
+              <Stat label="Places" value={places?.length ?? null} />
               <Stat
                 label="Followers"
                 value={followers}
@@ -167,13 +167,13 @@ export default function ProfilePage({
             </dl>
 
             <section className="mt-10">
-              <h2 className="text-[22px] font-bold tracking-tight">Albums</h2>
+              <h2 className="text-[22px] font-bold tracking-tight">Journeys</h2>
               {albumsError ? (
                 <p className="mt-3 text-sm text-amber-600">{albumsError}</p>
               ) : albums === null ? (
                 <p className="mt-3 text-sm text-neutral-500">Loading…</p>
               ) : albums.length === 0 ? (
-                <p className="mt-3 text-sm text-neutral-500">No albums yet.</p>
+                <p className="mt-3 text-sm text-neutral-500">No journeys yet.</p>
               ) : (
                 <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
                   {albums.map((album) => (
@@ -204,7 +204,7 @@ export default function ProfilePage({
 
             <section className="mt-12">
               <h2 className="text-[22px] font-bold tracking-tight">
-                Environments
+                Places
               </h2>
               {placesError ? (
                 <p className="mt-3 text-sm text-amber-600">{placesError}</p>
@@ -212,7 +212,7 @@ export default function ProfilePage({
                 <p className="mt-3 text-sm text-neutral-500">Loading…</p>
               ) : places.length === 0 ? (
                 <p className="mt-3 text-sm text-neutral-500">
-                  No environments yet.
+                  No places yet.
                 </p>
               ) : (
                 <ul className="mt-4 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5">

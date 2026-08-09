@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   albumMemberIds,
   inviteCollaborator,
+  leaveAlbum,
   removeCollaborator,
 } from "@/lib/albums";
 import { getProfile, getProfileByUsername } from "@/lib/profiles";
@@ -19,14 +21,17 @@ export default function AlbumMembers({
   album: Album;
   viewerId: string;
 }) {
+  const router = useRouter();
   const memberIds = albumMemberIds(album);
   const pendingIds = album.pendingMemberIds ?? [];
   const isOwner = album.ownerId === viewerId;
+  const canLeave = !isOwner && memberIds.includes(viewerId);
   const [members, setMembers] = useState<Profile[] | null>(null);
   const [pending, setPending] = useState<Profile[] | null>(null);
   const [inviting, setInviting] = useState(false);
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [followed, setFollowed] = useState<Profile[] | null>(null);
 
@@ -129,7 +134,7 @@ export default function AlbumMembers({
         return;
       }
       if (memberIds.includes(profile.id)) {
-        setError(`@${profile.username} is already on this album.`);
+        setError(`@${profile.username} is already on this journey.`);
         return;
       }
       if (pendingIds.includes(profile.id)) {
@@ -159,6 +164,21 @@ export default function AlbumMembers({
       setError("Couldn’t remove them.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function leave() {
+    setBusy(true);
+    setError(null);
+    try {
+      await leaveAlbum(album, viewerId);
+      router.push("/");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Couldn’t leave this journey.",
+      );
+      setBusy(false);
+      setConfirmLeave(false);
     }
   }
 
@@ -315,6 +335,43 @@ export default function AlbumMembers({
                   ? "Nobody you follow matches. Enter invites by exact username."
                   : "Everyone you follow is already here or invited."}
             </p>
+          )}
+        </div>
+      )}
+
+      {canLeave && (
+        <div className="mt-3">
+          {confirmLeave ? (
+            <div className="flex flex-wrap items-center gap-3 text-[13px]">
+              <span className="text-neutral-600">
+                Leave this journey? You’ll lose access until you’re invited
+                again.
+              </span>
+              <button
+                type="button"
+                onClick={leave}
+                disabled={busy}
+                className="font-semibold text-red-600 transition hover:text-red-700 disabled:opacity-40"
+              >
+                {busy ? "Leaving…" : "Leave"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmLeave(false)}
+                disabled={busy}
+                className="text-neutral-500 transition hover:text-neutral-700 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmLeave(true)}
+              className="text-[13px] text-neutral-500 transition hover:text-neutral-800"
+            >
+              Leave journey
+            </button>
           )}
         </div>
       )}

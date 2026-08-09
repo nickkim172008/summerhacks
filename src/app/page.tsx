@@ -99,7 +99,7 @@ export default function AlbumsPage() {
     <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
       <div className="mx-auto max-w-5xl px-6">
         <div className="mt-8 flex items-center justify-between gap-3">
-          <h1 className="text-[34px] font-bold tracking-tight">Albums</h1>
+          <h2 className="text-[22px] font-bold tracking-tight">My Journeys</h2>
           <div className="flex items-center gap-4">
             <Link
               href="/trash"
@@ -121,7 +121,7 @@ export default function AlbumsPage() {
                 }
                 setShowNewAlbum(true);
               }}
-              aria-label="New Album"
+              aria-label="New Journey"
               className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-xl leading-none text-[#0071e3] transition hover:bg-neutral-200"
             >
               +
@@ -141,9 +141,6 @@ export default function AlbumsPage() {
 
         {!error && !loading && (
           <>
-            <h2 className="mt-6 text-[22px] font-bold tracking-tight">
-              My Albums
-            </h2>
             <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
               <RecentsCard places={ownPlaces ?? []} />
               {(ownedAlbums ?? []).map((album) => (
@@ -157,19 +154,19 @@ export default function AlbumsPage() {
 
             {(ownedAlbums?.length ?? 0) === 0 && (
               <p className="mt-6 text-sm text-neutral-500">
-                Create an album with the{" "}
+                Create a journey with the{" "}
                 <span className="font-medium text-[#0071e3]">+</span> button and
-                start collecting environments — for example, a “Summer Hacks”
-                album for the whole journey.
+                start capturing places — for example, a “Summer Hacks” journey
+                for the whole trip.
               </p>
             )}
 
             <h2 className="mt-12 text-[22px] font-bold tracking-tight">
-              Shared Albums
+              Shared Journeys
             </h2>
             {(sharedAlbums?.length ?? 0) === 0 ? (
               <p className="mt-3 text-sm text-neutral-500">
-                Albums others invite you to show up here after you accept from
+                Journeys others invite you to show up here after you accept from
                 Notifications.
               </p>
             ) : (
@@ -272,9 +269,9 @@ function NewAlbumDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6">
       <div className="w-full max-w-xs overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="px-5 pt-5 pb-4 text-center">
-          <h3 className="text-[17px] font-semibold">New Album</h3>
+          <h3 className="text-[17px] font-semibold">New Journey</h3>
           <p className="mt-1 text-[13px] text-neutral-500">
-            Enter a name for this album.
+            Enter a name for this journey.
           </p>
           <input
             autoFocus

@@ -204,10 +204,10 @@ export async function inviteCollaborator(
   uid: string,
 ): Promise<void> {
   if (uid === album.ownerId) {
-    throw new Error("The owner is already on this album.");
+    throw new Error("The owner is already on this journey.");
   }
   if (albumMemberIds(album).includes(uid)) {
-    throw new Error("They are already on this album.");
+    throw new Error("They are already on this journey.");
   }
   await updateDoc(doc(db, "albums", album.id), {
     // Seed the owner so a pre-sharing album has a real memberIds before the
@@ -256,6 +256,26 @@ export async function removeCollaborator(
     pendingMemberIds: arrayRemove(uid),
     [`memberAddedAt.${uid}`]: deleteField(),
     [`invitePendingAt.${uid}`]: deleteField(),
+  });
+}
+
+/**
+ * A collaborator steps off the journey. Same write as the owner kicking them,
+ * but the caller is always the person leaving — rules refuse the owner, and
+ * refuse removing anyone else.
+ */
+export async function leaveAlbum(album: Album, uid: string): Promise<void> {
+  if (uid === album.ownerId) {
+    throw new Error("The owner can’t leave — delete the journey instead.");
+  }
+  if (!albumMemberIds(album).includes(uid)) {
+    throw new Error("You’re not on this journey.");
+  }
+  // Only touch membership fields. arrayRemove on pending is a no-op when the
+  // uid isn’t pending, which keeps the pending list identical for rules.
+  await updateDoc(doc(db, "albums", album.id), {
+    memberIds: arrayRemove(uid),
+    [`memberAddedAt.${uid}`]: deleteField(),
   });
 }
 
