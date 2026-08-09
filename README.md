@@ -11,9 +11,8 @@ in the timeline without anyone typing anything.
 
 It presents as a photo library — albums, a Recents grid, a public profile per
 person, a map of everywhere you have been, and a trash that makes deleting
-reversible. Each place is its own independent splat scene; hotspot markers link
-them, and clicking one swaps the loaded scene and drops you at that place's
-entry point.
+reversible. Each place is its own independent splat scene, opened from an album
+or the map and left the way you came in.
 
 ## Quick start
 
@@ -71,7 +70,7 @@ as a black screen — `/api/places/asset` exists as the fallback for exactly tha
 | ------------------- | ---------------------------------------------------------- |
 | `/`                 | Albums and Recents (Firestore `onSnapshot`); Library tab    |
 | `/album/[id]`       | One album's places. `recents` is virtual — everything       |
-| `/place/[id]`       | Walk a place, hear the walkthrough, jump to linked places   |
+| `/place/[id]`       | Walk a place and hear the walkthrough it was filmed with    |
 | `/discover`         | Search people, and who has joined lately; Discover tab      |
 | `/map`              | Heatmap of every geotagged place; Map tab                   |
 | `/capture`          | Upload a walkthrough → KIRI → render → save                 |
@@ -82,8 +81,8 @@ as a black screen — `/api/places/asset` exists as the fallback for exactly tha
 | `/dev`              | Two linked sample scenes; no Firebase or KIRI needed        |
 
 Signed out, `/` shows every place so browsing still works; signed in it narrows
-to yours. Arriving at a place from an album carries `?album=` along, so Back and
-every hotspot jump stay inside that album.
+to yours. Arriving at a place from an album carries `?album=` along, so Back
+returns to that album rather than to the library.
 
 ### API
 
@@ -168,7 +167,6 @@ places/{placeId}
   audioUrl?, audioSeconds?
   capturedAt?          ISO 8601, off the video or typed in
   location?: { lat, lng }, locationName?
-  hotspots?: [{ x, y, z, linksToPlaceId, label? }]
   entryPoint?: { position: {x,y,z}, target: {x,y,z} }
   deletedAt?           present only while in the trash
 
@@ -270,10 +268,6 @@ Things that are non-obvious and cost time to rediscover:
 
 ### Rendering
 
-- **Hotspot placement raycasts an infinite floor plane**, not the splat and not a
-  finite proxy mesh. Rays hit stray floating splat particles, and a
-  sized-to-the-room proxy is missed entirely at shallow viewing angles, which
-  drops markers into empty space. Hits are clamped to the scene's bounding box.
 - **The camera frames from inside the room, off percentiles rather than the
   bounding box.** Captures come back at arbitrary scale and centering, and
   reconstruction scatters floaters — haze over a window, a smear of sky — far
