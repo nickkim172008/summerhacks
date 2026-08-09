@@ -43,6 +43,8 @@ export interface Album {
   /**
    * Everyone who may add to this album, the owner included. Absent on albums
    * created before sharing existed, so treat a missing value as [ownerId].
+   * Invitees land here only after they accept — until then they sit in
+   * pendingMemberIds.
    */
   memberIds?: string[];
   /**
@@ -50,6 +52,13 @@ export interface Album {
    * cannot stand in for this: being invited to a year-old album is news today.
    */
   memberAddedAt?: Record<string, Timestamp>;
+  /**
+   * People invited who have not accepted yet. They cannot edit until they
+   * accept from the notification, which is what moves them into memberIds.
+   */
+  pendingMemberIds?: string[];
+  /** When each pending invite was sent, keyed by uid. */
+  invitePendingAt?: Record<string, Timestamp>;
   placeIds: string[];
   createdAt: Timestamp;
   /**
