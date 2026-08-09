@@ -103,7 +103,6 @@ export default function MapPage() {
 
   const { located, pending, byName, unplaceable } = useResolvedPlaces(inScope);
 
-
   // At most one thing to say, and only for a moment: an empty scope is worth a
   // word, but not a banner sitting over the map for as long as it stays empty.
   const notice =
