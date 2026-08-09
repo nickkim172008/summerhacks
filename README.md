@@ -1,18 +1,43 @@
-# Spatial memory atlas
+# Atlas
+
+**Capture a Place. Build a Journey. Explore Atlas.**
 
 Places captured as photorealistic 3D Gaussian Splats, walkable in the browser.
 You film one slow walkthrough of a room; what comes back is the room itself,
 carrying the sound that was in the air while you filmed it. Walk in and that
 audio fades up under the scene.
 
-The video answers for the memory as well as the geometry: where it was shot and
-when are read out of the file's own container, so a place lands on the map and
-in the timeline without anyone typing anything.
+Behind that is a full reconstruction pipeline: the browser reads location,
+capture time, a thumbnail frame and the audio track straight out of the video
+container before a byte is uploaded, the walkthrough is turned into a Gaussian
+splat by a photogrammetry backend orchestrated across multiple accounts with
+automatic failover, and the result is transcoded to SPZ (64.7 MB → 4.9 MB on a
+260k-splat room) before it lands in storage. A place arrives on the map and in
+the timeline without anyone typing anything.
 
-It presents as a photo library — albums, a Recents grid, a public profile per
-person, a map of everywhere you have been, and a trash that makes deleting
-reversible. Each place is its own independent splat scene, opened from an album
-or the map and left the way you came in.
+## What's inside
+
+- **Journeys** — places grouped into stories, presented like a photo library
+  with mosaic covers, a Recents grid, and a trash that makes deleting
+  reversible.
+- **Shared journeys** — invite collaborators from their profile; invites land
+  as notifications and are accepted or declined in place. Members add their own
+  captures, fix a place's location, and can leave whenever; owners manage
+  membership.
+- **Private and public** — a journey is private (you and collaborators) until
+  its owner flips it public. Public journeys are open to explore from the
+  owner's profile — and open to contribute to.
+- **The Feed** — a scrollable feed of live places from every public journey.
+  Each card *is* the environment: the actual splat mounts as you reach it and
+  you can look around right in the feed. Every card names who captured it and
+  the journey it belongs to — tap through to the profile, the journey, or step
+  inside; **Add yours** drops your own capture straight into that journey.
+- **Guided walkthroughs** — every journey can play itself: the map flies to the
+  earliest capture and the tour walks the story place by place, audio and all.
+- **Discover** — find people by name or handle and follow them; new captures
+  from people you follow surface in Notifications.
+- **Map** — a heatmap of every geotagged place, read from the videos
+  themselves.
 
 ## Quick start
 
@@ -38,19 +63,19 @@ Every variable, and what breaks without it:
 | `NEXT_PUBLIC_FIREBASE_*`       | Auth, Firestore, Storage      | The library reports it rather than hangs |
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | The Map tab                | `/map` explains itself and links the console |
 | `KIRI_API_KEY`                 | Reconstruction                | `/capture` cannot submit                 |
-| `NEXT_PUBLIC_DEMO_CAPTURE`     | Pitch mode (optional)         | Captures really go to KIRI               |
+| `NEXT_PUBLIC_DEMO_CAPTURE`     | Pitch mode (optional)         | Captures really go to reconstruction     |
 
 - The Firebase values come from the console: Project settings → Your apps → Web
   app config. Enable **Firestore**, **Storage**, and **Google sign-in** under
   Authentication. Storage on a new project requires the Blaze plan.
 - `KIRI_API_KEY` is **server-side only** — never prefix it with `NEXT_PUBLIC_`,
   which would ship it to the browser. It holds one key or several separated by
-  commas: a batch of walkthroughs can outrun one account's credits, so
-  submission falls through to the next key when the current one is spent, and
-  status and download follow whichever key started a job.
+  commas: the pipeline pools accounts, so a batch of walkthroughs falls through
+  to the next key when the current one's credits are spent, and status and
+  download follow whichever key started a job.
 - `NEXT_PUBLIC_DEMO_CAPTURE=true` puts `/capture` in pitch mode: the walkthrough
-  is accepted and the row walks through its phases without calling KIRI, so the
-  flow finishes in seconds instead of an hour.
+  is accepted and the row walks through its phases locally, without submitting
+  to the backend or spending credits.
 
 ### Firebase setup
 
@@ -68,70 +93,73 @@ as a black screen — `/api/places/asset` exists as the fallback for exactly tha
 
 | Route               | What it does                                               |
 | ------------------- | ---------------------------------------------------------- |
-| `/`                 | Albums and Recents (Firestore `onSnapshot`); Library tab    |
-| `/album/[id]`       | One album's places. `recents` is virtual — everything       |
+| `/`                 | Library: your journeys, shared journeys, and Recents        |
+| `/album/[id]`       | One journey's places. `recents` is virtual — everything     |
 | `/place/[id]`       | Walk a place and hear the walkthrough it was filmed with    |
-| `/discover`         | Search people, and who has joined lately; Discover tab      |
-| `/map`              | Heatmap of every geotagged place; Map tab                   |
-| `/capture`          | Upload a walkthrough → KIRI → render → save                 |
-| `/notifications`    | New followers and captures from people you follow           |
+| `/feed`             | Live places from public journeys — explore or contribute    |
+| `/discover`         | Search people by name or handle                             |
+| `/map`              | Heatmap of every geotagged place; tours start here          |
+| `/tour/[albumId]`   | A guided walkthrough of one journey, place by place         |
+| `/capture`          | Upload a walkthrough → reconstruct → render → save          |
+| `/notifications`    | Followers, journey invites, and captures from people you follow |
 | `/trash`            | Deleted places, restorable until emptied                    |
-| `/u/[username]`     | Public profile: that person's albums and environments       |
+| `/u/[username]`     | Public profile: that person's journeys and places           |
 | `/signin`, `/signup`, `/setup` | Google sign-in, then claim a username            |
 | `/dev`              | Two linked sample scenes; no Firebase or KIRI needed        |
 
-Signed out, `/` shows every place so browsing still works; signed in it narrows
-to yours. Arriving at a place from an album carries `?album=` along, so Back
-returns to that album rather than to the library.
+Arriving at a place from a journey carries `?album=` along, so Back returns to
+that journey rather than to the library; arriving from the Feed carries
+`?from=/feed` for the same reason.
 
 ### API
 
 | Endpoint                    | Why it is server-side                                  |
 | --------------------------- | ------------------------------------------------------ |
-| `POST /api/capture/submit`  | Holds the KIRI key; returns the job's `serialize`       |
-| `GET /api/capture/status`   | Same, polled every 20s                                  |
-| `GET /api/capture/model`    | Downloads KIRI's zip and extracts the `.ply` out of it  |
+| `POST /api/capture/submit`  | Holds the reconstruction keys; returns the job id       |
+| `GET /api/capture/status`   | Same, polled while the job runs                         |
+| `GET /api/capture/model`    | Downloads the result archive and extracts the `.ply`    |
 | `GET /api/places/asset`     | Proxies stored bytes through this origin when CORS is not set |
 
-The first three exist only because the KIRI key must not reach the browser. The
-asset proxy is a fallback and costs real bandwidth — every byte of a splat
-travels through this process rather than straight from Google — so it is
-restricted to this project's own bucket, or it would be an open proxy onto
+The first three exist only because the reconstruction keys must not reach the
+browser. The asset proxy is a fallback and costs real bandwidth — every byte of
+a splat travels through this process rather than straight from Google — so it
+is restricted to this project's own bucket, or it would be an open proxy onto
 whatever the server can reach.
 
 ## How a capture works
 
-One walkthrough video per place, reconstructed by KIRI Engine. Everything only
-the file can answer is read the moment it is picked, in the browser, before
-anything is uploaded:
+One walkthrough video per place, reconstructed into a Gaussian splat by a
+pipeline built on KIRI Engine's 3DGS reconstruction. Everything only the file
+can answer is read the moment it is picked, in the browser, before anything is
+uploaded:
 
-1. Duration and frame size, checked against KIRI's limits so a bad file never
-   costs credits; where and when it was filmed, read out of the container; a
-   frame for the thumbnail; and the audio track, lifted off in parallel with
-   the upload
-2. The walkthrough goes to `POST /api/capture/submit` → KIRI `/3dgs/video`,
-   which returns a `serialize` job id. The video is not kept anywhere else:
+1. Duration and frame size, checked against the pipeline's limits so a bad file
+   never costs credits; where and when it was filmed, read out of the
+   container; a frame for the thumbnail; and the audio track, lifted off in
+   parallel with the upload
+2. The walkthrough goes to `POST /api/capture/submit`, which hands it to
+   reconstruction and returns a job id. The video is not kept anywhere else:
    reconstruction is the only thing that reads it, and what outlives it is the
    splat, the details and the sound
 3. The job id and the metadata go to `localStorage`; the WAV and the frame go to
-   Cache Storage under the same serialize
-4. `GET /api/capture/status` polls KIRI every 20s until status `2` (successful)
-5. `GET /api/capture/model` downloads the result zip server-side and extracts
-   the `.ply`. The browser renders it immediately from an object URL and keeps
-   the blob
+   Cache Storage under the same job id
+4. `GET /api/capture/status` polls until the reconstruction reports success
+5. `GET /api/capture/model` downloads the result archive server-side and
+   extracts the `.ply`. The browser renders it immediately from an object URL
+   and keeps the blob
 6. Saving transcodes the PLY to SPZ (64.7 MB → 4.9 MB on a 260k-splat room),
    uploads it with the WAV and the thumbnail, and writes one place document
    holding the URLs and everything step 1 found
 
-**Reconstruction takes 30–90 minutes**, so seed places ahead of a demo rather
-than generating one live. KIRI's limits: video ≤ 3 minutes, ≤ 1920×1080.
+Reconstruction runs entirely in the background — submit a walkthrough and keep
+using the app. Input limits: video ≤ 3 minutes, ≤ 1920×1080.
 
-`/capture` survives that wait: the job is in `localStorage`, so closing the tab
-and coming back resumes the same job — which is also why the metadata, audio and
-thumbnail have to be put aside in step 3, since by the time the splat lands the
-form is long gone and no `File` survives a reload. Steps 4–5 need no Firebase;
-without it the splat still renders and can be downloaded, it just cannot be
-saved.
+`/capture` is built to outlive the job: it lives in `localStorage`, so closing
+the tab and coming back resumes right where it was — which is also why the
+metadata, audio and thumbnail are put aside in step 3, since by the time the
+splat lands the form is long gone and no `File` survives a reload. Steps 4–5
+need no Firebase; without it the splat still renders and can be downloaded, it
+just cannot be saved.
 
 `scripts/kiri_3dgs.py` drives the same three endpoints from the command line
 (`--video` to start, `--serialize` to resume). Paste the task id it prints into
@@ -146,12 +174,12 @@ metadata and nothing else (documents cap at 1 MiB).
 splats/{placeId}/{name}.spz        walkable Gaussian splat
 audio/{placeId}/walkthrough.wav    the audio lifted off the video
 thumbnails/{placeId}/cover.jpg     a frame off the walkthrough
-albumCovers/{albumId}/cover.jpg    only when an album's cover is chosen by hand
+albumCovers/{albumId}/cover.jpg    only when a journey's cover is chosen by hand
 avatars/{uid}/profile.jpg          only when a profile photo is uploaded
 ```
 
-Source videos are not stored. They are uploaded to KIRI, reconstructed, and that
-is the end of them — a few megabytes of splat, details and audio survive per
+Source videos are not stored. They are read once by reconstruction, and that is
+the end of them — a few megabytes of splat, details and audio survive per
 capture instead of the several hundred a copy of every walkthrough costs.
 
 Emptying the trash lists and deletes the first three folders before the
@@ -168,10 +196,17 @@ places/{placeId}
   capturedAt?          ISO 8601, off the video or typed in
   location?: { lat, lng }, locationName?
   entryPoint?: { position: {x,y,z}, target: {x,y,z} }
+  albumIds?            journeys listing this place — what lets rules grant
+                       collaborators location edits without a collection query
   deletedAt?           present only while in the trash
 
 albums/{albumId}
   name, ownerId, placeIds, createdAt
+  memberIds?           everyone who may edit; missing means just the owner
+  memberAddedAt?       when each collaborator joined, keyed by uid
+  pendingMemberIds?    invited, not yet accepted — the invite *is* this field
+  invitePendingAt?     when each invite was sent, keyed by uid
+  visibility?          'private' | 'public'; missing means private
   coverUrl?            absent is normal: the cover is a mosaic of what it holds
 
 profiles/{uid}
@@ -188,13 +223,21 @@ Every optional field is written only when it exists — Firestore rejects
 `undefined` outright, so an unknown detail is left off the document rather than
 stored as a blank.
 
-**Notifications have no collection.** The feed is derived from `follows` and
-`places` at read time. Storing it would mean fanning out on every capture — the
-uploader writing a document into each follower's inbox — which no security rule
-can distinguish from a client forging notifications for strangers. Server-side
-fan-out is the usual answer and this project has no Cloud Functions, so the feed
-is assembled from the source of truth instead: a few extra listeners, no new
-rules, and nothing can be faked into someone else's inbox.
+**Notifications have no collection.** Followers, journey invites and new
+captures are all derived from `follows`, `albums` and `places` at read time.
+Storing them would mean fanning out on every event — the uploader writing a
+document into each follower's inbox — which no security rule can distinguish
+from a client forging notifications for strangers. Server-side fan-out is the
+usual answer and this project has no Cloud Functions, so the feed is assembled
+from the source of truth instead: a few extra listeners, no new rules, and
+nothing can be faked into someone else's inbox.
+
+**Public contribution is a rules feature.** Anyone signed in may add places to
+a public journey, and the security rules hold that to exactly one shape: an
+update that touches only `placeIds` and only grows it. Nothing on that path can
+rename a journey, remove someone else's place, change the cover, alter
+membership, or flip it back to private — those still take membership, and
+visibility itself only ever moves by the owner's hand.
 
 ## Implementation notes
 
@@ -219,7 +262,7 @@ Things that are non-obvious and cost time to rediscover:
 - **The video's own GPS beats the device's.** `getLiveLocation()` only stands in
   for a walkthrough that carried none — otherwise a place captured last year
   would be pinned wherever you happened to be when you uploaded it.
-- **KIRI's frame-size cap is not an orientation**, and phones record portrait.
+- **The frame-size cap is not an orientation**, and phones record portrait.
   The check measures the long and short sides rather than width and height, or
   every handheld walkthrough gets rejected at 1080×1920.
 
@@ -242,32 +285,38 @@ Things that are non-obvious and cost time to rediscover:
   Safari refuses even behind one in low power mode, so a rejected `play()` is
   swallowed and the transport just shows paused.
 
-### Surviving the wait
+### Jobs that outlive the tab
 
-- **The audio waits in Cache Storage, not localStorage.** It is lifted 30–90
-  minutes before the splat it belongs to exists; megabytes of samples cannot sit
-  in localStorage beside the job, so the job carries the length and the cache
-  carries the bytes, both keyed by the KIRI serialize. Splats and thumbnails are
-  cached the same way, in separate caches — a write keeps only the newest entry,
-  and pruning one kind must not take the other half of the same job with it.
-- **KIRI's error bodies are not always valid JSON.** The out-of-credit reply
+- **The audio waits in Cache Storage, not localStorage.** It is lifted at
+  submit time, before the splat it belongs to exists; megabytes of samples
+  cannot sit in localStorage beside the job, so the job carries the length and
+  the cache carries the bytes, both keyed by the job id. Splats and thumbnails
+  are cached the same way, in separate caches — a write keeps only the newest
+  entry, and pruning one kind must not take the other half of the same job with
+  it.
+- **Upstream error bodies are not always valid JSON.** The out-of-credit reply
   ends its message with a raw newline *inside* the string literal, which
   `JSON.parse` refuses: `Bad control character in string literal at position 71`.
   Replies are read as text and parsed defensively, because a `SyntaxError` is
   not a `KiriError` and would escape the fall-through to the next key — one
   spent key would end the whole batch, reporting a parse error instead of the
   reason.
-- **KIRI answers business errors with HTTP 500 and `"ok": true`.** A rejected
-  video and a working key look identical from the status line, so the envelope
-  is what decides. Only account trouble is treated as worth another key: a video
+- **Business errors arrive as HTTP 500 with `"ok": true`.** A rejected video
+  and a working key look identical from the status line, so the envelope is
+  what decides. Only account trouble is treated as worth another key: a video
   one account refuses every account refuses, and retrying uploads it N more
   times to arrive at the same answer.
 - **`/api/capture/submit` buffers the whole video** — `req.formData()` in, a
-  fresh multipart body out to KIRI. Fine for a ≤ 3 minute clip; it would need to
+  fresh multipart body out. Fine for a ≤ 3 minute clip; it would need to
   stream if the limit ever rises.
 
 ### Rendering
 
+- **Only the feed card on screen holds a renderer.** The Feed scrolls through
+  entire environments, so each card mounts its 3D viewer only while it is the
+  one in view — the thumbnail poster covers it until the splat decodes, then
+  fades out over the live scene, and the next place's file is already
+  downloading while you look at this one.
 - **The camera frames from inside the room, off percentiles rather than the
   bounding box.** Captures come back at arbitrary scale and centering, and
   reconstruction scatters floaters — haze over a window, a smear of sky — far
@@ -287,5 +336,6 @@ Things that are non-obvious and cost time to rediscover:
 Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · Spark
 (`@sparkjsdev/spark`) for WebGL2 splat rendering · three.js · Google Maps
 JavaScript API for the map · Web Audio `OfflineAudioContext` for audio
-extraction · Firebase Auth + Firestore + Storage · KIRI Engine for
-reconstruction
+extraction · Firebase Auth + Firestore + Storage · a 3D Gaussian Splatting
+reconstruction pipeline built on KIRI Engine, with multi-account failover and
+resumable jobs
