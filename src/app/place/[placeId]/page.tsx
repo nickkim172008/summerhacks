@@ -5,16 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PlaceExperience from "@/components/PlaceExperience";
 import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
-import {
-  addHotspot,
-  getPlace,
-  subscribeToPlacesByUploader,
-} from "@/lib/places";
+import { getPlace } from "@/lib/places";
 import { useAuth } from "@/lib/auth";
 import { getProfile } from "@/lib/profiles";
 import type { Place, Profile } from "@/lib/types";
-
-const NO_PLACES: Place[] = [];
 
 export default function PlacePage({
   params,
@@ -37,15 +31,9 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
   const albumId = search.get("album");
   const from = sitePath(search.get("from"));
   const exitHref = albumId ? `/album/${albumId}` : (from ?? "/");
-  const originQuery = albumId
-    ? `?album=${albumId}`
-    : from
-      ? `?from=${encodeURIComponent(from)}`
-      : "";
   const { user } = useAuth();
   // undefined while loading, null once we know it isn't there.
   const [place, setPlace] = useState<Place | null | undefined>();
-  const [ownPlaces, setOwnPlaces] = useState<Place[]>([]);
   const [fetchedUploader, setFetchedUploader] = useState<{
     uploaderId: string;
     profile: Profile | null;
@@ -65,15 +53,6 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
       active = false;
     };
   }, [placeId]);
-
-  useEffect(() => {
-    if (!user) return;
-    return subscribeToPlacesByUploader(user.uid, setOwnPlaces);
-  }, [user]);
-
-  // Gated on the signed-in user rather than cleared on sign-out, so hotspot
-  // targets can never be the last account's captures.
-  const allPlaces = user ? ownPlaces : NO_PLACES;
 
   // Attribution is a nicety, so a missing or unreadable profile just leaves it
   // off rather than blocking the place from opening.
@@ -123,16 +102,8 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
     <main className="h-screen w-screen">
       <PlaceExperience
         place={place}
-        linkTargets={allPlaces
-          .filter((p) => p.id !== placeId)
-          .map((p) => ({ id: p.id, name: p.name }))}
         uploader={uploader}
-        onJump={(id) => router.push(`/place/${id}${originQuery}`)}
         onExit={() => router.push(exitHref)}
-        onAddHotspot={async (point, linksToPlaceId) => {
-          await addHotspot(placeId, point, linksToPlaceId);
-          setPlace(await getPlace(placeId));
-        }}
         onEdit={
           user?.uid === place.uploaderId ? () => setEditing(true) : undefined
         }

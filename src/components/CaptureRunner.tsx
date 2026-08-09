@@ -681,8 +681,6 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
             <SplatViewer
               key={previewed.id}
               splatUrl={previewed.splat.url}
-              placementMode={false}
-              onPlacePoint={() => {}}
             />
           </div>
         </section>

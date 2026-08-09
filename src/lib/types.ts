@@ -6,12 +6,6 @@ export interface Vec3 {
   z: number;
 }
 
-/** A marker inside one place that jumps the viewer to another place. */
-export interface Hotspot extends Vec3 {
-  linksToPlaceId: string;
-  label?: string;
-}
-
 /** Where the camera lands when a place is entered or jumped to. */
 export interface EntryPoint {
   position: Vec3;
@@ -31,7 +25,6 @@ export interface Place {
   createdAt: Timestamp;
   splatUrl: string;
   thumbnailUrl: string;
-  hotspots?: Hotspot[];
   entryPoint?: EntryPoint;
   /** The walkthrough video's own audio, lifted off at capture time. */
   audioUrl?: string;

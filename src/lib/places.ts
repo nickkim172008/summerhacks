@@ -1,5 +1,4 @@
 import {
-  arrayUnion,
   collection,
   deleteField,
   doc,
@@ -16,7 +15,7 @@ import { deleteObject, listAll, ref } from "firebase/storage";
 import { deleteDoc } from "firebase/firestore";
 import { db, storage } from "./firebase";
 import { uploadAudio, uploadSplat, uploadThumbnail } from "./splatStore";
-import type { Place, Vec3 } from "./types";
+import type { Place } from "./types";
 
 function sortByCreatedDesc(places: Place[]) {
   return [...places].sort((a, b) => {
@@ -264,15 +263,5 @@ export async function updatePlaceDetails(placeId: string, edits: PlaceEdits) {
     ...(edits.thumbnailUrl === undefined
       ? {}
       : { thumbnailUrl: edits.thumbnailUrl }),
-  });
-}
-
-export async function addHotspot(
-  placeId: string,
-  point: Vec3,
-  linksToPlaceId: string,
-) {
-  await updateDoc(doc(db, "places", placeId), {
-    hotspots: arrayUnion({ ...point, linksToPlaceId }),
   });
 }

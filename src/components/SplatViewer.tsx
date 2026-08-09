@@ -6,52 +6,24 @@ import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { PivotControls } from "@/lib/pivotControls";
 import { frameCapture } from "@/lib/splatFraming";
 import { storedAssetUrl } from "@/lib/assetUrl";
-import type { EntryPoint, Hotspot, Vec3 } from "@/lib/types";
+import type { EntryPoint } from "@/lib/types";
 
 export interface SplatViewerProps {
   splatUrl: string;
-  hotspots?: Hotspot[];
   entryPoint?: EntryPoint;
-  placementMode: boolean;
-  onPlacePoint: (point: Vec3) => void;
-  onHotspotClick?: (linksToPlaceId: string) => void;
-}
-
-const FALLBACK_PLACE_DISTANCE = 3;
-const FLOOR_NORMAL = new THREE.Vector3(0, 1, 0);
-
-function clearGroup(group: THREE.Group) {
-  for (const child of [...group.children]) {
-    group.remove(child);
-    const marker = child as THREE.Mesh;
-    marker.geometry.dispose();
-    (marker.material as THREE.Material).dispose();
-  }
 }
 
 export default function SplatViewer({
   splatUrl,
-  hotspots = [],
   entryPoint,
-  placementMode,
-  onPlacePoint,
-  onHotspotClick,
 }: SplatViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const hotspotGroupRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const [sceneRadius, setSceneRadius] = useState(1);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Latest-value refs so the animation loop and listeners never close over stale props.
-  const placementModeRef = useRef(placementMode);
-  const onPlacePointRef = useRef(onPlacePoint);
-  const onHotspotClickRef = useRef(onHotspotClick);
+  // A latest-value ref so the load callback never closes over a stale prop.
   const entryPointRef = useRef(entryPoint);
   useEffect(() => {
-    placementModeRef.current = placementMode;
-    onPlacePointRef.current = onPlacePoint;
-    onHotspotClickRef.current = onHotspotClick;
     entryPointRef.current = entryPoint;
   });
 
@@ -86,10 +58,8 @@ export default function SplatViewer({
     // it into something unreachable, and the failure arrives as an uncaught
     // "Failed to fetch" — a black canvas with nothing said. Absolute from here
     // means a missing file at least fails as the 404 it is.
-    const resolvedUrl = new URL(
-      storedAssetUrl(splatUrl),
-      window.location.href,
-    ).href;
+    const resolvedUrl = new URL(storedAssetUrl(splatUrl), window.location.href)
+      .href;
     // The one fact that separates "this record predates Firebase storage" from
     // "Storage refused the read", and it is invisible without saying it out loud.
     console.info("[splat] loading", resolvedUrl);
@@ -123,10 +93,6 @@ export default function SplatViewer({
         camera.near = Math.max(radius / 1000, 0.001);
         camera.far = radius * 100;
         camera.updateProjectionMatrix();
-
-        floorPlane.set(FLOOR_NORMAL, -framing.floorY);
-        bounds = { box: framing.box, center, radius };
-        setSceneRadius(radius);
       },
     });
     // Splat captures (SPZ/PLY) come in Y-down relative to three.js convention.
@@ -144,75 +110,6 @@ export default function SplatViewer({
           : "This environment could not be loaded.",
       );
     });
-
-    // Raycasting directly against splat point data is unreliable (rays catch stray
-    // floating particles), so placed points land on this infinite floor plane
-    // instead. A finite proxy mesh would be missed entirely at shallow viewing
-    // angles.
-    const floorPlane = new THREE.Plane(FLOOR_NORMAL, 0);
-    let bounds: {
-      box: THREE.Box3;
-      center: THREE.Vector3;
-      radius: number;
-    } | null = null;
-
-    const hotspotGroup = new THREE.Group();
-    scene.add(hotspotGroup);
-    hotspotGroupRef.current = hotspotGroup;
-
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-    let downPos: { x: number; y: number } | null = null;
-
-    function toPointer(event: PointerEvent) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    }
-
-    function handlePointerDown(event: PointerEvent) {
-      downPos = { x: event.clientX, y: event.clientY };
-    }
-
-    function handlePointerUp(event: PointerEvent) {
-      // Ignore clicks that were actually orbit drags.
-      if (!downPos) return;
-      const dragged =
-        Math.hypot(event.clientX - downPos.x, event.clientY - downPos.y) > 5;
-      downPos = null;
-      if (dragged) return;
-
-      toPointer(event);
-      raycaster.setFromCamera(pointer, camera);
-
-      if (!placementModeRef.current) {
-        const hit = raycaster.intersectObjects(hotspotGroup.children, false)[0];
-        const { linksToPlaceId } = hit?.object.userData ?? {};
-        if (linksToPlaceId) onHotspotClickRef.current?.(linksToPlaceId);
-        return;
-      }
-
-      const point = new THREE.Vector3();
-      const hitFloor = raycaster.ray.intersectPlane(floorPlane, point);
-
-      // A ray angled above the horizon never meets the floor, and one that grazes
-      // it lands absurdly far away — both cases fall back to a point in front of
-      // the camera so the marker still lands somewhere inside the place.
-      const tooFar =
-        bounds && point.distanceTo(bounds.center) > bounds.radius * 3;
-      if (!hitFloor || tooFar) {
-        raycaster.ray.at(
-          bounds ? bounds.radius : FALLBACK_PLACE_DISTANCE,
-          point,
-        );
-      }
-      if (bounds) point.clamp(bounds.box.min, bounds.box.max);
-
-      onPlacePointRef.current({ x: point.x, y: point.y, z: point.z });
-    }
-
-    renderer.domElement.addEventListener("pointerdown", handlePointerDown);
-    renderer.domElement.addEventListener("pointerup", handlePointerUp);
 
     const resizeObserver = new ResizeObserver(() => {
       const { clientWidth, clientHeight } = container;
@@ -245,36 +142,13 @@ export default function SplatViewer({
       mounted = false;
       renderer.setAnimationLoop(null);
       resizeObserver.disconnect();
-      renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
-      renderer.domElement.removeEventListener("pointerup", handlePointerUp);
       controls.dispose();
       splat.dispose();
       renderer.dispose();
       container.removeChild(renderer.domElement);
-      hotspotGroupRef.current = null;
       cameraRef.current = null;
     };
   }, [splatUrl]);
-
-  useEffect(() => {
-    const hotspotGroup = hotspotGroupRef.current;
-    if (!hotspotGroup) return;
-    clearGroup(hotspotGroup);
-
-    for (const hotspot of hotspots) {
-      const marker = new THREE.Mesh(
-        new THREE.OctahedronGeometry(sceneRadius * 0.05),
-        new THREE.MeshBasicMaterial({
-          color: 0xb388ff,
-          transparent: true,
-          opacity: 0.85,
-        }),
-      );
-      marker.position.set(hotspot.x, hotspot.y, hotspot.z);
-      marker.userData.linksToPlaceId = hotspot.linksToPlaceId;
-      hotspotGroup.add(marker);
-    }
-  }, [hotspots, sceneRadius]);
 
   if (loadError) {
     // A relative url means the record predates Firebase storage and its bytes
@@ -302,11 +176,5 @@ export default function SplatViewer({
     );
   }
 
-  return (
-    <div
-      ref={containerRef}
-      className="h-full w-full"
-      style={{ cursor: placementMode ? "crosshair" : "grab" }}
-    />
-  );
+  return <div ref={containerRef} className="h-full w-full cursor-grab" />;
 }
