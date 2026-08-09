@@ -66,12 +66,73 @@ async function kiriFetch<T>(
     ...init,
     headers: { Authorization: `Bearer ${key}`, ...init?.headers },
   });
-  const body = (await res.json()) as KiriEnvelope<T>;
+  const body = readEnvelope<T>(await res.text(), res.status);
   if (!res.ok || !body.ok) {
     const message = body?.msg || `KIRI request failed (${res.status})`;
     throw new KiriError(message, spent(res.status, message));
   }
   return body.data;
+}
+
+/**
+ * KIRI puts raw newlines inside the strings of its JSON, which is not legal and
+ * which res.json() rejects — so a refused upload came back as "Bad control
+ * character in string literal" and the reason it was refused never reached
+ * anyone. Worse, the message is what decides whether a key is spent, so an
+ * unparseable reply also cost the fall-through to the next key.
+ *
+ * The offending characters are escaped and it is read again. Text that still
+ * will not parse is reported as itself, since at that point KIRI's own words
+ * are more use than a parser's.
+ */
+function readEnvelope<T>(text: string, status: number): KiriEnvelope<T> {
+  try {
+    return JSON.parse(text) as KiriEnvelope<T>;
+  } catch {
+    try {
+      return JSON.parse(escapeControlsInStrings(text)) as KiriEnvelope<T>;
+    } catch {
+      throw new KiriError(
+        `KIRI answered with something unreadable (${status}): ${text.slice(0, 200)}`,
+        false,
+      );
+    }
+  }
+}
+
+/**
+ * Only inside string literals: a newline between tokens is ordinary whitespace,
+ * and escaping those would break a reply that is merely pretty-printed.
+ */
+function escapeControlsInStrings(text: string) {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+
+  for (const character of text) {
+    if (escaped) {
+      out += character;
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      out += character;
+      escaped = true;
+      continue;
+    }
+    if (character === '"') {
+      inString = !inString;
+      out += character;
+      continue;
+    }
+    const code = character.charCodeAt(0);
+    out +=
+      inString && code < 0x20
+        ? `\\u${code.toString(16).padStart(4, "0")}`
+        : character;
+  }
+
+  return out;
 }
 
 /**
