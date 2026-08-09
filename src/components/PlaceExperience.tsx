@@ -5,11 +5,12 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Place } from "@/lib/types";
 import { storedAssetUrl } from "@/lib/assetUrl";
+import TourChrome, { type TourChromeProps } from "./TourChrome";
 
 const SplatViewer = dynamic(() => import("./SplatViewer"), { ssr: false });
 
 /** Long enough for the room's sound to fall away rather than be cut off. */
-const FADE_MS = 350;
+export const FADE_MS = 350;
 /** Slow enough that the room's sound arrives rather than switches on. */
 const AUDIO_FADE_IN_MS = 2000;
 
@@ -20,6 +21,17 @@ export interface PlaceExperienceProps {
   onExit?: () => void;
   /** Offered to whoever captured this, to correct its name or where it sits. */
   onEdit?: () => void;
+  /**
+   * Present only while a guided walkthrough is driving playback. The tour owns
+   * its own clock and its own idea of where it is; this only draws it.
+   */
+  tour?: TourChromeProps;
+  /**
+   * Pressed and released inside the capture. A walkthrough holds its countdown
+   * between the two: moving on while someone is mid-look is the single way this
+   * feels broken.
+   */
+  onLookingChange?: (looking: boolean) => void;
 }
 
 export default function PlaceExperience({
@@ -27,9 +39,46 @@ export default function PlaceExperience({
   uploader,
   onExit,
   onEdit,
+  tour,
+  onLookingChange,
 }: PlaceExperienceProps) {
   const [leaving, setLeaving] = useState(false);
   const exitTimerRef = useRef<number | null>(null);
+
+  // Whether a pointer is down on the capture. A ref rather than state: nothing
+  // on this screen looks different mid-drag, and re-rendering around the viewer
+  // while someone is turning is the one thing worth not doing here.
+  const lookingRef = useRef(false);
+  const onLookingChangeRef = useRef(onLookingChange);
+  useEffect(() => {
+    onLookingChangeRef.current = onLookingChange;
+  });
+
+  const beginLook = useCallback(() => {
+    if (lookingRef.current) return;
+    lookingRef.current = true;
+    onLookingChangeRef.current?.(true);
+  }, []);
+
+  // Release is watched on the window rather than the canvas: a drag that ends
+  // off the canvas, or off the page entirely — released over the tab strip —
+  // would otherwise leave a walkthrough paused for good.
+  useEffect(() => {
+    const release = () => {
+      if (!lookingRef.current) return;
+      lookingRef.current = false;
+      onLookingChangeRef.current?.(false);
+    };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+      release();
+    };
+  }, []);
 
   // Arriving somewhere new clears the previous place's UI state.
   const [renderedPlaceId, setRenderedPlaceId] = useState(place.id);
@@ -67,18 +116,27 @@ export default function PlaceExperience({
     });
   }, [place.id, place.splatUrl, place.audioUrl]);
   const captured = describeCapture(place);
+  // A walkthrough's step between captures fades exactly as a hotspot jump does,
+  // sound included — it is the same journey, taken for you.
+  const dimming = leaving || Boolean(tour?.fading);
 
   return (
     <div className="relative h-full w-full bg-black text-white">
-      <SplatViewer splatUrl={place.splatUrl} entryPoint={place.entryPoint} />
+      {/* The pointer listener sits here rather than on the root so that a press
+          on the chrome — Next, Exit — is never mistaken for a look around. */}
+      <div className="h-full w-full" onPointerDown={beginLook}>
+        <SplatViewer splatUrl={place.splatUrl} entryPoint={place.entryPoint} />
+      </div>
 
       <div
         className="pointer-events-none absolute inset-0 z-30 bg-black transition-opacity"
         style={{
-          opacity: leaving ? 1 : 0,
+          opacity: dimming ? 1 : 0,
           transitionDuration: `${FADE_MS}ms`,
         }}
       />
+
+      {tour && <TourChrome {...tour} />}
 
       {onExit && (
         <button
@@ -132,7 +190,7 @@ export default function PlaceExperience({
                 key={place.id}
                 url={storedAssetUrl(place.audioUrl)}
                 seconds={place.audioSeconds}
-                leaving={leaving}
+                leaving={dimming}
               />
             </div>
           )}

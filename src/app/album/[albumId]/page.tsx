@@ -198,6 +198,23 @@ export default function AlbumPage({
                   ? "Loading…"
                   : `${readyPlaces.length} ${readyPlaces.length === 1 ? "environment" : "environments"}`}
             </p>
+            {/* Recents is a view of everything rather than an album, so there
+                is no story through it to walk — and no album name to head one
+                with. The walkthrough starts on the map, which flies to the
+                earliest capture before handing over. */}
+            {!isRecents && !loading && !error && readyPlaces.length > 0 && (
+              <Link
+                href={`/map?album=${albumId}&tour=1&from=${encodeURIComponent(
+                  `/album/${albumId}`,
+                )}`}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#0071e3] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#0077ed]"
+              >
+                <span aria-hidden className="text-[10px]">
+                  ▶
+                </span>
+                Play walkthrough
+              </Link>
+            )}
             {album && user?.uid === album.ownerId && (
               <CoverControls
                 albumId={album.id}

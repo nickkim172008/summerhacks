@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useAuthProfile } from "@/lib/auth";
 
@@ -15,6 +15,8 @@ const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
   ),
 });
 import TimelineBar from "@/components/TimelineBar";
+import AlbumTourButton from "@/components/AlbumTourButton";
+import { TourIntroVeil, useTourIntro } from "@/components/TourIntro";
 import { subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useLiveLocation } from "@/lib/geolocation";
@@ -31,14 +33,27 @@ type Scope =
 const NO_ALBUMS: Album[] = [];
 const PUBLIC_SCOPE: Scope = { kind: "public" };
 
+// useSearchParams needs a boundary to suspend at, and a walkthrough's opening
+// is named entirely in the query string.
 export default function MapPage() {
+  return (
+    <Suspense fallback={null}>
+      <MapView />
+    </Suspense>
+  );
+}
+
+function MapView() {
   const router = useRouter();
+  const search = useSearchParams();
   const { user, loading: authLoading, needsUsername } = useAuthProfile();
   const [allPlaces, setAllPlaces] = useState<Place[] | null>(
     isFirebaseConfigured ? null : [],
   );
   const [ownedAlbums, setOwnedAlbums] = useState<Album[]>([]);
-  const [requestedScope, setScope] = useState<Scope>(PUBLIC_SCOPE);
+  // Null until something is picked, so a scope named in the URL can stand in
+  // without a chosen one ever being overwritten by it.
+  const [chosenScope, setScope] = useState<Scope | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [libraryDenied, setLibraryDenied] = useState(false);
@@ -73,9 +88,17 @@ export default function MapPage() {
   // account's albums can never linger.
   const albums = user ? ownedAlbums : NO_ALBUMS;
 
+  // A walkthrough link names its album in the query, and the album is the scope
+  // it opens on. Memoised because inScope is derived from this: a fresh object
+  // every render would rebuild the place list every render.
+  const urlAlbumId = search.get("album");
   // Personal and album scopes need a signed-in user, so signing out mid-session
   // falls back rather than leaving the map showing a scope it cannot resolve.
-  const scope = user ? requestedScope : PUBLIC_SCOPE;
+  const scope = useMemo((): Scope => {
+    if (!user) return PUBLIC_SCOPE;
+    if (chosenScope) return chosenScope;
+    return urlAlbumId ? { kind: "album", albumId: urlAlbumId } : PUBLIC_SCOPE;
+  }, [user, chosenScope, urlAlbumId]);
 
   // Which places the chosen scope covers. Personal is every album's contents
   // taken together, so it is the union of the album views rather than a
@@ -111,15 +134,26 @@ export default function MapPage() {
   // own.
   const timeline = useCaptureTimeline(inScope, timelineOpen);
 
+  const tourIntro = useTourIntro({
+    albumId: search.get("tour") === "1" ? urlAlbumId : null,
+    places: inScope,
+    from: search.get("from"),
+  });
+
+  // The bar is data, the tour is an experience, and while a tour flies in they
+  // would be fighting over the same map. Derived rather than dismissed from an
+  // effect, so the frame the intro starts on already shows every point.
+  const showTimeline = timelineOpen && !tourIntro.active;
+
   // The animation is a filter over what the map already had. PlacesMap keeps
   // its own idea of framing, so the map stays fitted to the whole scope while
   // the points inside it arrive one at a time.
   const mapPlaces = useMemo(
     () =>
-      timelineOpen
+      showTimeline
         ? located.filter((place) => !timeline.hiddenIds.has(place.id))
         : located,
-    [located, timeline.hiddenIds, timelineOpen],
+    [located, timeline.hiddenIds, showTimeline],
   );
 
   const heatWeightOf = useCallback(
@@ -127,9 +161,8 @@ export default function MapPage() {
     [timeline.weights],
   );
 
-  // Also the hook for dismissing the bar from elsewhere on this page — a tour
-  // starting over the map, say — since it parks the playhead as well as hiding
-  // the track, leaving the map showing everything again.
+  // Also the hook for dismissing the bar from elsewhere on this page, since it
+  // parks the playhead as well as hiding the track.
   function closeTimeline() {
     timeline.reset();
     setTimelineOpen(false);
@@ -225,9 +258,7 @@ export default function MapPage() {
                     setScope({ kind: "personal" });
                   }}
                   title="Yours"
-                  subtitle={
-                    user ? "Every album combined" : "Sign in to view"
-                  }
+                  subtitle={user ? "Every album combined" : "Sign in to view"}
                 />
               </div>
 
@@ -250,21 +281,27 @@ export default function MapPage() {
                 )}
                 <div className="space-y-1">
                   {albums.map((album) => (
-                    <FilterButton
-                      key={album.id}
-                      active={
-                        scope.kind === "album" && scope.albumId === album.id
-                      }
-                      onClick={() =>
-                        setScope({ kind: "album", albumId: album.id })
-                      }
-                      title={album.name}
-                      subtitle={`${album.placeIds?.length ?? 0} ${
-                        (album.placeIds?.length ?? 0) === 1
-                          ? "place"
-                          : "places"
-                      }`}
-                    />
+                    <div key={album.id} className="flex items-center gap-1">
+                      <div className="min-w-0 flex-1">
+                        <FilterButton
+                          active={
+                            scope.kind === "album" && scope.albumId === album.id
+                          }
+                          onClick={() =>
+                            setScope({ kind: "album", albumId: album.id })
+                          }
+                          title={album.name}
+                          subtitle={`${album.placeIds?.length ?? 0} ${
+                            (album.placeIds?.length ?? 0) === 1
+                              ? "place"
+                              : "places"
+                          }`}
+                        />
+                      </div>
+                      {(album.placeIds?.length ?? 0) > 0 && (
+                        <AlbumTourButton albumId={album.id} name={album.name} />
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -276,7 +313,8 @@ export default function MapPage() {
           <PlacesMap
             places={mapPlaces}
             liveLocation={liveLocation}
-            weightOf={timelineOpen ? heatWeightOf : undefined}
+            weightOf={showTimeline ? heatWeightOf : undefined}
+            focus={tourIntro.focus}
             className="absolute inset-0"
           />
 
@@ -297,7 +335,7 @@ export default function MapPage() {
             Timeline
           </button>
 
-          {notice && !timelineOpen && (
+          {notice && !showTimeline && (
             <div
               className="pointer-events-none absolute bottom-20 left-1/2 z-[1] max-w-sm -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-center text-[12px] text-neutral-600 shadow-md ring-1 ring-black/10 transition-opacity duration-700"
               style={{ opacity: noticeVisible ? 1 : 0 }}
@@ -306,7 +344,7 @@ export default function MapPage() {
             </div>
           )}
 
-          {timelineOpen && (
+          {showTimeline && (
             <TimelineBar
               timeline={timeline}
               scopeCount={inScope.length}
@@ -316,6 +354,8 @@ export default function MapPage() {
           )}
         </section>
       </div>
+
+      <TourIntroVeil intro={tourIntro} />
     </main>
   );
 }
@@ -373,7 +413,12 @@ function FilterButton({
 
 function ClockIcon() {
   return (
-    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden>
+    <svg
+      viewBox="0 0 20 20"
+      className="h-4 w-4"
+      fill="currentColor"
+      aria-hidden
+    >
       <path d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm-.75 2.75a.75.75 0 0 1 1.5 0v3.44l2.28 1.32a.75.75 0 1 1-.75 1.3l-2.65-1.53a.75.75 0 0 1-.38-.65V6.25Z" />
     </svg>
   );
@@ -381,7 +426,12 @@ function ClockIcon() {
 
 function CloseIcon() {
   return (
-    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden>
+    <svg
+      viewBox="0 0 20 20"
+      className="h-4 w-4"
+      fill="currentColor"
+      aria-hidden
+    >
       <path d="M5.22 5.22a.75.75 0 0 1 1.06 0L10 8.94l3.72-3.72a.75.75 0 1 1 1.06 1.06L11.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06L10 11.06l-3.72 3.72a.75.75 0 0 1-1.06-1.06L8.94 10 5.22 6.28a.75.75 0 0 1 0-1.06Z" />
     </svg>
   );
