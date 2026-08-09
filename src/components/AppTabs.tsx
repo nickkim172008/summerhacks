@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { shouldHideAppChrome } from "@/lib/appChrome";
 
 type Tab = "library" | "discover" | "map";
 
@@ -11,8 +12,7 @@ export default function AppTabs({ active }: { active?: Tab } = {}) {
   const pathname = usePathname() ?? "/";
   const current = active ?? tabForPath(pathname);
 
-  // Auth / setup flows stay chrome-free.
-  if (shouldHideTabs(pathname)) return null;
+  if (shouldHideAppChrome(pathname)) return null;
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
@@ -49,17 +49,6 @@ function tabForPath(pathname: string): Tab | null {
   }
   // Library covers home, albums, profiles, capture, places, etc.
   return "library";
-}
-
-function shouldHideTabs(pathname: string) {
-  return (
-    pathname === "/signin" ||
-    pathname === "/signup" ||
-    pathname === "/setup" ||
-    pathname.startsWith("/signin/") ||
-    pathname.startsWith("/signup/") ||
-    pathname.startsWith("/setup/")
-  );
 }
 
 function TabLink({

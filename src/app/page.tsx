@@ -6,15 +6,13 @@ import { useRouter } from "next/navigation";
 import { subscribeToPlacesByUploader } from "@/lib/places";
 import { createAlbum, subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
-import { signOut, useAuthProfile } from "@/lib/auth";
-import AtlasLogo from "@/components/AtlasLogo";
+import { useAuthProfile } from "@/lib/auth";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Album, Place } from "@/lib/types";
 
 export default function AlbumsPage() {
   const router = useRouter();
-  const { user, profile, loading: authLoading, needsUsername } =
-    useAuthProfile();
+  const { user, loading: authLoading, needsUsername } = useAuthProfile();
   const [albums, setAlbums] = useState<Album[] | null>(null);
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [error, setError] = useState(!isFirebaseConfigured);
@@ -55,65 +53,27 @@ export default function AlbumsPage() {
 
   return (
     <main className="min-h-screen bg-white pb-20 text-[#1d1d1f]">
-      <nav className="sticky top-0 z-20 border-b border-black/10 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-13 max-w-5xl items-center justify-between px-6 py-3">
-          <AtlasLogo priority className="h-auto w-[92px]" />
-          <div className="flex items-center gap-3">
-            {profile ? (
-              <>
-                <Link
-                  href={`/u/${profile.username}`}
-                  className="text-[13px] text-[#0071e3]"
-                >
-                  @{profile.username}
-                </Link>
-                <button
-                  onClick={() => signOut()}
-                  className="text-[13px] text-neutral-500"
-                >
-                  Sign Out
-                </button>
-              </>
-            ) : user ? (
-              <Link href="/setup" className="text-[13px] text-[#0071e3]">
-                Finish setup
-              </Link>
-            ) : (
-              <>
-                <Link href="/signin" className="text-[13px] text-[#0071e3]">
-                  Sign In
-                </Link>
-                <Link
-                  href="/signup"
-                  className="rounded-full bg-[#0071e3] px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#0077ed]"
-                >
-                  Sign Up
-                </Link>
-              </>
-            )}
-            <button
-              onClick={() => {
-                if (!user) {
-                  router.push("/signin");
-                  return;
-                }
-                if (needsUsername) {
-                  router.push("/setup");
-                  return;
-                }
-                setShowNewAlbum(true);
-              }}
-              aria-label="New Album"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-xl leading-none text-[#0071e3] transition hover:bg-neutral-200"
-            >
-              +
-            </button>
-          </div>
-        </div>
-      </nav>
-
       <div className="mx-auto max-w-5xl px-6">
-        <h1 className="mt-8 text-[34px] font-bold tracking-tight">Albums</h1>
+        <div className="mt-8 flex items-center justify-between gap-3">
+          <h1 className="text-[34px] font-bold tracking-tight">Albums</h1>
+          <button
+            onClick={() => {
+              if (!user) {
+                router.push("/signin");
+                return;
+              }
+              if (needsUsername) {
+                router.push("/setup");
+                return;
+              }
+              setShowNewAlbum(true);
+            }}
+            aria-label="New Album"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-xl leading-none text-[#0071e3] transition hover:bg-neutral-200"
+          >
+            +
+          </button>
+        </div>
 
         {error && (
           <p className="mt-6 text-sm text-amber-600">

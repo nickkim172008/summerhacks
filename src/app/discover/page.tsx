@@ -46,17 +46,14 @@ export default function DiscoverPage() {
     };
   }, [term]);
 
-  const showing = results ?? recent;
+  const pool = results ?? recent;
+  const showing = pool
+    ? pool.filter((profile) => profile.id !== user?.uid)
+    : null;
   const isSearch = Boolean(term.trim());
 
   return (
     <main className="min-h-screen bg-white pb-24 text-[#1d1d1f]">
-      <nav className="sticky top-0 z-20 border-b border-black/10 bg-white/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-13 max-w-5xl items-center px-6 py-3">
-          <span className="text-sm font-semibold tracking-tight">Discover</span>
-        </div>
-      </nav>
-
       <div className="mx-auto max-w-2xl px-6">
         <h1 className="mt-8 text-[34px] font-bold tracking-tight">People</h1>
 
@@ -90,11 +87,7 @@ export default function DiscoverPage() {
         ) : (
           <ul className="mt-3 divide-y divide-black/5">
             {showing.map((profile) => (
-              <PersonRow
-                key={profile.id}
-                profile={profile}
-                isYou={profile.id === user?.uid}
-              />
+              <PersonRow key={profile.id} profile={profile} />
             ))}
           </ul>
         )}
@@ -104,13 +97,7 @@ export default function DiscoverPage() {
   );
 }
 
-function PersonRow({
-  profile,
-  isYou,
-}: {
-  profile: Profile;
-  isYou: boolean;
-}) {
+function PersonRow({ profile }: { profile: Profile }) {
   return (
     <li>
       <Link
@@ -132,11 +119,6 @@ function PersonRow({
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium">
             {profile.displayName}
-            {isYou && (
-              <span className="ml-2 text-[13px] font-normal text-neutral-400">
-                You
-              </span>
-            )}
           </p>
           <p className="truncate text-[13px] text-neutral-500">
             @{profile.username}
