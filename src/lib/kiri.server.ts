@@ -57,6 +57,30 @@ class KiriError extends Error {
   }
 }
 
+/**
+ * KIRI's error bodies are not reliably valid JSON: the out-of-credit reply ends
+ * its message with a raw newline *inside* the string literal, which JSON.parse
+ * refuses outright. Escaping the control characters recovers the envelope, and
+ * is only ever tried on a body that already failed to parse as it stands.
+ *
+ * A body that is not JSON at all comes back null rather than throwing, because
+ * a parse error thrown from here is not a KiriError — it would escape the
+ * fall-through in submitVideo and end the batch on a key that is merely spent.
+ */
+function parseEnvelope<T>(text: string): KiriEnvelope<T> | null {
+  try {
+    return JSON.parse(text) as KiriEnvelope<T>;
+  } catch {
+    // Not JSON as it stands. Repairing is only worth attempting after this
+    // fails: escaping would corrupt the whitespace of a body that parses.
+  }
+  try {
+    return JSON.parse(escapeControlsInStrings(text)) as KiriEnvelope<T>;
+  } catch {
+    return null; // Not JSON at all — an HTML error page, or nothing.
+  }
+}
+
 async function kiriFetch<T>(
   path: string,
   key: string,
@@ -66,38 +90,16 @@ async function kiriFetch<T>(
     ...init,
     headers: { Authorization: `Bearer ${key}`, ...init?.headers },
   });
-  const body = readEnvelope<T>(await res.text(), res.status);
-  if (!res.ok || !body.ok) {
-    const message = body?.msg || `KIRI request failed (${res.status})`;
+  const text = await res.text();
+  const body = parseEnvelope<T>(text);
+  if (!res.ok || !body?.ok) {
+    // The raw body is the fallback message: an unparseable one still says why,
+    // and it is the only account of the failure that reaches the capture row.
+    const message =
+      body?.msg?.trim() || text.trim() || `KIRI request failed (${res.status})`;
     throw new KiriError(message, spent(res.status, message));
   }
   return body.data;
-}
-
-/**
- * KIRI puts raw newlines inside the strings of its JSON, which is not legal and
- * which res.json() rejects — so a refused upload came back as "Bad control
- * character in string literal" and the reason it was refused never reached
- * anyone. Worse, the message is what decides whether a key is spent, so an
- * unparseable reply also cost the fall-through to the next key.
- *
- * The offending characters are escaped and it is read again. Text that still
- * will not parse is reported as itself, since at that point KIRI's own words
- * are more use than a parser's.
- */
-function readEnvelope<T>(text: string, status: number): KiriEnvelope<T> {
-  try {
-    return JSON.parse(text) as KiriEnvelope<T>;
-  } catch {
-    try {
-      return JSON.parse(escapeControlsInStrings(text)) as KiriEnvelope<T>;
-    } catch {
-      throw new KiriError(
-        `KIRI answered with something unreadable (${status}): ${text.slice(0, 200)}`,
-        false,
-      );
-    }
-  }
 }
 
 /**
