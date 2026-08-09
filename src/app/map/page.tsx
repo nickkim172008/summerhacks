@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import AppTabs from "@/components/AppTabs";
 import { useAuthProfile } from "@/lib/auth";
 
 const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
@@ -35,8 +34,7 @@ type Scope =
 
 export default function MapPage() {
   const router = useRouter();
-  const { user, profile, loading: authLoading, needsUsername } =
-    useAuthProfile();
+  const { user, loading: authLoading, needsUsername } = useAuthProfile();
   const [allPlaces, setAllPlaces] = useState<Place[] | null>(null);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [scope, setScope] = useState<Scope>({ kind: "public" });
@@ -107,43 +105,25 @@ export default function MapPage() {
         : (albums.find((a) => a.id === scope.albumId)?.name ?? "Album");
 
   return (
-    <main className="flex h-screen flex-col bg-white text-[#1d1d1f]">
-      <nav className="z-20 flex shrink-0 items-center justify-between border-b border-black/10 bg-white/90 px-4 py-3 backdrop-blur-xl sm:px-6">
-        <div>
-          <p className="text-sm font-semibold tracking-tight">Map</p>
-          <p className="text-xs text-neutral-500">
-            {scopeLabel}
-            {` · ${filtered.length} spots`}
-            {liveLoading && " · locating…"}
-            {liveLocation && !liveLoading && " · live location on"}
-            {liveError && " · location off"}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {profile && (
-            <Link
-              href={`/u/${profile.username}`}
-              className="hidden text-[13px] text-[#0071e3] sm:inline"
-            >
-              @{profile.username}
-            </Link>
-          )}
-          <button
-            onClick={() => setSidebarOpen((v) => !v)}
-            className="rounded-full bg-neutral-100 px-3 py-1.5 text-[13px] font-medium text-[#0071e3] transition hover:bg-neutral-200"
-          >
-            {sidebarOpen ? "Hide filters" : "Filters"}
-          </button>
-        </div>
-      </nav>
+    <main className="flex min-h-0 flex-1 flex-col bg-white text-[#1d1d1f]">
+      <div className="relative flex min-h-[calc(100dvh-8.5rem)] flex-1">
+        <button
+          onClick={() => setSidebarOpen((v) => !v)}
+          className="absolute right-4 top-3 z-20 rounded-full bg-white/95 px-3 py-1.5 text-[13px] font-medium text-[#0071e3] shadow ring-1 ring-black/10 transition hover:bg-white"
+        >
+          {sidebarOpen ? "Hide filters" : "Filters"}
+        </button>
 
-      <div className="relative flex min-h-0 flex-1">
         {sidebarOpen && (
           <aside className="absolute inset-y-0 left-0 z-10 flex w-[min(100%,18rem)] flex-col border-r border-black/10 bg-white/95 shadow-xl backdrop-blur-xl sm:static sm:shadow-none">
             <div className="border-b border-black/5 px-4 py-3">
               <p className="text-[13px] font-semibold">Heatmap scope</p>
               <p className="mt-0.5 text-[12px] text-neutral-500">
-                Live GPS · Toronto demo pins until real captures arrive.
+                {scopeLabel}
+                {` · ${filtered.length} spots`}
+                {liveLoading && " · locating…"}
+                {liveLocation && !liveLoading && " · live location on"}
+                {liveError && " · location off"}
               </p>
             </div>
             <div className="flex-1 overflow-y-auto px-2 py-2">
@@ -219,7 +199,6 @@ export default function MapPage() {
         </section>
       </div>
 
-      <AppTabs active="map" />
     </main>
   );
 }
