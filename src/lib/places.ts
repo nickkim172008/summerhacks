@@ -13,7 +13,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { uploadAudio, uploadSplat } from "./splatStore";
+import { uploadAudio, uploadSplat, uploadThumbnail } from "./splatStore";
 import type { Place, Vec3 } from "./types";
 
 function sortByCreatedDesc(places: Place[]) {
@@ -119,6 +119,8 @@ export async function createPlace(
     /** The walkthrough's own audio, lifted off it at capture time. */
     audioFile?: (Blob & { name?: string }) | null;
     audioSeconds?: number;
+    /** A frame off the walkthrough, taken when its video was picked. */
+    thumbnail?: Blob | null;
   },
 ) {
   const placeRef = doc(collection(db, "places"));
@@ -127,13 +129,24 @@ export async function createPlace(
   const audioUrl = options?.audioFile
     ? await uploadAudio(placeRef.id, options.audioFile)
     : undefined;
+  const thumbnailUrl = options?.thumbnail
+    ? await uploadThumbnail(placeRef.id, options.thumbnail).catch((error) => {
+        // A still is decoration, and this is the tail end of a save that has
+        // already put the whole capture in Storage — losing that over a 60 KB
+        // JPEG would be the wrong trade. Said out loud rather than swallowed:
+        // from the grid, a rule that was never deployed looks exactly like a
+        // video no frame could be taken from.
+        console.warn(error);
+        return "";
+      })
+    : "";
 
   await setDoc(placeRef, {
     name,
     uploaderId,
     createdAt: serverTimestamp(),
     splatUrl,
-    thumbnailUrl: "",
+    thumbnailUrl,
     // Firestore rejects undefined outright, so absent details are left off the
     // document rather than written as blanks.
     ...(audioUrl ? { audioUrl } : {}),

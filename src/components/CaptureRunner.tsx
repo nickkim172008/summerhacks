@@ -28,6 +28,7 @@ import {
   AUDIO_LIMIT,
   createLimiter,
   DOWNLOAD_LIMIT,
+  POSTER_LIMIT,
   SAVE_LIMIT,
   UPLOAD_LIMIT,
 } from "@/lib/limiter";
@@ -41,6 +42,8 @@ import {
   downloadTargets,
   pickedItem,
   pollTargets,
+  posterCacheTargets,
+  posterTargets,
   reduceQueue,
   resumedItem,
   saveTargets,
@@ -52,13 +55,17 @@ import {
 } from "@/lib/captureRunner";
 import {
   dropCachedAudio,
+  dropCachedPoster,
   dropCachedSplat,
   readCachedAudio,
+  readCachedPoster,
   readCachedSplat,
   writeCachedAudio,
+  writeCachedPoster,
   writeCachedSplat,
 } from "@/lib/splatCache";
 import { extractAudio } from "@/lib/audioTrack";
+import { grabPoster } from "@/lib/videoFrame";
 import { readVideoCapture, type VideoCapture } from "@/lib/videoMeta";
 import { createPlace } from "@/lib/places";
 import { addPlacesToAlbum } from "@/lib/albums";
@@ -167,6 +174,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
   const downloadLimit = useMemo(() => createLimiter(DOWNLOAD_LIMIT), []);
   const saveLimit = useMemo(() => createLimiter(SAVE_LIMIT), []);
   const audioLimit = useMemo(() => createLimiter(AUDIO_LIMIT), []);
+  const posterLimit = useMemo(() => createLimiter(POSTER_LIMIT), []);
 
   useEffect(() => {
     // The poll loop is mounted once and never restarted — resetting its timer on
@@ -349,6 +357,12 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           const wav = item.serialize
             ? await readCachedAudio(item.serialize)
             : null;
+          // The row's own frame first: it is still in hand unless this session
+          // began after a reload, and a cache the browser reclaimed under us
+          // would otherwise lose a still we are holding.
+          const poster =
+            item.poster ??
+            (item.serialize ? await readCachedPoster(item.serialize) : null);
           // Where the video says it was filmed is the true answer. The device's
           // own position only stands in for a walkthrough that carried no GPS —
           // which is what puts the place on the Map tab either way.
@@ -364,6 +378,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
               capturedAt: item.capturedAt ?? undefined,
               audioFile: wav && wavFile(wav, splat.name),
               audioSeconds: item.audioSeconds ?? undefined,
+              thumbnail: poster,
             },
           );
           const album = item.albumId ?? albumId;
@@ -373,6 +388,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           if (item.serialize) {
             await dropCachedSplat(item.serialize);
             await dropCachedAudio(item.serialize);
+            await dropCachedPoster(item.serialize);
             removeJob(item.serialize);
           }
           // No navigation: leaving this page would unmount every other capture
@@ -420,6 +436,36 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
       const audio = item.audio;
       if (!serialize || !audio) continue;
       void writeCachedAudio(serialize, audio.file);
+    }
+  }, [queue.items]);
+
+  // The frame comes off the video on the same terms as the sound: beside the
+  // upload rather than ahead of it, because this is the last moment there is a
+  // video to take one from.
+  useEffect(() => {
+    const claimed = claimedRef.current;
+    for (const item of posterTargets(queue.items)) {
+      if (claimed.has(`poster:${item.id}`)) continue;
+      claimed.add(`poster:${item.id}`);
+      const file = item.file;
+      if (!file) continue;
+      void posterLimit(() => grabPoster(file)).then((poster) => {
+        if (!mountedRef.current) return;
+        dispatch({ type: "poster-grabbed", id: item.id, poster });
+      });
+    }
+  }, [queue.items, posterLimit]);
+
+  useEffect(() => {
+    const claimed = claimedRef.current;
+    for (const item of posterCacheTargets(queue.items)) {
+      const key = `poster-cache:${item.serialize}`;
+      if (claimed.has(key)) continue;
+      claimed.add(key);
+      const serialize = item.serialize;
+      const poster = item.poster;
+      if (!serialize || !poster) continue;
+      void writeCachedPoster(serialize, poster);
     }
   }, [queue.items]);
 

@@ -134,6 +134,12 @@ export interface CaptureItem {
    * reload — which holds no File and no samples — can still say what it carries.
    */
   audioSeconds: number | null;
+  /**
+   * A frame off the walkthrough, which becomes the Place's thumbnail.
+   * `undefined` until the grab answers, null when the video was one this
+   * browser could not decode.
+   */
+  poster: Blob | null | undefined;
 }
 
 export interface CaptureQueueState {
@@ -166,6 +172,7 @@ export type CaptureEvent =
   | { type: "when-edited"; id: string; whenLocal: string; capturedAt: string | null }
   | { type: "location-named"; id: string; locationName: string }
   | { type: "audio-lifted"; id: string; audio: ExtractedAudio | null }
+  | { type: "poster-grabbed"; id: string; poster: Blob | null }
   | { type: "cache-checked"; id: string; splat: SplatHandle | null }
   | { type: "upload-progress"; id: string; fraction: number }
   | {
@@ -216,6 +223,7 @@ function blankItem(id: string, name: string): CaptureItem {
     locationName: "",
     audio: undefined,
     audioSeconds: null,
+    poster: undefined,
   };
 }
 
@@ -247,6 +255,9 @@ export function resumedItem(id: string, job: CaptureJob): CaptureItem {
     // undefined so nothing here reads as a lift still to come.
     audio: null,
     audioSeconds: job.audioSeconds ?? null,
+    // As with the track: the grab ran when the video was picked, and what it
+    // found is in Cache Storage under the same task id.
+    poster: null,
     // whenLocal and whenFrom stay blank: they exist for the editor, and a row
     // resumed from storage has already spent its answers on the job.
   };
@@ -392,6 +403,13 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
         audio: event.audio,
         audioSeconds: event.audio ? event.audio.seconds : null,
       };
+    }
+
+    case "poster-grabbed": {
+      // Guarded on the answer rather than the phase, as the lift is: the grab
+      // and the upload race, and the frame is the frame either way.
+      if (item.poster !== undefined) return item;
+      return { ...item, poster: event.poster };
     }
 
     case "cache-checked": {
@@ -563,6 +581,28 @@ export function audioCacheTargets(items: CaptureItem[]) {
   return items.filter(
     (item) =>
       item.serialize !== null && item.startedAt !== null && item.audio != null,
+  );
+}
+
+/**
+ * Videos no frame has been taken off yet. Blocked rows are left out for the
+ * same reason the lift leaves them out: they will never be uploaded, so
+ * decoding one is work spent on a capture that is not going to happen.
+ */
+export function posterTargets(items: CaptureItem[]) {
+  return items.filter(
+    (item) =>
+      item.poster === undefined &&
+      item.file !== null &&
+      (item.phase === "ready-to-upload" || item.phase === "uploading"),
+  );
+}
+
+/** Rows holding a frame that now has a task id to file it under. */
+export function posterCacheTargets(items: CaptureItem[]) {
+  return items.filter(
+    (item) =>
+      item.serialize !== null && item.startedAt !== null && item.poster != null,
   );
 }
 
