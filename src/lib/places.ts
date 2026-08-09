@@ -13,7 +13,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { uploadAudio, uploadSplat } from "./splatStore";
+import { uploadAudio, uploadSplat, uploadThumbnail } from "./splatStore";
 import type { Place, Vec3 } from "./types";
 
 function sortByCreatedDesc(places: Place[]) {
@@ -60,6 +60,48 @@ export function subscribeToPlacesByUploader(
   );
 }
 
+/** Firestore rejects an `in` filter with more than 30 values. */
+const IN_CHUNK = 30;
+
+/**
+ * Places uploaded by any of `uploaderIds`, newest first.
+ *
+ * Split across several listeners because of the `in` cap above, so results
+ * arrive per chunk and are stitched back together here. Passing no ids yields
+ * an empty list without opening a listener — an `in` on [] is an error.
+ */
+export function subscribeToPlacesByUploaders(
+  uploaderIds: string[],
+  onChange: (places: Place[]) => void,
+  onError?: (error: Error) => void,
+) {
+  if (uploaderIds.length === 0) {
+    onChange([]);
+    return () => {};
+  }
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < uploaderIds.length; i += IN_CHUNK) {
+    chunks.push(uploaderIds.slice(i, i + IN_CHUNK));
+  }
+
+  const byChunk: Place[][] = chunks.map(() => []);
+  const unsubs = chunks.map((chunk, index) =>
+    onSnapshot(
+      query(collection(db, "places"), where("uploaderId", "in", chunk)),
+      (snap) => {
+        byChunk[index] = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Place,
+        );
+        onChange(sortByCreatedDesc(byChunk.flat()));
+      },
+      onError,
+    ),
+  );
+
+  return () => unsubs.forEach((off) => off());
+}
+
 export async function getPlace(placeId: string): Promise<Place | null> {
   const snap = await getDoc(doc(db, "places", placeId));
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as Place) : null;
@@ -77,6 +119,8 @@ export async function createPlace(
     /** The walkthrough's own audio, lifted off it at capture time. */
     audioFile?: (Blob & { name?: string }) | null;
     audioSeconds?: number;
+    /** A frame off the walkthrough, taken when its video was picked. */
+    thumbnail?: Blob | null;
   },
 ) {
   const placeRef = doc(collection(db, "places"));
@@ -85,13 +129,24 @@ export async function createPlace(
   const audioUrl = options?.audioFile
     ? await uploadAudio(placeRef.id, options.audioFile)
     : undefined;
+  const thumbnailUrl = options?.thumbnail
+    ? await uploadThumbnail(placeRef.id, options.thumbnail).catch((error) => {
+        // A still is decoration, and this is the tail end of a save that has
+        // already put the whole capture in Storage — losing that over a 60 KB
+        // JPEG would be the wrong trade. Said out loud rather than swallowed:
+        // from the grid, a rule that was never deployed looks exactly like a
+        // video no frame could be taken from.
+        console.warn(error);
+        return "";
+      })
+    : "";
 
   await setDoc(placeRef, {
     name,
     uploaderId,
     createdAt: serverTimestamp(),
     splatUrl,
-    thumbnailUrl: "",
+    thumbnailUrl,
     // Firestore rejects undefined outright, so absent details are left off the
     // document rather than written as blanks.
     ...(audioUrl ? { audioUrl } : {}),

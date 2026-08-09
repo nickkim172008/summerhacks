@@ -58,6 +58,23 @@ export async function uploadAudio(
   return getDownloadURL(audioRef);
 }
 
+/**
+ * The still taken off the walkthrough. One per place, like the audio, so the
+ * name is fixed rather than taken from the blob.
+ */
+export async function uploadThumbnail(
+  placeId: string,
+  image: Blob,
+): Promise<string> {
+  const thumbRef = ref(storage, `thumbnails/${placeId}/cover.jpg`);
+  try {
+    await uploadBytes(thumbRef, image, { contentType: "image/jpeg" });
+  } catch (error) {
+    throw new Error(explainStorageError(error, "Thumbnail"), { cause: error });
+  }
+  return getDownloadURL(thumbRef);
+}
+
 /** Profile avatar — always stored as a square JPEG under avatars/{uid}. */
 export async function uploadProfilePhoto(
   uid: string,

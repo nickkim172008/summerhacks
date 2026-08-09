@@ -49,6 +49,17 @@ const MAX_CACHED_SPLATS = 6;
 const TYPICAL_AUDIO_BYTES = 12 * MiB;
 const MAX_CACHED_AUDIO = 8;
 
+/**
+ * The poster frame is on the same schedule as the audio — grabbed off the video
+ * at pick time, read when the splat lands — but it is a downscaled JPEG rather
+ * than a sound file, so tens of kilobytes rather than tens of megabytes. Held
+ * more generously for that reason: it is the cheapest thing in here to keep and
+ * the only one that cannot be fetched again, since the video it came from is
+ * gone by then.
+ */
+const TYPICAL_POSTER_BYTES = 0.25 * MiB;
+const MAX_CACHED_POSTERS = 24;
+
 interface CacheRecord {
   bytes: number;
   /**
@@ -102,6 +113,15 @@ const AUDIO: Store = {
   indexKey: "/cached-audio-index",
   budgetBytes: MAX_CACHED_AUDIO * TYPICAL_AUDIO_BYTES,
   maxEntries: MAX_CACHED_AUDIO,
+  mutations: Promise.resolve(),
+};
+
+const POSTERS: Store = {
+  cacheName: "atlas-capture-posters-v1",
+  keyPrefix: "/cached-poster/",
+  indexKey: "/cached-poster-index",
+  budgetBytes: MAX_CACHED_POSTERS * TYPICAL_POSTER_BYTES,
+  maxEntries: MAX_CACHED_POSTERS,
   mutations: Promise.resolve(),
 };
 
@@ -351,4 +371,16 @@ export function writeCachedAudio(serialize: string, blob: Blob) {
 
 export function dropCachedAudio(serialize: string) {
   return drop(AUDIO, serialize);
+}
+
+export function readCachedPoster(serialize: string) {
+  return read(POSTERS, serialize);
+}
+
+export function writeCachedPoster(serialize: string, blob: Blob) {
+  return write(POSTERS, serialize, blob);
+}
+
+export function dropCachedPoster(serialize: string) {
+  return drop(POSTERS, serialize);
 }

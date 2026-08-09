@@ -54,3 +54,11 @@ export interface Profile {
   bio?: string;
   createdAt: Timestamp;
 }
+
+/** One follow edge. Doc id is `{followerId}_{followingId}`. */
+export interface Follow {
+  id: string;
+  followerId: string;
+  followingId: string;
+  createdAt: Timestamp | null;
+}
