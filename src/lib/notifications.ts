@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { subscribeToFollowers, subscribeToFollowingIds } from "./follows";
 import { subscribeToPlacesByUploaders } from "./places";
-import { getProfile } from "./profiles";
-import type { Follow, Place, Profile } from "./types";
+import type { Follow, Place } from "./types";
 
 /**
  * Notifications are derived from the follows and places collections rather than
@@ -127,34 +126,4 @@ export function useNotifications(uid: string | undefined) {
   return { items, unread, seenAt };
 }
 
-/** Resolves actor uids to profiles, one lookup per uid, cached across renders. */
-export function useActorProfiles(actorIds: string[]) {
-  const [profiles, setProfiles] = useState<Record<string, Profile | null>>({});
-  const key = useMemo(
-    () => [...new Set(actorIds)].sort().join(","),
-    [actorIds],
-  );
-
-  useEffect(() => {
-    const ids = key ? key.split(",") : [];
-    let active = true;
-    const missing = ids.filter((id) => !(id in profiles));
-    if (missing.length === 0) return;
-
-    Promise.all(
-      missing.map(async (id) => [id, await getProfile(id).catch(() => null)] as const),
-    ).then((pairs) => {
-      if (!active) return;
-      setProfiles((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
-    });
-
-    return () => {
-      active = false;
-    };
-    // profiles is intentionally omitted: it is written by this effect, and
-    // depending on it would re-run the lookup on every resolution.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  return profiles;
-}
+export { useProfilesByIds as useActorProfiles } from "./profileCache";

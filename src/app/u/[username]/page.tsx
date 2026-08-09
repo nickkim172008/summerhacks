@@ -13,6 +13,9 @@ import {
   updatePhotoURL,
 } from "@/lib/profiles";
 import { uploadProfilePhoto } from "@/lib/splatStore";
+import FollowListDialog, {
+  type FollowListKind,
+} from "@/components/FollowListDialog";
 import {
   follow,
   subscribeToFollowerCount,
@@ -37,6 +40,7 @@ export default function ProfilePage({
   const [placesError, setPlacesError] = useState<string | null>(null);
   const [followers, setFollowers] = useState<number | null>(null);
   const [following, setFollowing] = useState<number | null>(null);
+  const [followList, setFollowList] = useState<FollowListKind | null>(null);
 
   useEffect(() => {
     return subscribeToProfileByUsername(username, setProfile);
@@ -150,8 +154,16 @@ export default function ProfilePage({
 
             <dl className="mt-6 flex gap-8">
               <Stat label="Environments" value={places?.length ?? null} />
-              <Stat label="Followers" value={followers} />
-              <Stat label="Following" value={following} />
+              <Stat
+                label="Followers"
+                value={followers}
+                onClick={() => setFollowList("followers")}
+              />
+              <Stat
+                label="Following"
+                value={following}
+                onClick={() => setFollowList("following")}
+              />
             </dl>
 
             <section className="mt-10">
@@ -226,6 +238,14 @@ export default function ProfilePage({
           </>
         )}
       </div>
+
+      {followList && profile && (
+        <FollowListDialog
+          uid={profile.id}
+          kind={followList}
+          onClose={() => setFollowList(null)}
+        />
+      )}
     </main>
   );
 }
@@ -308,14 +328,36 @@ function ProfileAvatar({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number | null }) {
-  return (
-    <div>
+function Stat({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value: number | null;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
       <dd className="text-[22px] font-bold tracking-tight tabular-nums">
         {value ?? "—"}
       </dd>
       <dt className="text-[13px] text-neutral-500">{label}</dt>
-    </div>
+    </>
+  );
+
+  // Nothing to open when the count is zero, so it stays plain text rather than
+  // a button that shows an empty sheet.
+  if (!onClick || !value) return <div>{body}</div>;
+
+  return (
+    <button
+      onClick={onClick}
+      className="text-left transition hover:opacity-60"
+      aria-label={`View ${label.toLowerCase()}`}
+    >
+      {body}
+    </button>
   );
 }
 

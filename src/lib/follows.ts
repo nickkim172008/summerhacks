@@ -95,6 +95,25 @@ export function subscribeToFollowers(
   );
 }
 
+/** The edges the other way — who `uid` follows, newest first. */
+export function subscribeToFollowing(
+  uid: string,
+  onChange: (follows: Follow[]) => void,
+  onError?: (error: Error) => void,
+): Unsubscribe {
+  const q = query(collection(db, "follows"), where("followerId", "==", uid));
+  return onSnapshot(
+    q,
+    (snap) =>
+      onChange(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as Follow)
+          .sort((a, b) => millis(b.createdAt) - millis(a.createdAt)),
+      ),
+    onError,
+  );
+}
+
 /** The uids `uid` follows, for fetching what they have posted. */
 export function subscribeToFollowingIds(
   uid: string,
