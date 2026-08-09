@@ -332,16 +332,22 @@ export async function updatePlaceDetails(placeId: string, edits: PlaceEdits) {
   });
 }
 
-/** Location pin only — what shared-journey collaborators are allowed to change. */
-export async function updatePlaceLocation(
+/**
+ * Name and location — what shared-journey collaborators are allowed to change.
+ * Not the thumbnail, which is the uploader's picture of their own capture, and
+ * not the splat, the trash flag, or which journeys hold it.
+ */
+export async function updatePlaceAsCollaborator(
   placeId: string,
   edits: {
+    name: string;
     locationName: string;
     location: { lat: number; lng: number } | null;
   },
 ) {
   const locationName = edits.locationName.trim();
   await updateDoc(doc(db, "places", placeId), {
+    name: edits.name.trim(),
     locationName: locationName || deleteField(),
     location: edits.location ?? deleteField(),
   });

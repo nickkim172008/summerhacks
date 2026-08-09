@@ -57,7 +57,7 @@ export default function AlbumPage({
   const [showPicker, setShowPicker] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState<Place | null>(null);
-  const [editingLocationOnly, setEditingLocationOnly] = useState(false);
+  const [editingAsCollaborator, setEditingAsCollaborator] = useState(false);
   const [trashing, setTrashing] = useState<Place | null>(null);
   // Recents belongs to no album, so filing a capture from there needs the
   // whole list to choose from.
@@ -407,12 +407,12 @@ export default function AlbumPage({
                   onEdit={
                     place.uploaderId === user?.uid
                       ? () => {
-                          setEditingLocationOnly(false);
+                          setEditingAsCollaborator(false);
                           setEditing(place);
                         }
                       : canEdit
                         ? () => {
-                            setEditingLocationOnly(true);
+                            setEditingAsCollaborator(true);
                             setEditing(place);
                           }
                         : undefined
@@ -496,10 +496,10 @@ export default function AlbumPage({
       {editing && (
         <PlaceDetailsEditor
           place={editing}
-          locationOnly={editingLocationOnly}
+          collaborator={editingAsCollaborator}
           onClose={() => {
             setEditing(null);
-            setEditingLocationOnly(false);
+            setEditingAsCollaborator(false);
           }}
           onSaved={() => {}}
         />

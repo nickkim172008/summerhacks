@@ -144,8 +144,8 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
 
   const isUploader = user?.uid === place.uploaderId;
   const isAlbumEditor = Boolean(album && canEditAlbum(album, user?.uid));
-  const canEditLocation = isUploader || isAlbumEditor;
-  const locationOnly = !isUploader && isAlbumEditor;
+  const canEditPlace = isUploader || isAlbumEditor;
+  const editingAsCollaborator = !isUploader && isAlbumEditor;
 
   return (
     <main className="h-screen w-screen">
@@ -154,12 +154,12 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
         uploader={uploader}
         onExit={() => router.push(exitHref)}
         backLabel={exitLabel}
-        onEdit={canEditLocation ? () => setEditing(true) : undefined}
+        onEdit={canEditPlace ? () => setEditing(true) : undefined}
       />
       {editing && (
         <PlaceDetailsEditor
           place={place}
-          locationOnly={locationOnly}
+          collaborator={editingAsCollaborator}
           onClose={() => setEditing(false)}
           onSaved={async () => setPlace(await getPlace(placeId))}
         />

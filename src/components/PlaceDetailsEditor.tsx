@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { geocodeName, reverseGeocode } from "@/lib/geocode";
 import { prepareImage, THUMBNAIL_EDGE } from "@/lib/imageFile";
-import { updatePlaceDetails, updatePlaceLocation } from "@/lib/places";
+import { updatePlaceAsCollaborator, updatePlaceDetails } from "@/lib/places";
 import { uploadThumbnail } from "@/lib/splatStore";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Place } from "@/lib/types";
@@ -16,19 +16,22 @@ import type { Place } from "@/lib/types";
  * Coordinates are kept as text while editing so a half-typed "-79." is not
  * rounded off or rejected mid-keystroke; they are parsed on save.
  *
- * `locationOnly` is for shared-journey collaborators: they may correct the pin,
- * not rename the capture or replace its thumbnail.
+ * `collaborator` is for someone editing a capture they did not take, from a
+ * journey they share: they may correct what it is called and where it sits, but
+ * not replace its thumbnail — that is the uploader's picture of their own
+ * capture. Firestore enforces the same split, so a client that ignored this
+ * would simply be refused.
  */
 export default function PlaceDetailsEditor({
   place,
   onClose,
   onSaved,
-  locationOnly = false,
+  collaborator = false,
 }: {
   place: Place;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
-  locationOnly?: boolean;
+  collaborator?: boolean;
 }) {
   const [name, setName] = useState(place.name);
   const [locationName, setLocationName] = useState(place.locationName ?? "");
@@ -108,7 +111,7 @@ export default function PlaceDetailsEditor({
   }
 
   async function save() {
-    if (!locationOnly && !name.trim()) {
+    if (!name.trim()) {
       setError("A capture needs a name.");
       return;
     }
@@ -124,8 +127,9 @@ export default function PlaceDetailsEditor({
       // Only now does anything leave the browser. A refused upload has to stop
       // the save rather than pass quietly, the way it does at capture time —
       // this one was asked for, so its failure is worth hearing about.
-      if (locationOnly) {
-        await updatePlaceLocation(place.id, {
+      if (collaborator) {
+        await updatePlaceAsCollaborator(place.id, {
+          name,
           locationName,
           location: coords,
         });
@@ -155,10 +159,10 @@ export default function PlaceDetailsEditor({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,22,26,0.35)] p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 text-[#14161A] shadow-[0_24px_60px_-30px_rgba(20,22,26,0.5)]">
         <h2 className="font-display text-[22px] leading-[28px] font-normal tracking-[-0.01em]">
-          {locationOnly ? "Edit location" : "Edit place"}
+          Edit place
         </h2>
 
-        {!locationOnly && (
+        {!collaborator && (
           <div className="mt-5 flex items-center gap-4">
             <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-[rgba(20,22,26,0.05)] ring-1 ring-[rgba(20,22,26,0.09)]">
               {preview ? (
@@ -211,20 +215,16 @@ export default function PlaceDetailsEditor({
           </div>
         )}
 
-        {!locationOnly && (
-          <label className="mt-5 block text-[13px] font-medium">
-            Name
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[15px] font-normal outline-none focus:border-[#0071E3]"
-            />
-          </label>
-        )}
+        <label className="mt-5 block text-[13px] font-medium">
+          Name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[15px] font-normal outline-none focus:border-[#0071E3]"
+          />
+        </label>
 
-        <label
-          className={`block text-[13px] font-medium ${locationOnly ? "mt-5" : "mt-4"}`}
-        >
+        <label className="mt-4 block text-[13px] font-medium">
           Location
           <input
             value={locationName}

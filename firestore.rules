@@ -125,14 +125,15 @@ service cloud.firestore {
              || (ids.size() > 4 && memberOfAlbumWithPlace(ids[4], id));
     }
 
-    // Collaborators may correct where a capture sits — not rename it, replace
-    // its splat, trash it, or rewrite which journeys it belongs to.
-    function collaboratorLocationEdit(id) {
+    // Collaborators may correct what a capture is called and where it sits —
+    // not replace its splat, trash it, or rewrite which journeys it belongs to.
+    // A shared journey is a thing several people are writing together, and a
+    // name someone else typed in a hurry is the most common thing to be wrong.
+    function collaboratorDetailEdit(id) {
       return signedIn()
              && !ownsPlace()
              && memberOfListedAlbumContainingPlace(id)
              && request.resource.data.uploaderId == resource.data.uploaderId
-             && request.resource.data.name == resource.data.name
              && request.resource.data.splatUrl == resource.data.splatUrl
              && request.resource.data.createdAt == resource.data.createdAt
              && request.resource.data.get('thumbnailUrl', '')
@@ -227,7 +228,7 @@ service cloud.firestore {
       allow update: if (ownsPlace()
                         && request.resource.data.uploaderId
                            == resource.data.uploaderId)
-                    || collaboratorLocationEdit(placeId)
+                    || collaboratorDetailEdit(placeId)
                     || linkingAlbumIds(placeId);
 
       match /audioPins/{pinId} {
