@@ -8,6 +8,7 @@ import { addPlacesToAlbum, subscribeToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
 import PlaceThumb from "@/components/PlaceThumb";
+import CaptureRunner from "@/components/CaptureRunner";
 import type { Album, Place } from "@/lib/types";
 
 /** "recents" is a virtual album containing every environment you own. */
@@ -184,6 +185,10 @@ export default function AlbumPage({
             )}
           </div>
         )}
+
+        {/* Anything this album has in flight, reconstructing in place. The
+            capture form starts work; this is where it is watched. */}
+        <CaptureRunner albumId={isRecents ? null : albumId} mode="album" />
 
         {!error && !loading && readyPlaces.length > 0 && (
           <ul className="mt-6 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5">
