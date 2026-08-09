@@ -18,6 +18,7 @@ import {
 } from "@/lib/kiri";
 import { fetchSplat, fetchStatus, uploadVideo } from "@/lib/captureJob";
 import {
+  listJobs,
   parseJobs,
   readJobsSnapshot,
   removeJob,
@@ -531,11 +532,21 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
       try {
         const report = await fetchStatus(target.serialize as string);
         if (stopped) return;
+        const message = KIRI_STATUS_LABEL[report.status];
+        // Written down before the row hears about it: a refusal is final, and a
+        // reload that found this job still looking unanswered would put it back
+        // in the poll loop to be told the same thing again.
+        if (report.failed && target.serialize) {
+          const job = listJobs().find(
+            (entry) => entry.serialize === target.serialize,
+          );
+          if (job) saveJob({ ...job, failed: message });
+        }
         dispatch({
           type: "status-polled",
           id: target.id,
           report,
-          message: KIRI_STATUS_LABEL[report.status],
+          message,
         });
       } catch (err) {
         dispatch({

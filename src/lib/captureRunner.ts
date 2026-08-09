@@ -250,6 +250,17 @@ export function pickedItem(
 export function resumedItem(id: string, job: CaptureJob): CaptureItem {
   return {
     ...blankItem(id, job.name),
+    // A job KIRI refused comes back refused. It never returns to the poll loop,
+    // so the row says so from the first frame rather than after an interval of
+    // pretending to work.
+    ...(job.failed
+      ? {
+          phase: "failed" as const,
+          failedFrom: "waiting" as const,
+          fatal: true,
+          error: job.failed,
+        }
+      : null),
     serialize: job.serialize,
     startedAt: job.startedAt,
     albumId: job.albumId ?? null,
