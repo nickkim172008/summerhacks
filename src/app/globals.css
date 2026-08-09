@@ -41,6 +41,18 @@
   --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
 }
 
+/* ── Motion ──────────────────────────────────────────────────────────────
+   One easing curve and three durations, so nothing in the app moves at a
+   speed nothing else moves at. The curve decelerates hard: things arrive
+   and settle rather than drifting in, which is what keeps a whole grid
+   animating at once from reading as an effect. */
+:root {
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-fast: 150ms;
+  --motion-base: 240ms;
+  --motion-slow: 420ms;
+}
+
 body {
   background: var(--canvas);
   color: var(--ink);
@@ -205,17 +217,195 @@ body {
   }
 }
 
+/* ── Skeletons ───────────────────────────────────────────────────────────
+   A loading screen that keeps the page's own geometry: same tile sizes, same
+   gaps, same two lines of caption under each cover. The point is that nothing
+   jumps when the data lands — the blocks are replaced by the thing they were
+   standing in for, in place. A centered "Loading…" cannot do that, because the
+   layout it is holding open is not the layout that arrives.
+
+   The sweep is one pass of light across the block rather than a pulse of the
+   whole thing. On a grid of twenty tiles a synchronised pulse reads as the
+   page flashing; a sweep reads as one surface catching the light. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(20, 22, 26, 0.06);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.5) 50%,
+    transparent 100%
+  );
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ── Arrival ─────────────────────────────────────────────────────────────
+   What content does when it first appears. Eight pixels and a fade: enough
+   that the eye registers something arrived, not so much that reading has to
+   wait for it. `both` holds the from-state before the delay elapses, which is
+   what lets a grid stagger without its later tiles flashing at full opacity
+   first.
+
+   Staggering is capped by the caller rather than here — see riseDelay() — so
+   a journey of two hundred places does not end with tiles arriving a full
+   minute after the first. */
+@keyframes atlas-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise {
+  animation: atlas-rise var(--motion-slow) var(--ease-settle) both;
+}
+
+/* Same arrival without the travel, for things that sit inside a box already
+   in place — a count under a title, a line of metadata resolving late. */
+@keyframes atlas-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: atlas-fade-in var(--motion-base) ease-out both;
+}
+
+/* ── Navigation ──────────────────────────────────────────────────────────
+   The active-tab bar slides between tabs rather than being redrawn under the
+   new one. It is a single element owned by the nav, positioned by transform
+   and width from the measured tab — see AppTopBar. The first paint has no
+   previous tab to travel from, so the component withholds this class until it
+   has measured once, or every reload would open with the bar sliding in from
+   the left edge. */
+.nav-indicator {
+  transition:
+    transform var(--motion-base) var(--ease-settle),
+    width var(--motion-base) var(--ease-settle);
+}
+
+/* ── Media ───────────────────────────────────────────────────────────────
+   A thumbnail fades up as it decodes instead of snapping in, which matters
+   most in a grid where twenty of them land at slightly different moments. */
+.thumb-img {
+  opacity: 0;
+  transition: opacity var(--motion-base) ease-out;
+}
+
+.thumb-img[data-loaded="true"] {
+  opacity: 1;
+}
+
+/* The slow push into a cover on hover. Paired with overflow-hidden on the
+   tile, so the image grows inside its frame rather than the frame growing. */
+.thumb-zoom {
+  transition: transform 600ms var(--ease-settle);
+}
+
+.group:hover .thumb-zoom {
+  transform: scale(1.04);
+}
+
+/* ── Dialogs ─────────────────────────────────────────────────────────────
+   The scrim fades, the panel comes up from slightly under and slightly small.
+   Fast: a dialog that takes its time is a dialog in the way. */
+@keyframes atlas-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes atlas-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dialog-scrim {
+  animation: atlas-scrim-in var(--motion-fast) ease-out both;
+}
+
+.dialog-panel {
+  animation: atlas-panel-in var(--motion-base) var(--ease-settle) both;
+}
+
+/* ── Pressable ───────────────────────────────────────────────────────────
+   The one piece of feedback a button owes: it moves under the finger. */
+.press {
+  transition: transform var(--motion-fast) var(--ease-settle);
+}
+
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .atlas-pulse,
   .auth-glow,
   .auth-brand,
   .auth-rise,
   .auth-rise-delay,
-  .auth-cta {
+  .auth-cta,
+  .rise,
+  .fade-in,
+  .dialog-scrim,
+  .dialog-panel,
+  .skeleton::after {
     animation: none !important;
     transition: none !important;
   }
   .atlas-pulse {
     opacity: 1;
+  }
+  /* `both` left these holding the from-state of an animation that no longer
+     runs, which would blank the very content this is meant to protect. */
+  .rise,
+  .fade-in,
+  .dialog-scrim,
+  .dialog-panel {
+    opacity: 1;
+    transform: none;
+  }
+  .skeleton::after {
+    display: none;
+  }
+  .nav-indicator,
+  .thumb-img,
+  .thumb-zoom,
+  .press {
+    transition: none !important;
+  }
+  .group:hover .thumb-zoom {
+    transform: none;
   }
 }

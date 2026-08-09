@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import { canOptimizeImage } from "@/lib/imageHosts";
 import PlaceThumb from "@/components/PlaceThumb";
@@ -23,20 +26,7 @@ export default function AlbumCover({
   places: Place[];
   alt?: string;
 }) {
-  if (coverUrl) {
-    return (
-      <div className="relative h-full w-full">
-        <Image
-          src={coverUrl}
-          alt={alt}
-          fill
-          sizes="(min-width: 768px) 300px, 45vw"
-          unoptimized={!canOptimizeImage(coverUrl)}
-          className="object-cover"
-        />
-      </div>
-    );
-  }
+  if (coverUrl) return <ChosenCover coverUrl={coverUrl} alt={alt} />;
 
   const tiles = places.slice(0, MOSAIC_TILES);
   if (tiles.length === 0) return <EmptyCover />;
@@ -51,6 +41,34 @@ export default function AlbumCover({
           <PlaceThumb place={place} />
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Its own component because the fade needs state, and a hook cannot sit behind
+ * the `if (coverUrl)` that decides whether there is a chosen cover at all.
+ * Fades on decode like every other thumbnail — see PlaceThumb for why the
+ * `complete` check is there.
+ */
+function ChosenCover({ coverUrl, alt }: { coverUrl: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className="relative h-full w-full">
+      <Image
+        src={coverUrl}
+        alt={alt}
+        fill
+        sizes="(min-width: 768px) 300px, 45vw"
+        unoptimized={!canOptimizeImage(coverUrl)}
+        data-loaded={loaded}
+        onLoad={() => setLoaded(true)}
+        onError={() => setLoaded(true)}
+        ref={(node) => {
+          if (node?.complete) setLoaded(true);
+        }}
+        className="thumb-img object-cover"
+      />
     </div>
   );
 }

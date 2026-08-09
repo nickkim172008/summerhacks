@@ -6,6 +6,7 @@ import { useAuthProfile } from "@/lib/auth";
 import { subscribeToPublicAlbums } from "@/lib/albums";
 import { subscribeToPlacesByIds } from "@/lib/places";
 import PublicFeed, { type FeedEntry } from "@/components/PublicFeed";
+import { FeedCardSkeleton } from "@/components/Skeleton";
 import type { Album, Place } from "@/lib/types";
 
 /**
@@ -61,22 +62,8 @@ export default function FeedPage() {
   return (
     <main className="flex h-[calc(100dvh-64px)] flex-col bg-[#FAF9F7] text-[#14161A]">
       <div
-        className={`mx-auto w-full max-w-[880px] shrink-0 overflow-hidden px-8 transition-all duration-300 ease-out ${
-          immersed ? "max-h-0 opacity-0" : "max-h-40 pb-5 pt-8 opacity-100"
-        }`}
-        aria-hidden={immersed}
-      >
-        <h1 className="font-display text-[44px] leading-[44px] font-normal tracking-[-0.02em]">
-          Feed
-        </h1>
-        <p className="mt-2.5 text-[15px] text-[#4A4F57]">
-          Live places from public journeys — walk in, or add your own.
-        </p>
-      </div>
-
-      <div
         className={`mx-auto min-h-0 w-full max-w-[880px] flex-1 px-8 pb-6 ${
-          immersed ? "pt-4" : ""
+          immersed ? "pt-4" : "pt-8"
         }`}
       >
         {!user ? (
@@ -93,7 +80,15 @@ export default function FeedPage() {
             }
           />
         ) : places === null ? (
-          <FeedNotice title="Loading the feed…" body="" />
+          <>
+            <p className="sr-only" role="status">
+              Loading the feed…
+            </p>
+            {/* The card's own footprint, so the first real place slots into a
+                frame that is already the right size rather than expanding a
+                centred notice into one. */}
+            <FeedCardSkeleton />
+          </>
         ) : entries.length === 0 ? (
           <FeedNotice
             title="Nothing public yet"

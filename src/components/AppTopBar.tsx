@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AtlasLogo from "@/components/AtlasLogo";
@@ -9,6 +10,14 @@ import { shouldHideAppChrome } from "@/lib/appChrome";
 import { useNotifications } from "@/lib/notifications";
 
 type Tab = "library" | "feed" | "discover" | "map";
+
+/**
+ * The bar is measured before paint on the client, but useLayoutEffect has
+ * nothing to do during server rendering and says so loudly. Nothing is
+ * measured on the server anyway — the indicator only renders once it has a box.
+ */
+const useLayoutEffectSafe =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /**
  * The whole of Atlas's navigation, in one 64px bar — mount once from the root
@@ -34,16 +43,7 @@ export default function AppTopBar() {
           <AtlasLogo priority className="h-auto w-[78px]" />
         </Link>
 
-        <nav className="flex h-full items-center gap-1">
-          <NavLink href="/" label="Library" active={current === "library"} />
-          <NavLink href="/feed" label="Feed" active={current === "feed"} />
-          <NavLink
-            href="/discover"
-            label="Discover"
-            active={current === "discover"}
-          />
-          <NavLink href="/map" label="Map" active={current === "map"} />
-        </nav>
+        <NavTabs current={current} />
 
         <div className="flex-1" />
 
@@ -53,7 +53,7 @@ export default function AppTopBar() {
               wearing a field's clothes. */}
           <Link
             href="/capture?new=1"
-            className="flex h-9 items-center gap-[7px] rounded-full bg-[#14161A] px-[18px] text-[14px] font-medium text-white transition hover:bg-[#2A2E35]"
+            className="press flex h-9 items-center gap-[7px] rounded-full bg-[#14161A] px-[18px] text-[14px] font-medium text-white transition hover:bg-[#2A2E35]"
           >
             <svg
               viewBox="0 0 24 24"
@@ -116,34 +116,97 @@ export default function AppTopBar() {
   );
 }
 
+const TABS: { tab: Tab; href: string; label: string }[] = [
+  { tab: "library", href: "/", label: "Library" },
+  { tab: "feed", href: "/feed", label: "Feed" },
+  { tab: "discover", href: "/discover", label: "Discover" },
+  { tab: "map", href: "/map", label: "Map" },
+];
+
 /**
  * Where you are is the first job Atlas blue does: a 2px bar pinned to the
- * bottom edge of the bar itself, not to the label.
+ * bottom edge of the header.
+ *
+ * One bar owned by the nav, not one per tab. Rendering it inside the active
+ * link means it can only ever blink out under the old tab and blink in under
+ * the new one; a single element can travel between them, which is the thing
+ * that makes a tab bar feel connected rather than switched. Its position comes
+ * from measuring the active link, because the tabs are label-width and there
+ * is no arithmetic that predicts where "Discover" ends without asking.
  */
-function NavLink({
-  href,
-  label,
-  active,
-}: {
-  href: string;
-  label: string;
-  active: boolean;
-}) {
+function NavTabs({ current }: { current: Tab | null }) {
+  const navRef = useRef<HTMLElement>(null);
+  const [box, setBox] = useState<{ left: number; width: number } | null>(null);
+  // Withheld until after the first measured paint. Without it the bar animates
+  // in from x=0 on every cold load, which reads as the page mis-rendering.
+  const [travels, setTravels] = useState(false);
+
+  const measure = useCallback(() => {
+    const nav = navRef.current;
+    const active = current
+      ? nav?.querySelector<HTMLElement>(`[data-tab="${current}"]`)
+      : null;
+    if (!active) {
+      setBox(null);
+      return;
+    }
+    setBox({ left: active.offsetLeft, width: active.offsetWidth });
+  }, [current]);
+
+  // Layout effect, so the bar is already under the right tab on the frame the
+  // new route paints rather than one frame later.
+  useLayoutEffectSafe(measure, [measure]);
+
+  // Tabs are as wide as their labels, and the labels are set in a webfont that
+  // arrives after the first paint — so the widths this measured are not final
+  // until it lands. Observing the links themselves catches that, along with
+  // zoom and any future change to the set of tabs.
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    for (const link of nav.querySelectorAll("[data-tab]")) observer.observe(link);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  useEffect(() => {
+    if (!box || travels) return;
+    const frame = requestAnimationFrame(() => setTravels(true));
+    return () => cancelAnimationFrame(frame);
+  }, [box, travels]);
+
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={`relative flex h-16 items-center px-3.5 text-[15px] transition ${
-        active
-          ? "font-medium text-[#14161A]"
-          : "font-normal text-[#6B7178] hover:text-[#14161A]"
-      }`}
-    >
-      {label}
-      {active && (
-        <span className="absolute bottom-[-1px] left-[14px] right-[14px] h-[2px] rounded-[2px] bg-[#0071E3]" />
+    <nav className="relative flex h-full items-center gap-1" ref={navRef}>
+      {TABS.map(({ tab, href, label }) => (
+        <Link
+          key={tab}
+          href={href}
+          data-tab={tab}
+          aria-current={current === tab ? "page" : undefined}
+          className={`flex h-16 items-center px-3.5 text-[15px] transition-colors duration-200 ${
+            current === tab
+              ? "font-medium text-[#14161A]"
+              : "font-normal text-[#6B7178] hover:text-[#14161A]"
+          }`}
+        >
+          {label}
+        </Link>
+      ))}
+      {box && (
+        <span
+          aria-hidden
+          className={`absolute bottom-[-1px] left-0 h-[2px] rounded-[2px] bg-[#0071E3] ${
+            travels ? "nav-indicator" : ""
+          }`}
+          // Inset by the link's own 14px padding, so the bar is the width of
+          // the label rather than the width of the tap target.
+          style={{
+            transform: `translateX(${box.left + 14}px)`,
+            width: Math.max(0, box.width - 28),
+          }}
+        />
       )}
-    </Link>
+    </nav>
   );
 }
 

@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import { canOptimizeImage } from "@/lib/imageHosts";
 import type { Place } from "@/lib/types";
@@ -22,7 +25,24 @@ function gradientFor(id: string) {
   return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
 }
 
-export default function PlaceThumb({ place }: { place: Place }) {
+export default function PlaceThumb({
+  place,
+  zoomOnHover = false,
+}: {
+  place: Place;
+  /**
+   * Slow push-in while the pointer is over the tile. Opt-in, and only worth it
+   * where the tile is the whole target: on a card whose caption sits outside
+   * the frame, moving the image and not the words looks like a misprint. The
+   * nearest ancestor with `group` is what it listens to.
+   */
+  zoomOnHover?: boolean;
+}) {
+  // Firebase serves these from a CDN, so a revisited tile is decoded before
+  // React runs and `onLoad` may already have fired. Starting from the image's
+  // own `complete` flag is what keeps those from staying invisible.
+  const [loaded, setLoaded] = useState(false);
+
   if (place.thumbnailUrl) {
     return (
       // Its own positioning context: `fill` measures the nearest positioned
@@ -35,7 +55,15 @@ export default function PlaceThumb({ place }: { place: Place }) {
           // Widest the grid ever paints one: five columns inside a 64rem page.
           sizes="(min-width: 768px) 210px, (min-width: 640px) 25vw, 33vw"
           unoptimized={!canOptimizeImage(place.thumbnailUrl)}
-          className="object-cover"
+          data-loaded={loaded}
+          onLoad={() => setLoaded(true)}
+          // A thumbnail that 404s would otherwise sit at opacity 0 forever,
+          // hiding the tile's own background along with it.
+          onError={() => setLoaded(true)}
+          ref={(node) => {
+            if (node?.complete) setLoaded(true);
+          }}
+          className={`thumb-img object-cover ${zoomOnHover ? "thumb-zoom" : ""}`}
         />
       </div>
     );

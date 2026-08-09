@@ -12,6 +12,8 @@ import {
   subscribeToRecentProfiles,
 } from "@/lib/profiles";
 import Avatar from "@/components/Avatar";
+import { PersonRowSkeleton, SkeletonList } from "@/components/Skeleton";
+import { riseDelay } from "@/lib/motion";
 import type { Profile } from "@/lib/types";
 
 const DEBOUNCE_MS = 250;
@@ -93,18 +95,29 @@ export default function DiscoverPage() {
           {isSearch ? "Results" : "People"}
         </h2>
 
-        {showing.length === 0 ? (
+        {/* Three states, not two. An empty list while the first snapshot is
+            still in flight is not "no accounts yet" — it is a list that has
+            not arrived, and saying the wrong one of those for a second is
+            what makes a populated page look briefly broken. */}
+        {showing.length === 0 && (recent === null || (isSearch && searching)) ? (
+          <>
+            <p className="sr-only" role="status">
+              {isSearch ? "Searching…" : "Loading people…"}
+            </p>
+            <SkeletonList
+              count={6}
+              className="mt-4 grid grid-cols-2 gap-4"
+              item={() => <PersonRowSkeleton />}
+            />
+          </>
+        ) : showing.length === 0 ? (
           <p className="mt-4 text-[15px] text-[#6B7178]">
-            {isSearch && searching
-              ? "Searching…"
-              : isSearch
-                ? `No one matches “${term.trim()}”.`
-                : "No accounts yet."}
+            {isSearch ? `No one matches “${term.trim()}”.` : "No accounts yet."}
           </p>
         ) : (
           <ul className="mt-4 grid grid-cols-2 gap-4">
-            {showing.map((profile) => (
-              <PersonRow key={profile.id} profile={profile} />
+            {showing.map((profile, index) => (
+              <PersonRow key={profile.id} profile={profile} index={index} />
             ))}
           </ul>
         )}
@@ -116,7 +129,13 @@ export default function DiscoverPage() {
 const CARD =
   "flex items-center gap-3.5 rounded-2xl border border-[rgba(20,22,26,0.09)] bg-white p-4 shadow-[0_1px_2px_rgba(20,22,26,0.04)]";
 
-function PersonRow({ profile }: { profile: Profile }) {
+function PersonRow({
+  profile,
+  index,
+}: {
+  profile: Profile;
+  index: number;
+}) {
   const demo = isDemoOrganizerProfile(profile);
   const body = (
     <>
@@ -142,7 +161,7 @@ function PersonRow({ profile }: { profile: Profile }) {
   );
 
   return (
-    <li>
+    <li className="rise" style={riseDelay(index)}>
       {/* Organizer rows are display-only seed data, not Firebase accounts —
           there is no profile page behind them, so they are not links. */}
       {demo ? (
@@ -150,7 +169,7 @@ function PersonRow({ profile }: { profile: Profile }) {
       ) : (
         <Link
           href={`/u/${profile.username}`}
-          className={`${CARD} transition-colors duration-150 ease-linear hover:border-[rgba(20,22,26,0.14)]`}
+          className={`${CARD} transition-[transform,border-color,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-px hover:border-[rgba(20,22,26,0.14)] hover:shadow-[0_2px_10px_-4px_rgba(20,22,26,0.18)]`}
         >
           {body}
         </Link>

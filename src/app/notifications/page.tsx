@@ -16,6 +16,8 @@ import {
 } from "@/lib/notifications";
 import Avatar from "@/components/Avatar";
 import PlaceThumb from "@/components/PlaceThumb";
+import { NotificationRowSkeleton, SkeletonList } from "@/components/Skeleton";
+import { riseDelay } from "@/lib/motion";
 import type { Profile } from "@/lib/types";
 
 export default function NotificationsPage() {
@@ -48,7 +50,16 @@ export default function NotificationsPage() {
         </h1>
 
         {authLoading || !user ? (
-          <p className="mt-8 text-[15px] text-[#6B7178]">Loading…</p>
+          <>
+            <p className="sr-only" role="status">
+              Loading notifications…
+            </p>
+            <SkeletonList
+              count={5}
+              className="mt-8 divide-y divide-[rgba(20,22,26,0.09)]"
+              item={() => <NotificationRowSkeleton />}
+            />
+          </>
         ) : items.length === 0 ? (
           <div className="mt-16 text-center">
             <p className="text-[20px] font-semibold leading-[26px] tracking-[-0.01em]">
@@ -67,9 +78,10 @@ export default function NotificationsPage() {
           </div>
         ) : (
           <ul className="mt-8 divide-y divide-[rgba(20,22,26,0.09)]">
-            {items.map((item) => (
+            {items.map((item, index) => (
               <NotificationRow
                 key={item.id}
+                index={index}
                 item={item}
                 actor={profiles[item.actorId]}
                 viewerId={user.uid}
@@ -85,11 +97,14 @@ export default function NotificationsPage() {
 
 function NotificationRow({
   item,
+  index,
   actor,
   viewerId,
   isNew,
 }: {
   item: Notification;
+  /** Position in the list, for the staggered arrival. */
+  index: number;
   actor: Profile | null | undefined;
   viewerId: string;
   isNew: boolean;
@@ -101,7 +116,7 @@ function NotificationRow({
 
   if (item.kind === "album_invite") {
     return (
-      <li>
+      <li className="rise" style={riseDelay(index)}>
         <AlbumInviteRow
           item={item}
           actor={actor}
@@ -163,11 +178,11 @@ function NotificationRow({
     item.kind === "place" ? `/place/${item.place.id}` : href;
 
   return (
-    <li>
+    <li className="rise" style={riseDelay(index)}>
       {target ? (
         <Link
           href={target}
-          className="flex items-center gap-4 py-4 transition hover:opacity-70"
+          className="-mx-3 flex items-center gap-4 rounded-xl px-3 py-4 transition-colors duration-200 hover:bg-[rgba(20,22,26,0.035)]"
         >
           {body}
         </Link>

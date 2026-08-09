@@ -9,6 +9,8 @@ import {
 } from "@/lib/places";
 import { useAuthProfile } from "@/lib/auth";
 import PlaceThumb from "@/components/PlaceThumb";
+import { SkeletonList, TrashRowSkeleton } from "@/components/Skeleton";
+import { riseDelay } from "@/lib/motion";
 import type { Place } from "@/lib/types";
 
 /**
@@ -70,7 +72,16 @@ export default function TrashPage() {
         )}
 
         {(loading || places === null) && (
-          <p className="mt-10 text-[15px] text-[#6B7178]">Loading…</p>
+          <>
+            <p className="sr-only" role="status">
+              Loading the trash…
+            </p>
+            <SkeletonList
+              count={4}
+              className="mt-8 flex flex-col gap-3"
+              item={() => <TrashRowSkeleton />}
+            />
+          </>
         )}
 
         {places?.length === 0 && (
@@ -81,10 +92,11 @@ export default function TrashPage() {
 
         {places && places.length > 0 && (
           <ul className="mt-8 flex flex-col gap-3">
-            {places.map((place) => (
+            {places.map((place, index) => (
               <li
                 key={place.id}
-                className="flex items-center gap-4 rounded-2xl border border-[rgba(20,22,26,0.09)] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(20,22,26,0.04)]"
+                style={riseDelay(index)}
+                className="rise flex items-center gap-4 rounded-2xl border border-[rgba(20,22,26,0.09)] bg-white px-4 py-3 shadow-[0_1px_2px_rgba(20,22,26,0.04)]"
               >
                 <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[rgba(20,22,26,0.05)]">
                   <PlaceThumb place={place} />

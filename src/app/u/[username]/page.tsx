@@ -33,6 +33,13 @@ import PlaceThumb from "@/components/PlaceThumb";
 import AlbumCover from "@/components/AlbumCover";
 import { canOptimizeImage } from "@/lib/imageHosts";
 import { formatPlaceDate } from "@/lib/places";
+import {
+  AlbumCardSkeleton,
+  PlaceSquareSkeleton,
+  ProfileHeaderSkeleton,
+  SkeletonList,
+} from "@/components/Skeleton";
+import { riseDelay } from "@/lib/motion";
 import type { Album, Place, Profile } from "@/lib/types";
 
 /* Two lists live on this page, so the control over them has two segments. A
@@ -162,7 +169,20 @@ export default function ProfilePage({
         </div>
 
         {loading || !profile ? (
-          <p className="mt-10 text-[15px] text-[#6B7178]">Loading…</p>
+          <>
+            <p className="sr-only" role="status">
+              Loading this profile…
+            </p>
+            <ProfileHeaderSkeleton />
+            {/* The tab pill and the first grid, so the whole page is standing
+                before any of it is filled in. */}
+            <div className="skeleton mt-6 h-[35px] w-[168px] rounded-full" />
+            <SkeletonList
+              count={4}
+              className="mt-6 grid grid-cols-4 gap-x-6 gap-y-7"
+              item={() => <AlbumCardSkeleton />}
+            />
+          </>
         ) : (
           <>
             <header className="mt-5 flex items-start gap-7 border-b border-[rgba(20,22,26,0.09)] pb-7">
@@ -227,20 +247,28 @@ export default function ProfilePage({
                 {albumsError ? (
                   <p className="text-[15px] text-[#C0362C]">{albumsError}</p>
                 ) : albums === null ? (
-                  <p className="text-[15px] text-[#6B7178]">Loading…</p>
+                  <SkeletonList
+                    count={4}
+                    className="grid grid-cols-4 gap-x-6 gap-y-7"
+                    item={() => <AlbumCardSkeleton />}
+                  />
                 ) : albums.length === 0 ? (
                   <p className="text-[15px] text-[#6B7178]">No journeys yet.</p>
                 ) : (
                   <ul className="grid grid-cols-4 gap-x-6 gap-y-7">
-                    {albums.map((album) => {
+                    {albums.map((album, index) => {
                       const count = album.placeIds?.length ?? 0;
                       return (
-                        <li key={album.id}>
+                        <li
+                          key={album.id}
+                          className="rise"
+                          style={riseDelay(index)}
+                        >
                           <Link
                             href={`/album/${album.id}`}
                             className="group block"
                           >
-                            <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-[rgba(20,22,26,0.05)] shadow-[0_1px_2px_rgba(20,22,26,0.06),0_12px_28px_-18px_rgba(20,22,26,0.4)] transition-opacity duration-150 group-hover:opacity-90">
+                            <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-[rgba(20,22,26,0.05)] shadow-[0_1px_2px_rgba(20,22,26,0.06),0_12px_28px_-18px_rgba(20,22,26,0.4)] transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-y-0.5 group-hover:shadow-[0_2px_4px_rgba(20,22,26,0.07),0_20px_38px_-20px_rgba(20,22,26,0.45)]">
                               <AlbumCover
                                 coverUrl={album.coverUrl}
                                 places={resolveAlbumPlaces(
@@ -271,23 +299,31 @@ export default function ProfilePage({
                 {placesError ? (
                   <p className="text-[15px] text-[#C0362C]">{placesError}</p>
                 ) : places === null ? (
-                  <p className="text-[15px] text-[#6B7178]">Loading…</p>
+                  <SkeletonList
+                    count={12}
+                    className="grid grid-cols-6 gap-3"
+                    item={() => <PlaceSquareSkeleton />}
+                  />
                 ) : places.length === 0 ? (
                   <p className="text-[15px] text-[#6B7178]">No places yet.</p>
                 ) : (
                   <ul className="grid grid-cols-6 gap-3">
-                    {places.map((place) => {
+                    {places.map((place, index) => {
                       const taken = formatPlaceDate(place);
                       return (
-                        <li key={place.id}>
+                        <li
+                          key={place.id}
+                          className="rise"
+                          style={riseDelay(index)}
+                        >
                           <Link
                             href={`/place/${place.id}${fromProfile}`}
                             className="group relative block aspect-square overflow-hidden rounded-xl bg-[rgba(20,22,26,0.05)]"
                           >
-                            <PlaceThumb place={place} />
+                            <PlaceThumb place={place} zoomOnHover />
                             {/* The dense grid has no room for a caption under
                                 each tile, so this one keeps its hover label. */}
-                            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[rgba(20,22,26,0.72)] to-transparent px-2.5 pb-2 pt-7 text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[rgba(20,22,26,0.72)] to-transparent px-2.5 pb-2 pt-7 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                               <span className="block truncate text-[12px] font-medium">
                                 {place.name}
                               </span>

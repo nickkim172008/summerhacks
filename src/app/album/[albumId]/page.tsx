@@ -33,6 +33,8 @@ import AlbumCover from "@/components/AlbumCover";
 import AlbumPicker from "@/components/AlbumPicker";
 import CaptureRunner from "@/components/CaptureRunner";
 import AlbumMembers from "@/components/AlbumMembers";
+import { PlaceTileSkeleton, SkeletonList } from "@/components/Skeleton";
+import { riseDelay } from "@/lib/motion";
 import type { Album, Place } from "@/lib/types";
 
 /** "recents" is a virtual album containing every environment you own. */
@@ -221,24 +223,37 @@ export default function AlbumPage({
         </div>
 
         <div className="mt-5 flex items-start gap-8 border-b border-[rgba(20,22,26,0.09)] pb-7">
-          <div className="h-[212px] w-[212px] shrink-0 overflow-hidden rounded-2xl bg-white shadow-[0_2px_4px_rgba(20,22,26,0.06),0_20px_40px_-24px_rgba(20,22,26,0.5)]">
-            <AlbumCover
-              coverUrl={album?.coverUrl}
-              places={readyPlaces}
-              alt={title}
-            />
+          <div
+            className={`h-[212px] w-[212px] shrink-0 overflow-hidden rounded-2xl shadow-[0_2px_4px_rgba(20,22,26,0.06),0_20px_40px_-24px_rgba(20,22,26,0.5)] ${
+              loading && !error ? "skeleton" : "bg-white"
+            }`}
+          >
+            {(!loading || error) && (
+              <AlbumCover
+                coverUrl={album?.coverUrl}
+                places={readyPlaces}
+                alt={title}
+              />
+            )}
           </div>
           <div className="min-w-0 flex-1 pt-1">
             <p className="text-[11px] font-semibold uppercase leading-3 tracking-[0.12em] text-[#6B7178]">
               Journey
             </p>
-            <h1 className="mt-2 truncate font-display text-[46px] leading-[47px] font-normal tracking-[-0.02em]">
-              {title}
-            </h1>
+            {/* The name arrives with the album document, so until it does this
+                is a bar the width a title tends to be — not an empty h1 that
+                the metadata line then drops down past. */}
+            {loading && !error ? (
+              <div className="skeleton mt-3 h-[38px] w-[42%] rounded-lg" />
+            ) : (
+              <h1 className="mt-2 truncate font-display text-[46px] leading-[47px] font-normal tracking-[-0.02em]">
+                {title}
+              </h1>
+            )}
             {error ? (
               <p className="mt-2.5 text-[15px] text-[#C0362C]">{error}</p>
             ) : loading ? (
-              <p className="mt-2.5 text-[15px] text-[#6B7178]">Loading…</p>
+              <div className="skeleton mt-3.5 h-[15px] w-[30%] rounded-md" />
             ) : (
               <p className="mt-2.5 text-[15px] text-[#4A4F57]">
                 <span className="tabular-nums">{readyPlaces.length}</span>{" "}
@@ -397,10 +412,23 @@ export default function AlbumPage({
             this album's jobs and cannot sit behind the grid's guard. */}
         <CaptureRunner albumId={isRecents ? null : albumId} mode="album" />
 
+        {loading && !error && (
+          <>
+            <p className="sr-only" role="status">
+              Loading this journey…
+            </p>
+            <SkeletonList
+              count={8}
+              className="mt-10 grid grid-cols-4 gap-x-5 gap-y-6"
+              item={() => <PlaceTileSkeleton />}
+            />
+          </>
+        )}
+
         {!error && !loading && readyPlaces.length > 0 && (
           <ul className="mt-4 grid grid-cols-4 gap-x-5 gap-y-6">
-            {readyPlaces.map((place) => (
-              <li key={place.id}>
+            {readyPlaces.map((place, index) => (
+              <li key={place.id} className="rise" style={riseDelay(index)}>
                 <PlaceTile
                   place={place}
                   href={`/place/${place.id}?album=${albumId}`}

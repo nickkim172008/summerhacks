@@ -32,6 +32,8 @@ import AlbumCover from "@/components/AlbumCover";
 import AlbumCollaborators from "@/components/AlbumCollaborators";
 import Avatar from "@/components/Avatar";
 import TileMenu, { type TileMenuItem } from "@/components/TileMenu";
+import { AlbumCardSkeleton, SkeletonList } from "@/components/Skeleton";
+import { riseDelay } from "@/lib/motion";
 import type { Album, AlbumVisibility, Place, Profile } from "@/lib/types";
 
 /** The library counts things constantly; "1 places" is not worth shipping. */
@@ -144,6 +146,11 @@ export default function AlbumsPage() {
       ownedAlbums === null ||
       sharedAlbums === null);
 
+  // Where the owned albums start in the first grid: Recents, then however many
+  // demo journeys are being shown. Only the arrival stagger reads this.
+  const ownedOffset =
+    1 + (showDemoJourneys ? DEMO_OWNED_JOURNEYS.length : 0);
+
   function startNewAlbum() {
     if (!user) {
       router.push("/signin");
@@ -161,7 +168,7 @@ export default function AlbumsPage() {
       <div className="mx-auto max-w-[1152px] px-8 py-10">
         <div className="flex items-end justify-between gap-8">
           <div>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B7178] tabular-nums">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B7178] tabular-nums">
               {countLabel(ownPlaces?.length ?? 0, "place", "places")} ·{" "}
               {countLabel(ownedAlbums?.length ?? 0, "journey", "journeys")}
             </p>
@@ -195,7 +202,30 @@ export default function AlbumsPage() {
           </p>
         )}
 
-        {loading && <p className="mt-8 text-[15px] text-[#6B7178]">Loading…</p>}
+        {loading && (
+          <>
+            {/* The grid the library is about to be, at the size it will be —
+                so the covers land in the holes already cut for them. */}
+            <p className="sr-only" role="status">
+              Loading your library…
+            </p>
+            <SkeletonList
+              count={8}
+              className="mt-8 grid grid-cols-4 gap-x-6 gap-y-7"
+              item={() => <AlbumCardSkeleton />}
+            />
+            <div className="mt-12 border-t border-[rgba(20,22,26,0.09)] pt-6">
+              <h2 className="text-[20px] font-semibold leading-[26px] tracking-[-0.01em]">
+                Shared with you
+              </h2>
+              <SkeletonList
+                count={4}
+                className="mt-5 grid grid-cols-4 gap-x-6 gap-y-7"
+                item={() => <AlbumCardSkeleton />}
+              />
+            </div>
+          </>
+        )}
 
         {!error && !loading && (
           <>
@@ -204,14 +234,23 @@ export default function AlbumsPage() {
             >
               <RecentsCard places={ownPlaces ?? []} />
               {showDemoJourneys &&
-                DEMO_OWNED_JOURNEYS.map((journey) => (
-                  <DemoJourneyCard key={journey.id} journey={journey} />
+                DEMO_OWNED_JOURNEYS.map((journey, index) => (
+                  <DemoJourneyCard
+                    key={journey.id}
+                    journey={journey}
+                    index={index + 1}
+                  />
                 ))}
-              {(ownedAlbums ?? []).map((album) => (
+              {(ownedAlbums ?? []).map((album, index) => (
                 <AlbumCard
                   key={album.id}
                   album={album}
                   places={resolveAlbumPlaces(album.placeIds, placeById)}
+                  // Counted from the top of the grid, not from the top of this
+                  // list: Recents is always first, and the demo journeys sit
+                  // between it and the real ones. Restarting the stagger here
+                  // would send the wave backwards mid-row.
+                  index={index + ownedOffset}
                   onEdit={() => setRenaming(album)}
                   onDelete={() => setDeleting(album)}
                 />
@@ -351,19 +390,28 @@ function PlusGlyph() {
   );
 }
 
-/** 4:3, 16px radius, raised — the one piece of media on this screen. */
+/**
+ * 4:3, 16px radius, raised — the one piece of media on this screen.
+ *
+ * The hover is a 2px lift on a deeper shadow rather than a fade: these are the
+ * only cards in the app you pick up and open, and lifting says that where
+ * dimming only says the pointer is somewhere.
+ */
 const COVER_CLASS =
-  "absolute inset-0 overflow-hidden rounded-2xl bg-[rgba(20,22,26,0.05)] shadow-[0_1px_2px_rgba(20,22,26,0.06),0_12px_28px_-18px_rgba(20,22,26,0.4)] transition-opacity duration-150 hover:opacity-90";
+  "absolute inset-0 overflow-hidden rounded-2xl bg-[rgba(20,22,26,0.05)] shadow-[0_1px_2px_rgba(20,22,26,0.06),0_12px_28px_-18px_rgba(20,22,26,0.4)] transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-y-0.5 group-hover:shadow-[0_2px_4px_rgba(20,22,26,0.07),0_20px_38px_-20px_rgba(20,22,26,0.45)]";
 
 function AlbumCard({
   album,
   places,
+  index = 0,
   onEdit,
   onRemove,
   onDelete,
 }: {
   album: Album;
   places: Place[];
+  /** Position in its grid, which is all the stagger needs. */
+  index?: number;
   onEdit?: () => void;
   /** Leave a shared journey — labeled Remove to match place tiles. */
   onRemove?: () => void;
@@ -391,7 +439,7 @@ function AlbumCard({
   const peopleCount = albumMemberIds(album).length;
 
   return (
-    <li>
+    <li className="rise" style={riseDelay(index)}>
       <div className="group relative">
         {/* Menu sits outside the clipped cover so the dropdown isn’t cut off. */}
         <div className="relative aspect-[4/3]">
@@ -450,29 +498,36 @@ function SharedJourneysGrid({
     (album) => !isPinnedBeforeDemoShared(album.name),
   );
 
+  // Three lists painted into one grid, so the stagger has to be counted across
+  // all of them — each section picking up where the last left off.
+  const demoCount = showDemoJourneys ? DEMO_SHARED_JOURNEYS.length : 0;
+
   return (
     <ul className="mt-5 grid grid-cols-4 gap-x-6 gap-y-7">
-      {pinned.map((album) => (
+      {pinned.map((album, index) => (
         <AlbumCard
           key={album.id}
           album={album}
           places={resolveAlbumPlaces(album.placeIds, placeById)}
+          index={index}
           onRemove={() => onLeave(album)}
         />
       ))}
       {showDemoJourneys &&
-        DEMO_SHARED_JOURNEYS.map((journey) => (
+        DEMO_SHARED_JOURNEYS.map((journey, index) => (
           <DemoJourneyCard
             key={journey.id}
             journey={journey}
             faces={demoFaces}
+            index={pinned.length + index}
           />
         ))}
-      {rest.map((album) => (
+      {rest.map((album, index) => (
         <AlbumCard
           key={album.id}
           album={album}
           places={resolveAlbumPlaces(album.placeIds, placeById)}
+          index={pinned.length + demoCount + index}
           onRemove={() => onLeave(album)}
         />
       ))}
@@ -488,14 +543,17 @@ function SharedJourneysGrid({
 function DemoJourneyCard({
   journey,
   faces = [],
+  index = 0,
 }: {
   journey: DemoJourney;
   faces?: Profile[];
+  /** Position in its grid, which is all the stagger needs. */
+  index?: number;
 }) {
   const peopleCount = journey.shared?.peopleCount ?? 0;
 
   return (
-    <li>
+    <li className="rise" style={riseDelay(index)}>
       <div className="group relative">
         <div className="relative aspect-[4/3]">
           <div className={COVER_CLASS} aria-label={journey.name}>
@@ -564,8 +622,8 @@ function DemoCollaboratorFaces({
 
 function RecentsCard({ places }: { places: Place[] }) {
   return (
-    <li>
-      <Link href="/album/recents" className="block">
+    <li className="rise" style={riseDelay(0)}>
+      <Link href="/album/recents" className="group block">
         <div className="relative aspect-[4/3]">
           <div className={COVER_CLASS}>
             <AlbumCover places={places} alt="Recents" />
@@ -591,7 +649,7 @@ function NewJourneyCard({ onClick }: { onClick: () => void }) {
       <button
         type="button"
         onClick={onClick}
-        className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[rgba(20,22,26,0.18)] bg-[rgba(20,22,26,0.02)] text-[#6B7178] transition-colors duration-150 hover:border-[rgba(20,22,26,0.28)] hover:text-[#4A4F57]"
+        className="press flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[rgba(20,22,26,0.18)] bg-[rgba(20,22,26,0.02)] text-[#6B7178] transition-colors duration-200 hover:border-[rgba(20,22,26,0.28)] hover:bg-[rgba(20,22,26,0.035)] hover:text-[#4A4F57]"
       >
         <PlusGlyph />
         <span className="text-[13px] font-medium text-[#4A4F57]">
@@ -603,9 +661,9 @@ function NewJourneyCard({ onClick }: { onClick: () => void }) {
 }
 
 const DIALOG_SCRIM =
-  "fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,22,26,0.35)] p-6";
+  "dialog-scrim fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,22,26,0.35)] p-6";
 const DIALOG_PANEL =
-  "w-full max-w-[380px] rounded-2xl bg-white p-6 shadow-[0_24px_60px_-30px_rgba(20,22,26,0.5)]";
+  "dialog-panel w-full max-w-[380px] rounded-2xl bg-white p-6 shadow-[0_24px_60px_-30px_rgba(20,22,26,0.5)]";
 const DIALOG_TITLE =
   "font-display text-[22px] font-normal leading-7 tracking-[-0.01em]";
 const DIALOG_BODY = "mt-2 text-[14px] leading-5 text-[#4A4F57]";
