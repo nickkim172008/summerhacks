@@ -17,7 +17,6 @@ const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
 import { subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useLiveLocation } from "@/lib/geolocation";
-import { DEMO_MAP_PLACES } from "@/lib/demoMapData";
 import { useResolvedPlaces } from "@/lib/geocode";
 import { subscribeToPlaces, subscribeToPlacesByUploader } from "@/lib/places";
 import type { Album, Place } from "@/lib/types";
@@ -80,13 +79,10 @@ export default function MapPage() {
   // separate idea of ownership.
   const inScope = useMemo((): Place[] => {
     const places = allPlaces ?? [];
-    if (scope.kind === "public") {
-      const real = new Set(places.map((place) => place.id));
-      return [
-        ...places,
-        ...DEMO_MAP_PLACES.filter((demo) => !real.has(demo.id)),
-      ];
-    }
+    // Public is every real capture and nothing else. It was once padded with
+    // invented city pins so a young map read as busy; a map that lies about
+    // where people have been is worth less than a sparse one that does not.
+    if (scope.kind === "public") return places;
     if (!user) return [];
 
     const byId = new Map(places.map((place) => [place.id, place]));
