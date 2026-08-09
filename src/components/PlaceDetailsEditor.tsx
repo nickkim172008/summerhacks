@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { geocodeName, reverseGeocode } from "@/lib/geocode";
 import { prepareImage, THUMBNAIL_EDGE } from "@/lib/imageFile";
-import { updatePlaceDetails } from "@/lib/places";
+import { updatePlaceDetails, updatePlaceLocation } from "@/lib/places";
 import { uploadThumbnail } from "@/lib/splatStore";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Place } from "@/lib/types";
@@ -15,15 +15,20 @@ import type { Place } from "@/lib/types";
  *
  * Coordinates are kept as text while editing so a half-typed "-79." is not
  * rounded off or rejected mid-keystroke; they are parsed on save.
+ *
+ * `locationOnly` is for shared-journey collaborators: they may correct the pin,
+ * not rename the capture or replace its thumbnail.
  */
 export default function PlaceDetailsEditor({
   place,
   onClose,
   onSaved,
+  locationOnly = false,
 }: {
   place: Place;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
+  locationOnly?: boolean;
 }) {
   const [name, setName] = useState(place.name);
   const [locationName, setLocationName] = useState(place.locationName ?? "");
@@ -103,7 +108,7 @@ export default function PlaceDetailsEditor({
   }
 
   async function save() {
-    if (!name.trim()) {
+    if (!locationOnly && !name.trim()) {
       setError("A capture needs a name.");
       return;
     }
@@ -119,16 +124,23 @@ export default function PlaceDetailsEditor({
       // Only now does anything leave the browser. A refused upload has to stop
       // the save rather than pass quietly, the way it does at capture time —
       // this one was asked for, so its failure is worth hearing about.
-      await updatePlaceDetails(place.id, {
-        name,
-        locationName,
-        location: coords,
-        thumbnailUrl: picked
-          ? await uploadThumbnail(place.id, picked)
-          : cleared
-            ? ""
-            : undefined,
-      });
+      if (locationOnly) {
+        await updatePlaceLocation(place.id, {
+          locationName,
+          location: coords,
+        });
+      } else {
+        await updatePlaceDetails(place.id, {
+          name,
+          locationName,
+          location: coords,
+          thumbnailUrl: picked
+            ? await uploadThumbnail(place.id, picked)
+            : cleared
+              ? ""
+              : undefined,
+        });
+      }
       await onSaved();
       onClose();
     } catch (err) {
@@ -142,77 +154,83 @@ export default function PlaceDetailsEditor({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,22,26,0.35)] p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 text-[#14161A] shadow-[0_24px_60px_-30px_rgba(20,22,26,0.5)]">
-        <h2 className="font-display text-[22px] leading-[28px] tracking-[-0.01em]">
-          Edit place
+        <h2 className="font-display text-[22px] leading-[28px] font-normal tracking-[-0.01em]">
+          {locationOnly ? "Edit location" : "Edit place"}
         </h2>
 
-        <div className="mt-5 flex items-center gap-4">
-          <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-[rgba(20,22,26,0.05)] ring-1 ring-[rgba(20,22,26,0.09)]">
-            {preview ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={preview}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <PlaceThumb
-                place={cleared ? { ...place, thumbnailUrl: "" } : place}
-              />
-            )}
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium">Thumbnail</p>
-            <p className="mt-0.5 text-[12px] leading-snug text-[#6B7178]">
-              What this shows in journey grids. Taken off the walkthrough unless
-              you pick something else.
-            </p>
-            <input
-              ref={imageRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-              className="hidden"
-              onChange={(e) => void pickImage(e.target.files?.[0])}
-            />
-            <div className="mt-2 flex items-center gap-4 text-[13px] font-medium">
-              <button
-                type="button"
-                onClick={() => imageRef.current?.click()}
-                disabled={busy !== null}
-                className="text-[#14161A] transition hover:opacity-70 disabled:opacity-40"
-              >
-                Choose image
-              </button>
-              {hasThumbnail && (
-                <button
-                  type="button"
-                  onClick={clearImage}
-                  disabled={busy !== null}
-                  className="text-[#4A4F57] transition hover:text-[#14161A] disabled:opacity-40"
-                >
-                  Remove
-                </button>
+        {!locationOnly && (
+          <div className="mt-5 flex items-center gap-4">
+            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-[rgba(20,22,26,0.05)] ring-1 ring-[rgba(20,22,26,0.09)]">
+              {preview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={preview}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <PlaceThumb
+                  place={cleared ? { ...place, thumbnailUrl: "" } : place}
+                />
               )}
             </div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium">Thumbnail</p>
+              <p className="mt-0.5 text-[12px] leading-snug text-[#6B7178]">
+                What this shows in journey grids. Taken off the walkthrough
+                unless you pick something else.
+              </p>
+              <input
+                ref={imageRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                className="hidden"
+                onChange={(e) => void pickImage(e.target.files?.[0])}
+              />
+              <div className="mt-2 flex items-center gap-4 text-[13px] font-medium">
+                <button
+                  type="button"
+                  onClick={() => imageRef.current?.click()}
+                  disabled={busy !== null}
+                  className="text-[#14161A] transition hover:opacity-70 disabled:opacity-40"
+                >
+                  Choose image
+                </button>
+                {hasThumbnail && (
+                  <button
+                    type="button"
+                    onClick={clearImage}
+                    disabled={busy !== null}
+                    className="text-[#4A4F57] transition hover:text-[#14161A] disabled:opacity-40"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
-        <label className="mt-5 block text-[13px] font-medium">
-          Name
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[15px] font-normal outline-none transition placeholder:text-[#8A9098] focus:border-[#0071E3]"
-          />
-        </label>
+        {!locationOnly && (
+          <label className="mt-5 block text-[13px] font-medium">
+            Name
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[15px] font-normal outline-none focus:border-[#0071E3]"
+            />
+          </label>
+        )}
 
-        <label className="mt-4 block text-[13px] font-medium">
+        <label
+          className={`block text-[13px] font-medium ${locationOnly ? "mt-5" : "mt-4"}`}
+        >
           Location
           <input
             value={locationName}
             onChange={(e) => setLocationName(e.target.value)}
             placeholder="Toronto, or High Park, or a room"
-            className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[15px] font-normal outline-none transition placeholder:text-[#8A9098] focus:border-[#0071E3]"
+            className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[15px] font-normal outline-none focus:border-[#0071E3]"
           />
         </label>
 
@@ -224,7 +242,7 @@ export default function PlaceDetailsEditor({
               onChange={(e) => setLat(e.target.value)}
               inputMode="decimal"
               placeholder="43.652"
-              className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[14px] font-normal tabular-nums outline-none transition placeholder:text-[#8A9098] focus:border-[#0071E3]"
+              className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 tabular-nums text-[14px] font-normal outline-none focus:border-[#0071E3]"
             />
           </label>
           <label className="flex-1 text-[13px] font-medium">
@@ -234,7 +252,7 @@ export default function PlaceDetailsEditor({
               onChange={(e) => setLng(e.target.value)}
               inputMode="decimal"
               placeholder="-79.405"
-              className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 text-[14px] font-normal tabular-nums outline-none transition placeholder:text-[#8A9098] focus:border-[#0071E3]"
+              className="mt-1 w-full rounded-xl border border-[rgba(20,22,26,0.12)] bg-white px-4 py-2.5 tabular-nums text-[14px] font-normal outline-none focus:border-[#0071E3]"
             />
           </label>
         </div>
@@ -251,14 +269,14 @@ export default function PlaceDetailsEditor({
             <button
               onClick={nameFromCoords}
               disabled={!coords || busy !== null}
-              className="text-[13px] font-medium text-[#14161A] transition hover:opacity-70 disabled:opacity-40"
+              className="text-[13px] font-medium text-[#14161A] disabled:opacity-40"
             >
               {busy === "naming" ? "Naming…" : "Name the point"}
             </button>
             <button
               onClick={lookUp}
               disabled={!locationName.trim() || busy !== null}
-              className="text-[13px] font-medium text-[#14161A] transition hover:opacity-70 disabled:opacity-40"
+              className="text-[13px] font-medium text-[#14161A] disabled:opacity-40"
             >
               {busy === "looking" ? "Looking up…" : "Use the name"}
             </button>
@@ -271,7 +289,7 @@ export default function PlaceDetailsEditor({
           <button
             onClick={onClose}
             disabled={busy === "saving"}
-            className="px-2 py-2 text-[15px] text-[#4A4F57] transition hover:text-[#14161A] disabled:opacity-40"
+            className="rounded-full px-5 py-2 text-[15px] font-medium text-[#4A4F57] transition hover:text-[#14161A] disabled:opacity-40"
           >
             Cancel
           </button>

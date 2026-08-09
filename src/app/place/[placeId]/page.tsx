@@ -6,9 +6,14 @@ import Link from "next/link";
 import PlaceExperience from "@/components/PlaceExperience";
 import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
 import { getPlace } from "@/lib/places";
+import {
+  canEditAlbum,
+  ensurePlacesLinkedToAlbum,
+  subscribeToAlbum,
+} from "@/lib/albums";
 import { useAuth } from "@/lib/auth";
 import { getProfile } from "@/lib/profiles";
-import type { Place, Profile } from "@/lib/types";
+import type { Album, Place, Profile } from "@/lib/types";
 
 export default function PlacePage({
   params,
@@ -41,6 +46,7 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
   const { user } = useAuth();
   // undefined while loading, null once we know it isn't there.
   const [place, setPlace] = useState<Place | null | undefined>();
+  const [album, setAlbum] = useState<Album | null>(null);
   const [fetchedUploader, setFetchedUploader] = useState<{
     uploaderId: string;
     profile: Profile | null;
@@ -60,6 +66,19 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
       active = false;
     };
   }, [placeId]);
+
+  useEffect(() => {
+    if (!albumId) {
+      setAlbum(null);
+      return;
+    }
+    return subscribeToAlbum(albumId, setAlbum, () => setAlbum(null));
+  }, [albumId]);
+
+  useEffect(() => {
+    if (!album || !user || !canEditAlbum(album, user.uid)) return;
+    void ensurePlacesLinkedToAlbum(album.id, album.placeIds ?? []);
+  }, [album, user]);
 
   // Attribution is a nicety, so a missing or unreadable profile just leaves it
   // off rather than blocking the place from opening.
@@ -123,6 +142,11 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
     );
   }
 
+  const isUploader = user?.uid === place.uploaderId;
+  const isAlbumEditor = Boolean(album && canEditAlbum(album, user?.uid));
+  const canEditLocation = isUploader || isAlbumEditor;
+  const locationOnly = !isUploader && isAlbumEditor;
+
   return (
     <main className="h-screen w-screen">
       <PlaceExperience
@@ -130,13 +154,12 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
         uploader={uploader}
         onExit={() => router.push(exitHref)}
         backLabel={exitLabel}
-        onEdit={
-          user?.uid === place.uploaderId ? () => setEditing(true) : undefined
-        }
+        onEdit={canEditLocation ? () => setEditing(true) : undefined}
       />
       {editing && (
         <PlaceDetailsEditor
           place={place}
+          locationOnly={locationOnly}
           onClose={() => setEditing(false)}
           onSaved={async () => setPlace(await getPlace(placeId))}
         />

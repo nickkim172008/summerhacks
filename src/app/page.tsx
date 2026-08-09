@@ -9,6 +9,7 @@ import {
 } from "@/lib/places";
 import {
   albumMemberIds,
+  albumVisibility,
   createAlbum,
   deleteAlbum,
   leaveAlbum,
@@ -22,7 +23,7 @@ import { useAuthProfile } from "@/lib/auth";
 import AlbumCover from "@/components/AlbumCover";
 import AlbumCollaborators from "@/components/AlbumCollaborators";
 import TileMenu, { type TileMenuItem } from "@/components/TileMenu";
-import type { Album, Place } from "@/lib/types";
+import type { Album, AlbumVisibility, Place } from "@/lib/types";
 
 /** The library counts things constantly; "1 places" is not worth shipping. */
 function countLabel(n: number, singular: string, plural: string) {
@@ -272,8 +273,8 @@ export default function AlbumsPage() {
       {showNewAlbum && user && (
         <NewAlbumDialog
           onCancel={() => setShowNewAlbum(false)}
-          onCreate={async (name) => {
-            const id = await createAlbum(name, user.uid);
+          onCreate={async (name, visibility) => {
+            const id = await createAlbum(name, user.uid, visibility);
             setShowNewAlbum(false);
             router.push(`/album/${id}`);
           }}
@@ -439,6 +440,7 @@ function AlbumCard({
             {peopleCount > 1
               ? ` · ${countLabel(peopleCount, "person", "people")}`
               : ""}
+            {albumVisibility(album) === "public" ? " · Public" : ""}
           </p>
         </Link>
       </div>
@@ -508,15 +510,16 @@ function NewAlbumDialog({
   onCreate,
 }: {
   onCancel: () => void;
-  onCreate: (name: string) => Promise<void>;
+  onCreate: (name: string, visibility: AlbumVisibility) => Promise<void>;
 }) {
   const [name, setName] = useState("");
+  const [visibility, setVisibility] = useState<AlbumVisibility>("private");
   const [saving, setSaving] = useState(false);
 
   async function save() {
     if (!name.trim() || saving) return;
     setSaving(true);
-    await onCreate(name.trim());
+    await onCreate(name.trim(), visibility);
   }
 
   return (
@@ -532,6 +535,37 @@ function NewAlbumDialog({
           placeholder="Title"
           className={DIALOG_INPUT}
         />
+        <div className="mt-4 flex items-center gap-0.5 rounded-full bg-[rgba(20,22,26,0.05)] p-[3px]">
+          <button
+            type="button"
+            aria-pressed={visibility === "private"}
+            onClick={() => setVisibility("private")}
+            className={`flex-1 rounded-full px-4 py-1.5 text-[13px] transition-colors duration-150 ${
+              visibility === "private"
+                ? "bg-white font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)]"
+                : "text-[#4A4F57] hover:text-[#14161A]"
+            }`}
+          >
+            Private
+          </button>
+          <button
+            type="button"
+            aria-pressed={visibility === "public"}
+            onClick={() => setVisibility("public")}
+            className={`flex-1 rounded-full px-4 py-1.5 text-[13px] transition-colors duration-150 ${
+              visibility === "public"
+                ? "bg-white font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)]"
+                : "text-[#4A4F57] hover:text-[#14161A]"
+            }`}
+          >
+            Public
+          </button>
+        </div>
+        <p className="mt-2 text-[13px] leading-[18px] text-[#6B7178]">
+          {visibility === "private"
+            ? "Only you and people you invite can see and contribute."
+            : "Anyone who opens your profile can view it. Only invitees can contribute."}
+        </p>
         <div className="mt-5 flex items-center justify-end gap-2">
           <button onClick={onCancel} className={DIALOG_CANCEL}>
             Cancel

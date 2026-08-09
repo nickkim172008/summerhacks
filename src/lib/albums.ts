@@ -15,15 +15,29 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { Album, Place } from "./types";
+import type { Album, AlbumVisibility, Place } from "./types";
 
 /** Albums predate sharing, so a missing memberIds still means "just the owner". */
 export function albumMemberIds(album: Album): string[] {
   return album.memberIds?.length ? album.memberIds : [album.ownerId];
 }
 
+/** Older journeys have no field; treat them as private. */
+export function albumVisibility(album: Album): AlbumVisibility {
+  return album.visibility === "public" ? "public" : "private";
+}
+
 export function canEditAlbum(album: Album, uid: string | undefined): boolean {
   return Boolean(uid) && albumMemberIds(album).includes(uid as string);
+}
+
+/** Owner, collaborator, pending invitee, or a public journey anyone may open. */
+export function canViewAlbum(album: Album, uid: string | undefined): boolean {
+  if (!uid) return false;
+  if (albumVisibility(album) === "public") return true;
+  if (album.ownerId === uid) return true;
+  if (albumMemberIds(album).includes(uid)) return true;
+  return Boolean(album.pendingMemberIds?.includes(uid));
 }
 
 function sortByCreatedDesc(albums: Album[]) {
@@ -54,6 +68,34 @@ export function subscribeToAlbumsByOwner(
   onError?: (error: Error) => void,
 ) {
   const q = query(collection(db, "albums"), where("ownerId", "==", ownerId));
+  return onSnapshot(
+    q,
+    (snap) => {
+      onChange(
+        sortByCreatedDesc(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Album),
+        ),
+      );
+    },
+    onError,
+  );
+}
+
+/**
+ * Journeys the owner has marked public — what strangers see on a profile.
+ * Private ones never enter this query, which is what lets the rules refuse
+ * a mixed ownerId scan once private reads are locked down.
+ */
+export function subscribeToPublicAlbumsByOwner(
+  ownerId: string,
+  onChange: (albums: Album[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const q = query(
+    collection(db, "albums"),
+    where("ownerId", "==", ownerId),
+    where("visibility", "==", "public"),
+  );
   return onSnapshot(
     q,
     (snap) => {
@@ -183,6 +225,7 @@ export function subscribeToAlbum(
 export async function createAlbum(
   name: string,
   ownerId: string,
+  visibility: AlbumVisibility = "private",
 ): Promise<string> {
   const albumRef = doc(collection(db, "albums"));
   await setDoc(albumRef, {
@@ -190,6 +233,7 @@ export async function createAlbum(
     ownerId,
     memberIds: [ownerId],
     placeIds: [],
+    visibility,
     createdAt: serverTimestamp(),
   });
   return albumRef.id;
@@ -202,6 +246,13 @@ export async function renameAlbum(
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Name can’t be empty.");
   await updateDoc(doc(db, "albums", albumId), { name: trimmed });
+}
+
+export async function updateAlbumVisibility(
+  albumId: string,
+  visibility: AlbumVisibility,
+): Promise<void> {
+  await updateDoc(doc(db, "albums", albumId), { visibility });
 }
 
 /**
@@ -302,6 +353,36 @@ export async function addPlacesToAlbum(albumId: string, placeIds: string[]) {
   await updateDoc(doc(db, "albums", albumId), {
     placeIds: arrayUnion(...placeIds),
   });
+  // Stamp the journey onto each place so collaborators can edit location
+  // without a collection query in security rules.
+  await Promise.all(
+    placeIds.map((placeId) =>
+      updateDoc(doc(db, "places", placeId), {
+        albumIds: arrayUnion(albumId),
+      }).catch(() => {
+        // Place may already be linked, or rules may refuse a rare edge case —
+        // the album membership itself still stands.
+      }),
+    ),
+  );
+}
+
+/**
+ * Ensures every place in the journey carries this albumId. Safe to call on
+ * open: only adds the link, and only for captures the journey still holds.
+ */
+export async function ensurePlacesLinkedToAlbum(
+  albumId: string,
+  placeIds: string[],
+) {
+  if (placeIds.length === 0) return;
+  await Promise.all(
+    placeIds.map((placeId) =>
+      updateDoc(doc(db, "places", placeId), {
+        albumIds: arrayUnion(albumId),
+      }).catch(() => {}),
+    ),
+  );
 }
 
 /**

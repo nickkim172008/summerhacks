@@ -36,14 +36,17 @@ export function sortPlacesNewestFirst(places: Place[]) {
   });
 }
 
-/** Date only — no time of day on tiles. */
+/** Date + time with AM/PM for tile hover captions. */
 export function formatPlaceDate(place: Place): string | null {
   const ms = placeTakenMs(place);
   if (!ms) return null;
-  return new Date(ms).toLocaleDateString(undefined, {
+  return new Date(ms).toLocaleString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
   });
 }
 
@@ -326,5 +329,20 @@ export async function updatePlaceDetails(placeId: string, edits: PlaceEdits) {
     ...(edits.thumbnailUrl === undefined
       ? {}
       : { thumbnailUrl: edits.thumbnailUrl }),
+  });
+}
+
+/** Location pin only — what shared-journey collaborators are allowed to change. */
+export async function updatePlaceLocation(
+  placeId: string,
+  edits: {
+    locationName: string;
+    location: { lat: number; lng: number } | null;
+  },
+) {
+  const locationName = edits.locationName.trim();
+  await updateDoc(doc(db, "places", placeId), {
+    locationName: locationName || deleteField(),
+    location: edits.location ?? deleteField(),
   });
 }

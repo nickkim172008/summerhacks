@@ -11,12 +11,15 @@ import {
 } from "@/lib/places";
 import {
   addPlacesToAlbum,
+  albumVisibility,
   canEditAlbum,
+  ensurePlacesLinkedToAlbum,
   removePlacesFromAlbum,
   resolveAlbumPlaces,
   subscribeToAlbum,
   subscribeToAlbumsByOwner,
   updateAlbumCover,
+  updateAlbumVisibility,
 } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
@@ -53,6 +56,7 @@ export default function AlbumPage({
   const [showPicker, setShowPicker] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState<Place | null>(null);
+  const [editingLocationOnly, setEditingLocationOnly] = useState(false);
   const [trashing, setTrashing] = useState<Place | null>(null);
   // Recents belongs to no album, so filing a capture from there needs the
   // whole list to choose from.
@@ -84,9 +88,10 @@ export default function AlbumPage({
 
   useEffect(() => {
     if (isRecents || !user) return;
-    return subscribeToAlbum(albumId, setAlbum, () =>
-      setError("Couldn’t load this journey."),
-    );
+    return subscribeToAlbum(albumId, setAlbum, () => {
+      setAlbum(null);
+      setError("This journey is private, or it doesn’t exist.");
+    });
   }, [albumId, isRecents, user]);
 
   // Whose captures to load: Recents is always the signed-in account, and a
@@ -117,6 +122,16 @@ export default function AlbumPage({
     if (!isFirebaseConfigured || !user || !isRecents) return;
     return subscribeToAlbumsByOwner(user.uid, setOwnAlbums);
   }, [user, isRecents]);
+
+  // Older places predate albumIds; stamp this journey on so collaborators can
+  // edit location under the new rules.
+  useEffect(() => {
+    if (isRecents || !album || !user) return;
+    if (!canEditAlbum(album, user.uid)) return;
+    const ids = album.placeIds ?? [];
+    if (ids.length === 0) return;
+    void ensurePlacesLinkedToAlbum(album.id, ids);
+  }, [album, isRecents, user]);
 
   const albumPlaces = useMemo(() => {
     if (isRecents) return places;
@@ -212,6 +227,7 @@ export default function AlbumPage({
                 {readyPlaces.length === 1 ? "place" : "places"}
                 {whereabouts && ` · ${whereabouts}`}
                 {span && ` · ${span}`}
+                {album && ` · ${albumVisibility(album) === "public" ? "Public" : "Private"}`}
               </p>
             )}
 
@@ -284,16 +300,19 @@ export default function AlbumPage({
                       </button>
                     )}
                     {album && user?.uid === album.ownerId && (
-                      <CoverControls
-                        albumId={album.id}
-                        hasCover={Boolean(album.coverUrl)}
-                      />
+                      <>
+                        <VisibilityToggle album={album} />
+                        <CoverControls
+                          albumId={album.id}
+                          hasCover={Boolean(album.coverUrl)}
+                        />
+                      </>
                     )}
                   </div>
                 )}
               </div>
 
-              {!isRecents && album && user && (
+              {!isRecents && album && user && canEdit && (
                 <div className="ml-2 min-w-0">
                   <AlbumMembers album={album} viewerId={user.uid} />
                 </div>
@@ -329,14 +348,14 @@ export default function AlbumPage({
               >
                 Capture a Place
               </Link>
-            ) : (
+            ) : canEdit ? (
               <button
                 onClick={() => setShowPicker(true)}
                 className="mt-3 inline-flex h-10 items-center rounded-full bg-[#14161A] px-5 text-[15px] font-medium text-white transition hover:bg-[#2B2F36]"
               >
                 Add Places
               </button>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -369,8 +388,16 @@ export default function AlbumPage({
                   href={`/place/${place.id}?album=${albumId}`}
                   onEdit={
                     place.uploaderId === user?.uid
-                      ? () => setEditing(place)
-                      : undefined
+                      ? () => {
+                          setEditingLocationOnly(false);
+                          setEditing(place);
+                        }
+                      : canEdit
+                        ? () => {
+                            setEditingLocationOnly(true);
+                            setEditing(place);
+                          }
+                        : undefined
                   }
                   // Recents is a view of everything, not an album, so there is
                   // nothing there to be removed from.
@@ -451,7 +478,11 @@ export default function AlbumPage({
       {editing && (
         <PlaceDetailsEditor
           place={editing}
-          onClose={() => setEditing(null)}
+          locationOnly={editingLocationOnly}
+          onClose={() => {
+            setEditing(null);
+            setEditingLocationOnly(false);
+          }}
           onSaved={() => {}}
         />
       )}
@@ -468,6 +499,62 @@ export default function AlbumPage({
         />
       )}
     </main>
+  );
+}
+
+function VisibilityToggle({ album }: { album: Album }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const current = albumVisibility(album);
+
+  async function setVisibility(next: "private" | "public") {
+    if (busy || next === current) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await updateAlbumVisibility(album.id, next);
+    } catch {
+      setError("Couldn’t update visibility.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-1.5 border-t border-[rgba(20,22,26,0.09)] px-4 pb-1 pt-2.5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B7178]">
+        Who can see this
+      </p>
+      <div className="mt-2 flex items-center gap-0.5 rounded-full bg-[rgba(20,22,26,0.05)] p-[3px]">
+        <button
+          type="button"
+          disabled={busy}
+          aria-pressed={current === "private"}
+          onClick={() => setVisibility("private")}
+          className={`flex-1 rounded-full px-3 py-1 text-[13px] transition-colors duration-150 disabled:opacity-40 ${
+            current === "private"
+              ? "bg-white font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)]"
+              : "text-[#4A4F57] hover:text-[#14161A]"
+          }`}
+        >
+          Private
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          aria-pressed={current === "public"}
+          onClick={() => setVisibility("public")}
+          className={`flex-1 rounded-full px-3 py-1 text-[13px] transition-colors duration-150 disabled:opacity-40 ${
+            current === "public"
+              ? "bg-white font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)]"
+              : "text-[#4A4F57] hover:text-[#14161A]"
+          }`}
+        >
+          Public
+        </button>
+      </div>
+      {error && <p className="mt-1.5 text-[13px] text-[#C0362C]">{error}</p>}
+    </div>
   );
 }
 

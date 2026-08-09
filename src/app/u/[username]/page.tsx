@@ -4,7 +4,12 @@ import { use, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuthProfile } from "@/lib/auth";
-import { subscribeToAlbumsByOwner } from "@/lib/albums";
+import {
+  albumVisibility,
+  resolveAlbumPlaces,
+  subscribeToAlbumsByOwner,
+  subscribeToPublicAlbumsByOwner,
+} from "@/lib/albums";
 import { subscribeToPlacesByUploader } from "@/lib/places";
 import {
   BIO_MAX_LENGTH,
@@ -26,7 +31,6 @@ import {
 } from "@/lib/follows";
 import PlaceThumb from "@/components/PlaceThumb";
 import AlbumCover from "@/components/AlbumCover";
-import { resolveAlbumPlaces } from "@/lib/albums";
 import { canOptimizeImage } from "@/lib/imageHosts";
 import { formatPlaceDate } from "@/lib/places";
 import type { Album, Place, Profile } from "@/lib/types";
@@ -74,7 +78,10 @@ export default function ProfilePage({
     }
     setAlbumsError(null);
     setPlacesError(null);
-    const unsubAlbums = subscribeToAlbumsByOwner(profile.id, setAlbums, () => {
+    const viewingOwn = Boolean(user && user.uid === profile.id);
+    const unsubAlbums = (
+      viewingOwn ? subscribeToAlbumsByOwner : subscribeToPublicAlbumsByOwner
+    )(profile.id, setAlbums, () => {
       setAlbums([]);
       setAlbumsError("Couldn’t load journeys (check Firestore rules).");
     });
@@ -94,7 +101,7 @@ export default function ProfilePage({
       unsubFollowers();
       unsubFollowing();
     };
-  }, [profile]);
+  }, [profile, user]);
 
   const placeById = useMemo(
     () => new Map((places ?? []).map((p) => [p.id, p])),
@@ -248,6 +255,9 @@ export default function ProfilePage({
                             </p>
                             <p className="mt-0.5 text-[13px] text-[#6B7178] tabular-nums">
                               {count} {count === 1 ? "place" : "places"}
+                              {/* Only the owner needs telling which of their
+                                  journeys a stranger can already see. */}
+                              {isOwn ? ` · ${albumVisibility(album) === "public" ? "Public" : "Private"}` : ""}
                             </p>
                           </Link>
                         </li>

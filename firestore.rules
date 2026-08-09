@@ -41,7 +41,17 @@ service cloud.firestore {
       return request.resource.data.name == resource.data.name
              && request.resource.data.placeIds == resource.data.placeIds
              && request.resource.data.get('coverUrl', null)
-                == resource.data.get('coverUrl', null);
+                == resource.data.get('coverUrl', null)
+             && request.resource.data.get('visibility', 'private')
+                == resource.data.get('visibility', 'private');
+    }
+
+    function canReadAlbum() {
+      return signedIn()
+             && (resource.data.ownerId == request.auth.uid
+                 || request.auth.uid in resource.data.get('memberIds', [])
+                 || request.auth.uid in resource.data.get('pendingMemberIds', [])
+                 || resource.data.get('visibility', 'private') == 'public');
     }
 
     function acceptingOwnInvite() {
@@ -85,6 +95,67 @@ service cloud.firestore {
       return signedIn() && resource.data.uploaderId == request.auth.uid;
     }
 
+    // A journey member may edit location on a place that journey still holds.
+    // albumIds on the place is the index; membership is read off each album.
+    function memberOfAlbumWithPlace(albumId, id) {
+      let album = get(/databases/$(database)/documents/albums/$(albumId)).data;
+      return id in album.get('placeIds', [])
+             && (request.auth.uid == album.ownerId
+                 || request.auth.uid in album.get('memberIds', []));
+    }
+
+    function memberOfListedAlbumContainingPlace(id) {
+      let ids = resource.data.get('albumIds', []);
+      return (ids.size() > 0 && memberOfAlbumWithPlace(ids[0], id))
+             || (ids.size() > 1 && memberOfAlbumWithPlace(ids[1], id))
+             || (ids.size() > 2 && memberOfAlbumWithPlace(ids[2], id))
+             || (ids.size() > 3 && memberOfAlbumWithPlace(ids[3], id))
+             || (ids.size() > 4 && memberOfAlbumWithPlace(ids[4], id));
+    }
+
+    // Collaborators may correct where a capture sits — not rename it, replace
+    // its splat, trash it, or rewrite which journeys it belongs to.
+    function collaboratorLocationEdit(id) {
+      return signedIn()
+             && !ownsPlace()
+             && memberOfListedAlbumContainingPlace(id)
+             && request.resource.data.uploaderId == resource.data.uploaderId
+             && request.resource.data.name == resource.data.name
+             && request.resource.data.splatUrl == resource.data.splatUrl
+             && request.resource.data.createdAt == resource.data.createdAt
+             && request.resource.data.get('thumbnailUrl', '')
+                == resource.data.get('thumbnailUrl', '')
+             && request.resource.data.get('audioUrl', null)
+                == resource.data.get('audioUrl', null)
+             && request.resource.data.get('audioSeconds', null)
+                == resource.data.get('audioSeconds', null)
+             && request.resource.data.get('deletedAt', null)
+                == resource.data.get('deletedAt', null)
+             && request.resource.data.get('entryPoint', null)
+                == resource.data.get('entryPoint', null)
+             && request.resource.data.get('capturedAt', null)
+                == resource.data.get('capturedAt', null)
+             && request.resource.data.get('albumIds', [])
+                == resource.data.get('albumIds', []);
+    }
+
+    // Members (and owners) may stamp albumIds onto places the journey holds,
+    // so older captures pick up the link collaborators need for location edits.
+    function linkingAlbumIds(id) {
+      let next = request.resource.data.get('albumIds', []);
+      let prev = resource.data.get('albumIds', []);
+      return signedIn()
+             && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['albumIds'])
+             && request.resource.data.uploaderId == resource.data.uploaderId
+             && next.hasAll(prev)
+             && (next.size() == 0 || memberOfAlbumWithPlace(next[0], id))
+             && (next.size() <= 1 || memberOfAlbumWithPlace(next[1], id))
+             && (next.size() <= 2 || memberOfAlbumWithPlace(next[2], id))
+             && (next.size() <= 3 || memberOfAlbumWithPlace(next[3], id))
+             && (next.size() <= 4 || memberOfAlbumWithPlace(next[4], id));
+    }
+
     // Profiles remain discoverable to authenticated users, but only the
     // account owner can create or edit their profile.
     match /profiles/{userId} {
@@ -104,22 +175,21 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Readable by any signed-in account so profiles and the map can show other
-    // people's work — following someone is pointless if their captures are
-    // invisible. Writing stays owner-only.
-    // Collaborators may fill an album but not take it over: only the owner
-    // changes who else is on it, and ownerId is frozen for everyone, so a
-    // member cannot promote themselves and then evict the person who made it.
-    // Deleting stays with the owner alone.
+    // Private journeys stay with the owner, members, and pending invitees.
+    // Public ones are readable by anyone signed in (e.g. from a profile) but
+    // collaborating still requires membership. Writing stays owner/member
+    // scoped as before; only the owner may flip visibility.
     match /albums/{albumId} {
       allow create: if signedIn()
-                    && request.resource.data.ownerId == request.auth.uid;
-      allow read: if signedIn();
+                    && request.resource.data.ownerId == request.auth.uid
+                    && request.resource.data.visibility in ['private', 'public'];
+      allow read: if canReadAlbum();
       allow delete: if ownsAlbum();
-      // Owner manages membership and invites. Members may edit content but
-      // not who else is on the album — except leaving themselves. A pending
-      // invitee may only accept or decline for themselves — they are not in
-      // memberIds yet, so editsAlbum is false.
+      // Owner manages membership, invites, and visibility. Members may edit
+      // content but not who else is on the album — except leaving themselves —
+      // and may not change visibility. A pending invitee may only accept or
+      // decline for themselves — they are not in memberIds yet, so editsAlbum
+      // is false.
       allow update: if request.resource.data.ownerId == resource.data.ownerId
                     && (ownsAlbum()
                         || acceptingOwnInvite()
@@ -128,6 +198,8 @@ service cloud.firestore {
                         || (editsAlbum()
                             && nextMemberIds() == albumMemberIds()
                             && nextPendingIds() == albumPendingIds()
+                            && request.resource.data.get('visibility', 'private')
+                               == resource.data.get('visibility', 'private')
                             && request.resource.data.get('memberAddedAt', {})
                                == resource.data.get('memberAddedAt', {})
                             && request.resource.data.get('invitePendingAt', {})
@@ -139,9 +211,11 @@ service cloud.firestore {
                     && request.resource.data.uploaderId == request.auth.uid;
       allow read: if signedIn();
       allow delete: if ownsPlace();
-      allow update: if ownsPlace()
-                    && request.resource.data.uploaderId
-                       == resource.data.uploaderId;
+      allow update: if (ownsPlace()
+                        && request.resource.data.uploaderId
+                           == resource.data.uploaderId)
+                    || collaboratorLocationEdit(placeId)
+                    || linkingAlbumIds(placeId);
 
       match /audioPins/{pinId} {
         allow read, create, update, delete: if signedIn()
