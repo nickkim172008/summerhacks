@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "albums",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

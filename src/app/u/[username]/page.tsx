@@ -4,7 +4,12 @@ import { use, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuthProfile } from "@/lib/auth";
-import { subscribeToAlbumsByOwner } from "@/lib/albums";
+import {
+  albumVisibility,
+  resolveAlbumPlaces,
+  subscribeToAlbumsByOwner,
+  subscribeToPublicAlbumsByOwner,
+} from "@/lib/albums";
 import { subscribeToPlacesByUploader } from "@/lib/places";
 import {
   BIO_MAX_LENGTH,
@@ -26,7 +31,6 @@ import {
 } from "@/lib/follows";
 import PlaceThumb from "@/components/PlaceThumb";
 import AlbumCover from "@/components/AlbumCover";
-import { resolveAlbumPlaces } from "@/lib/albums";
 import { canOptimizeImage } from "@/lib/imageHosts";
 import { formatPlaceDate } from "@/lib/places";
 import type { Album, Place, Profile } from "@/lib/types";
@@ -63,7 +67,10 @@ export default function ProfilePage({
     }
     setAlbumsError(null);
     setPlacesError(null);
-    const unsubAlbums = subscribeToAlbumsByOwner(profile.id, setAlbums, () => {
+    const viewingOwn = Boolean(user && user.uid === profile.id);
+    const unsubAlbums = (
+      viewingOwn ? subscribeToAlbumsByOwner : subscribeToPublicAlbumsByOwner
+    )(profile.id, setAlbums, () => {
       setAlbums([]);
       setAlbumsError("Couldn’t load journeys (check Firestore rules).");
     });
@@ -83,7 +90,7 @@ export default function ProfilePage({
       unsubFollowers();
       unsubFollowing();
     };
-  }, [profile]);
+  }, [profile, user]);
 
   const placeById = useMemo(
     () => new Map((places ?? []).map((p) => [p.id, p])),
@@ -195,6 +202,12 @@ export default function ProfilePage({
                         </p>
                         <p className="text-sm text-neutral-500">
                           {album.placeIds?.length ?? 0}
+                          {isOwn && albumVisibility(album) === "public"
+                            ? " · Public"
+                            : ""}
+                          {isOwn && albumVisibility(album) === "private"
+                            ? " · Private"
+                            : ""}
                         </p>
                       </Link>
                     </li>

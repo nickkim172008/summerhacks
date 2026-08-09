@@ -40,6 +40,9 @@ export interface Place {
   albumIds?: string[];
 }
 
+/** Who may see a journey outside its members. Missing means private. */
+export type AlbumVisibility = "private" | "public";
+
 /** A user-created collection of places, shown like an Apple Photos album. */
 export interface Album {
   id: string;
@@ -64,6 +67,12 @@ export interface Album {
   pendingMemberIds?: string[];
   /** When each pending invite was sent, keyed by uid. */
   invitePendingAt?: Record<string, Timestamp>;
+  /**
+   * private — owner and collaborators only.
+   * public — anyone signed in may open it from the owner's profile; they cannot
+   * collaborate unless invited. Absent on older albums means private.
+   */
+  visibility?: AlbumVisibility;
   placeIds: string[];
   createdAt: Timestamp;
   /**

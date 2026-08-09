@@ -11,6 +11,7 @@ import {
 } from "@/lib/places";
 import {
   addPlacesToAlbum,
+  albumVisibility,
   canEditAlbum,
   ensurePlacesLinkedToAlbum,
   removePlacesFromAlbum,
@@ -18,6 +19,7 @@ import {
   subscribeToAlbum,
   subscribeToAlbumsByOwner,
   updateAlbumCover,
+  updateAlbumVisibility,
 } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
@@ -86,9 +88,10 @@ export default function AlbumPage({
 
   useEffect(() => {
     if (isRecents || !user) return;
-    return subscribeToAlbum(albumId, setAlbum, () =>
-      setError("Couldn’t load this journey."),
-    );
+    return subscribeToAlbum(albumId, setAlbum, () => {
+      setAlbum(null);
+      setError("This journey is private, or it doesn’t exist.");
+    });
   }, [albumId, isRecents, user]);
 
   // Whose captures to load: Recents is always the signed-in account, and a
@@ -243,7 +246,15 @@ export default function AlbumPage({
                 ? error
                 : loading
                   ? "Loading…"
-                  : `${readyPlaces.length} ${readyPlaces.length === 1 ? "place" : "places"}`}
+                  : `${readyPlaces.length} ${
+                      readyPlaces.length === 1 ? "place" : "places"
+                    }${
+                      album
+                        ? albumVisibility(album) === "public"
+                          ? " · Public"
+                          : " · Private"
+                        : ""
+                    }`}
             </p>
             {/* Recents is a view of everything rather than an album, so there
                 is no story through it to walk — and no album name to head one
@@ -263,15 +274,18 @@ export default function AlbumPage({
               </Link>
             )}
             {album && user?.uid === album.ownerId && (
-              <CoverControls
-                albumId={album.id}
-                hasCover={Boolean(album.coverUrl)}
-              />
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <VisibilityToggle album={album} />
+                <CoverControls
+                  albumId={album.id}
+                  hasCover={Boolean(album.coverUrl)}
+                />
+              </div>
             )}
           </div>
         </div>
 
-        {!isRecents && album && user && (
+        {!isRecents && album && user && canEdit && (
           <AlbumMembers album={album} viewerId={user.uid} />
         )}
 
@@ -297,14 +311,14 @@ export default function AlbumPage({
               >
                 Capture a Place
               </Link>
-            ) : (
+            ) : canEdit ? (
               <button
                 onClick={() => setShowPicker(true)}
                 className="mt-3 rounded-full bg-[#0071e3] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#0077ed]"
               >
                 Add Places
               </button>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -439,6 +453,57 @@ export default function AlbumPage({
   );
 }
 
+function VisibilityToggle({ album }: { album: Album }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const current = albumVisibility(album);
+
+  async function setVisibility(next: "private" | "public") {
+    if (busy || next === current) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await updateAlbumVisibility(album.id, next);
+    } catch {
+      setError("Couldn’t update visibility.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="inline-flex rounded-full bg-neutral-100 p-0.5 text-[12px] font-medium">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setVisibility("private")}
+          className={`rounded-full px-3 py-1 transition disabled:opacity-40 ${
+            current === "private"
+              ? "bg-white text-[#1d1d1f] shadow-sm"
+              : "text-neutral-500"
+          }`}
+        >
+          Private
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setVisibility("public")}
+          className={`rounded-full px-3 py-1 transition disabled:opacity-40 ${
+            current === "public"
+              ? "bg-white text-[#1d1d1f] shadow-sm"
+              : "text-neutral-500"
+          }`}
+        >
+          Public
+        </button>
+      </div>
+      {error && <p className="mt-1 text-[12px] text-red-500">{error}</p>}
+    </div>
+  );
+}
+
 /**
  * Choosing a cover, or giving one back. Nothing is staged: the album is on a
  * live snapshot, so the tile beside these buttons redraws itself as soon as the
@@ -472,7 +537,7 @@ function CoverControls({
   }
 
   return (
-    <div className="mt-3">
+    <div>
       <input
         ref={inputRef}
         type="file"

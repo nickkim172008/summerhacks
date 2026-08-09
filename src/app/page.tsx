@@ -8,6 +8,7 @@ import {
   subscribeToPlacesByUploader,
 } from "@/lib/places";
 import {
+  albumVisibility,
   createAlbum,
   deleteAlbum,
   leaveAlbum,
@@ -21,7 +22,7 @@ import { useAuthProfile } from "@/lib/auth";
 import AlbumCover from "@/components/AlbumCover";
 import AlbumCollaborators from "@/components/AlbumCollaborators";
 import TileMenu, { type TileMenuItem } from "@/components/TileMenu";
-import type { Album, Place } from "@/lib/types";
+import type { Album, AlbumVisibility, Place } from "@/lib/types";
 
 export default function AlbumsPage() {
   const router = useRouter();
@@ -202,8 +203,8 @@ export default function AlbumsPage() {
       {showNewAlbum && user && (
         <NewAlbumDialog
           onCancel={() => setShowNewAlbum(false)}
-          onCreate={async (name) => {
-            const id = await createAlbum(name, user.uid);
+          onCreate={async (name, visibility) => {
+            const id = await createAlbum(name, user.uid, visibility);
             setShowNewAlbum(false);
             router.push(`/album/${id}`);
           }}
@@ -341,6 +342,7 @@ function AlbumCard({
           <p className="truncate text-[15px] font-medium">{album.name}</p>
           <p className="text-sm text-neutral-500">
             {album.placeIds?.length ?? 0}
+            {albumVisibility(album) === "public" ? " · Public" : ""}
           </p>
         </Link>
       </div>
@@ -367,15 +369,16 @@ function NewAlbumDialog({
   onCreate,
 }: {
   onCancel: () => void;
-  onCreate: (name: string) => Promise<void>;
+  onCreate: (name: string, visibility: AlbumVisibility) => Promise<void>;
 }) {
   const [name, setName] = useState("");
+  const [visibility, setVisibility] = useState<AlbumVisibility>("private");
   const [saving, setSaving] = useState(false);
 
   async function save() {
     if (!name.trim() || saving) return;
     setSaving(true);
-    await onCreate(name.trim());
+    await onCreate(name.trim(), visibility);
   }
 
   return (
@@ -394,6 +397,35 @@ function NewAlbumDialog({
             placeholder="Title"
             className="mt-3 w-full rounded-lg border border-black/10 bg-neutral-50 px-3 py-1.5 text-[15px] outline-none focus:border-[#0071e3]"
           />
+          <div className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-neutral-100 p-1">
+            <button
+              type="button"
+              onClick={() => setVisibility("private")}
+              className={`rounded-md px-2 py-1.5 text-[13px] font-medium transition ${
+                visibility === "private"
+                  ? "bg-white text-[#1d1d1f] shadow-sm"
+                  : "text-neutral-500"
+              }`}
+            >
+              Private
+            </button>
+            <button
+              type="button"
+              onClick={() => setVisibility("public")}
+              className={`rounded-md px-2 py-1.5 text-[13px] font-medium transition ${
+                visibility === "public"
+                  ? "bg-white text-[#1d1d1f] shadow-sm"
+                  : "text-neutral-500"
+              }`}
+            >
+              Public
+            </button>
+          </div>
+          <p className="mt-2 text-[12px] leading-snug text-neutral-500">
+            {visibility === "private"
+              ? "Only you and people you invite can see and contribute."
+              : "Anyone who opens your profile can view it. Only invitees can contribute."}
+          </p>
         </div>
         <div className="grid grid-cols-2 divide-x divide-black/10 border-t border-black/10 text-[17px]">
           <button
