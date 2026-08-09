@@ -17,28 +17,28 @@ const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
 import { subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useLiveLocation } from "@/lib/geolocation";
-import {
-  DEMO_MAP_PLACES,
-  DEMO_PERSONAL_PLACE_IDS,
-} from "@/lib/demoMapData";
-import { placesWithLocation } from "@/lib/maps";
-import { subscribeToPlacesByUploader } from "@/lib/places";
+import { useResolvedPlaces } from "@/lib/geocode";
+import { subscribeToPlaces, subscribeToPlacesByUploader } from "@/lib/places";
 import type { Album, Place } from "@/lib/types";
-
-type LocatedPlace = Place & { location: { lat: number; lng: number } };
 
 type Scope =
   | { kind: "public" }
   | { kind: "personal" }
   | { kind: "album"; albumId: string };
 
+const NO_ALBUMS: Album[] = [];
+const PUBLIC_SCOPE: Scope = { kind: "public" };
+
 export default function MapPage() {
   const router = useRouter();
   const { user, loading: authLoading, needsUsername } = useAuthProfile();
-  const [allPlaces, setAllPlaces] = useState<Place[] | null>(null);
-  const [albums, setAlbums] = useState<Album[]>([]);
-  const [scope, setScope] = useState<Scope>({ kind: "public" });
+  const [allPlaces, setAllPlaces] = useState<Place[] | null>(
+    isFirebaseConfigured ? null : [],
+  );
+  const [ownedAlbums, setOwnedAlbums] = useState<Album[]>([]);
+  const [requestedScope, setScope] = useState<Scope>(PUBLIC_SCOPE);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [libraryDenied, setLibraryDenied] = useState(false);
   const {
     location: liveLocation,
     error: liveError,
@@ -50,52 +50,55 @@ export default function MapPage() {
   }, [authLoading, needsUsername, router]);
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !user) {
-      setAllPlaces([]);
-      return;
-    }
-    return subscribeToPlacesByUploader(user.uid, setAllPlaces);
-  }, [user]);
-
-  useEffect(() => {
     if (!isFirebaseConfigured) return;
-    if (user) {
-      return subscribeToAlbumsByOwner(user.uid, setAlbums);
-    }
-    setAlbums([]);
+    // Public is every environment. Rules may refuse a library-wide read, which
+    // the next effect answers by narrowing to this account's own captures.
+    return subscribeToPlaces(setAllPlaces, () => setLibraryDenied(true));
+  }, []);
+
+  useEffect(() => {
+    if (!libraryDenied || !user) return;
+    return subscribeToPlacesByUploader(user.uid, setAllPlaces);
+  }, [libraryDenied, user]);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured || !user) return;
+    return subscribeToAlbumsByOwner(user.uid, setOwnedAlbums);
   }, [user]);
 
-  // Personal requires sign-in; fall back if they sign out mid-session.
-  useEffect(() => {
-    if (!user && (scope.kind === "personal" || scope.kind === "album")) {
-      setScope({ kind: "public" });
-    }
-  }, [user, scope.kind]);
+  // Gated on the signed-in user rather than cleared on sign-out, so the last
+  // account's albums can never linger.
+  const albums = user ? ownedAlbums : NO_ALBUMS;
 
-  const filtered = useMemo((): LocatedPlace[] => {
-    const real = placesWithLocation(allPlaces ?? []);
-    // Seed Toronto demo points so the heatmap isn’t empty before real GPS data.
-    const publicPool = mergePlaces(real, placesWithLocation(DEMO_MAP_PLACES));
+  // Personal and album scopes need a signed-in user, so signing out mid-session
+  // falls back rather than leaving the map showing a scope it cannot resolve.
+  const scope = user ? requestedScope : PUBLIC_SCOPE;
 
-    if (scope.kind === "public") return publicPool;
+  // Which places the chosen scope covers. Personal is every album's contents
+  // taken together, so it is the union of the album views rather than a
+  // separate idea of ownership.
+  const inScope = useMemo((): Place[] => {
+    const places = allPlaces ?? [];
+    if (scope.kind === "public") return places;
     if (!user) return [];
+
+    const byId = new Map(places.map((place) => [place.id, place]));
+    const collect = (ids: string[]) =>
+      ids.map((id) => byId.get(id)).filter((p): p is Place => Boolean(p));
+
     if (scope.kind === "personal") {
-      const mine = real.filter((p) => p.uploaderId === user.uid);
-      const demoPersonal = placesWithLocation(DEMO_MAP_PLACES).filter((p) =>
-        DEMO_PERSONAL_PLACE_IDS.has(p.id),
+      const everyAlbumsPlaces = collect(
+        albums.flatMap((album) => album.placeIds ?? []),
       );
-      return mergePlaces(mine, demoPersonal);
+      // Dedupe: one place can sit in several albums.
+      return [...new Map(everyAlbumsPlaces.map((p) => [p.id, p])).values()];
     }
+
     const album = albums.find((a) => a.id === scope.albumId);
-    if (!album) return [];
-    const ids = new Set(album.placeIds ?? []);
-    const inAlbum = real.filter((p) => ids.has(p.id));
-    return inAlbum.length > 0
-      ? inAlbum
-      : placesWithLocation(DEMO_MAP_PLACES).filter((p) =>
-          DEMO_PERSONAL_PLACE_IDS.has(p.id),
-        );
+    return album ? collect(album.placeIds ?? []) : [];
   }, [allPlaces, albums, scope, user]);
+
+  const { located, pending, byName, unplaceable } = useResolvedPlaces(inScope);
 
   const scopeLabel =
     scope.kind === "public"
@@ -120,9 +123,11 @@ export default function MapPage() {
               <p className="text-[13px] font-semibold">Heatmap scope</p>
               <p className="mt-0.5 text-[12px] text-neutral-500">
                 {scopeLabel}
-                {` · ${filtered.length} spots`}
+                {` · ${located.length} on the map`}
+                {byName > 0 && ` · ${byName} placed by name`}
+                {pending > 0 && ` · ${pending} resolving…`}
+                {unplaceable > 0 && ` · ${unplaceable} without a location`}
                 {liveLoading && " · locating…"}
-                {liveLocation && !liveLoading && " · live location on"}
                 {liveError && " · location off"}
               </p>
             </div>
@@ -143,7 +148,7 @@ export default function MapPage() {
                   setScope({ kind: "personal" });
                 }}
                 title="Personal"
-                subtitle={user ? "Only yours" : "Sign in required"}
+                subtitle={user ? "Every album combined" : "Sign in required"}
               />
 
               <p className="mb-1 mt-4 px-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
@@ -169,12 +174,8 @@ export default function MapPage() {
               {albums.map((album) => (
                 <FilterButton
                   key={album.id}
-                  active={
-                    scope.kind === "album" && scope.albumId === album.id
-                  }
-                  onClick={() =>
-                    setScope({ kind: "album", albumId: album.id })
-                  }
+                  active={scope.kind === "album" && scope.albumId === album.id}
+                  onClick={() => setScope({ kind: "album", albumId: album.id })}
                   title={album.name}
                   subtitle={`${album.placeIds?.length ?? 0} environments`}
                 />
@@ -185,10 +186,19 @@ export default function MapPage() {
 
         <section className="relative min-h-0 min-w-0 flex-1 pb-16">
           <PlacesMap
-            places={filtered}
+            places={located}
             liveLocation={liveLocation}
             className="absolute inset-0"
           />
+          {located.length === 0 && pending === 0 && (
+            <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center px-6">
+              <p className="max-w-xs rounded-2xl bg-white/95 px-4 py-3 text-center text-[13px] text-neutral-600 shadow-md ring-1 ring-black/10">
+                {inScope.length === 0
+                  ? "No environments in this scope yet."
+                  : `None of these ${inScope.length} environments say where they were filmed. Add a location when you capture one.`}
+              </p>
+            </div>
+          )}
           {(liveLoading || liveError) && (
             <div className="pointer-events-none absolute bottom-20 left-1/2 z-[1] max-w-sm -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-center text-[12px] text-neutral-600 shadow-md ring-1 ring-black/10">
               {liveError
@@ -198,14 +208,8 @@ export default function MapPage() {
           )}
         </section>
       </div>
-
     </main>
   );
-}
-
-function mergePlaces(real: LocatedPlace[], demo: LocatedPlace[]) {
-  const seen = new Set(real.map((p) => p.id));
-  return [...real, ...demo.filter((p) => !seen.has(p.id))];
 }
 
 function FilterButton({
@@ -229,7 +233,9 @@ function FilterButton({
       }`}
     >
       <p className="text-[14px] font-medium">{title}</p>
-      <p className={`text-[12px] ${active ? "text-white/80" : "text-neutral-500"}`}>
+      <p
+        className={`text-[12px] ${active ? "text-white/80" : "text-neutral-500"}`}
+      >
         {subtitle}
       </p>
     </button>
