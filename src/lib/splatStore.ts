@@ -72,11 +72,3 @@ export async function uploadProfilePhoto(
   return getDownloadURL(photoRef);
 }
 
-function extensionFor(file: Blob & { name?: string }) {
-  const fromName = file.name?.split(".").pop()?.toLowerCase();
-  if (fromName && /^[a-z0-9]{2,5}$/.test(fromName)) return fromName;
-  if (file.type === "video/quicktime") return "mov";
-  if (file.type === "video/webm") return "webm";
-  if (file.type === "video/mp4") return "mp4";
-  return "mp4";
-}

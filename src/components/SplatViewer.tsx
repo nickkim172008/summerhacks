@@ -40,6 +40,7 @@ export default function SplatViewer({
   const hotspotGroupRef = useRef<THREE.Group | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const [sceneRadius, setSceneRadius] = useState(1);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Latest-value refs so the animation loop and listeners never close over stale props.
   const placementModeRef = useRef(placementMode);
@@ -56,6 +57,8 @@ export default function SplatViewer({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    let mounted = true;
+    setLoadError(null);
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
@@ -77,8 +80,13 @@ export default function SplatViewer({
 
     const controls = new PivotControls(camera, renderer.domElement);
 
+    // Spark decodes in a worker created from a blob: URL, whose own location is
+    // that blob rather than the page. A root-relative splatUrl resolves against
+    // it into something unreachable, and the failure arrives as an uncaught
+    // "Failed to fetch" — a black canvas with nothing said. Absolute from here
+    // means a missing file at least fails as the 404 it is.
     const splat = new SplatMesh({
-      url: splatUrl,
+      url: new URL(splatUrl, window.location.href).href,
       onLoad: (mesh) => {
         // Captures arrive at arbitrary scale and centering, so work out where the
         // place actually is before standing the camera in it and setting the
@@ -117,6 +125,16 @@ export default function SplatViewer({
     splat.quaternion.set(1, 0, 0, 0);
     splat.updateMatrixWorld(true);
     scene.add(splat);
+
+    // The only handle on a load that never arrives: SplatMesh takes no onError.
+    void splat.initialized.catch((error: unknown) => {
+      if (!mounted) return;
+      setLoadError(
+        error instanceof Error && error.message
+          ? error.message
+          : "This environment could not be loaded.",
+      );
+    });
 
     // Raycasting directly against splat point data is unreliable (rays catch stray
     // floating particles), so placed points land on this infinite floor plane
@@ -215,6 +233,7 @@ export default function SplatViewer({
     });
 
     return () => {
+      mounted = false;
       renderer.setAnimationLoop(null);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
@@ -247,6 +266,21 @@ export default function SplatViewer({
       hotspotGroup.add(marker);
     }
   }, [hotspots, sceneRadius]);
+
+  if (loadError) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-neutral-950 px-6 text-center">
+        <p className="text-[15px] font-medium text-white">
+          This environment&apos;s file is missing.
+        </p>
+        <p className="max-w-sm text-sm text-neutral-400">
+          Its splat was saved to a machine rather than to storage, so the bytes
+          are not here. Capturing it again is the only way back.
+        </p>
+        <p className="mt-1 text-xs text-neutral-600">{loadError}</p>
+      </div>
+    );
+  }
 
   return (
     <div
