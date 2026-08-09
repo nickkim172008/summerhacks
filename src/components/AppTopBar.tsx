@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import AtlasLogo from "@/components/AtlasLogo";
+import Avatar from "@/components/Avatar";
 import { signOut, useAuthProfile } from "@/lib/auth";
 import { shouldHideAppChrome } from "@/lib/appChrome";
 
@@ -25,9 +26,11 @@ export default function AppTopBar() {
             <>
               <Link
                 href={`/u/${profile.username}`}
-                className="text-[13px] text-[#0071e3]"
+                aria-label={`Your profile, @${profile.username}`}
+                title={`@${profile.username}`}
+                className="rounded-full ring-black/10 transition hover:ring-2"
               >
-                @{profile.username}
+                <Avatar profile={profile} />
               </Link>
               <button
                 onClick={() => signOut()}

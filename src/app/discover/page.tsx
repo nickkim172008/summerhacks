@@ -11,6 +11,7 @@ import {
   searchProfiles,
   subscribeToRecentProfiles,
 } from "@/lib/profiles";
+import Avatar from "@/components/Avatar";
 import type { Profile } from "@/lib/types";
 
 const DEBOUNCE_MS = 250;
@@ -105,19 +106,11 @@ function PersonRow({ profile }: { profile: Profile }) {
   const demo = isDemoOrganizerProfile(profile);
   const body = (
     <>
-      {profile.photoURL ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={profile.photoURL}
-          alt=""
-          className="h-11 w-11 shrink-0 rounded-full object-cover"
-          referrerPolicy="no-referrer"
-        />
-      ) : (
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[15px] font-semibold text-neutral-500">
-          {profile.username.slice(0, 1).toUpperCase()}
-        </div>
-      )}
+      <Avatar
+        profile={profile}
+        className="h-11 w-11"
+        textClassName="text-[15px]"
+      />
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-medium">
           {profile.displayName}
