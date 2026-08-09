@@ -28,6 +28,7 @@ import PlaceThumb from "@/components/PlaceThumb";
 import AlbumCover from "@/components/AlbumCover";
 import { resolveAlbumPlaces } from "@/lib/albums";
 import { canOptimizeImage } from "@/lib/imageHosts";
+import { formatPlaceDate } from "@/lib/places";
 import type { Album, Place, Profile } from "@/lib/types";
 
 export default function ProfilePage({

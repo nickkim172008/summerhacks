@@ -18,11 +18,32 @@ import { db, storage } from "./firebase";
 import { uploadAudio, uploadSplat, uploadThumbnail } from "./splatStore";
 import type { Place } from "./types";
 
-function sortByCreatedDesc(places: Place[]) {
+/** Prefer when it was filmed; fall back to when it was saved. */
+export function placeTakenMs(place: Place): number {
+  if (place.capturedAt) {
+    const filmed = Date.parse(place.capturedAt);
+    if (Number.isFinite(filmed)) return filmed;
+  }
+  return place.createdAt?.toMillis?.() ?? 0;
+}
+
+/** Newest → oldest by capture date (then upload time). */
+export function sortPlacesNewestFirst(places: Place[]) {
   return [...places].sort((a, b) => {
-    const aTime = a.createdAt?.toMillis?.() ?? 0;
-    const bTime = b.createdAt?.toMillis?.() ?? 0;
-    return bTime - aTime;
+    const diff = placeTakenMs(b) - placeTakenMs(a);
+    if (diff !== 0) return diff;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/** Date only — no time of day on tiles. */
+export function formatPlaceDate(place: Place): string | null {
+  const ms = placeTakenMs(place);
+  if (!ms) return null;
+  return new Date(ms).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 }
 
@@ -79,7 +100,9 @@ export function subscribeToTrashedPlaces(
     q,
     (snap) => {
       const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place);
-      onChange(sortByCreatedDesc(all.filter((place) => place.deletedAt)));
+      onChange(
+        sortPlacesNewestFirst(all.filter((place) => place.deletedAt)),
+      );
     },
     onError,
   );
@@ -120,7 +143,7 @@ export function subscribeToPlacesByUploader(
     q,
     (snap) => {
       onChange(
-        sortByCreatedDesc(
+        sortPlacesNewestFirst(
           livePlaces(
             snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place),
           ),
@@ -164,7 +187,7 @@ export function subscribeToPlacesByUploaders(
         byChunk[index] = livePlaces(
           snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place),
         );
-        onChange(sortByCreatedDesc(byChunk.flat()));
+        onChange(sortPlacesNewestFirst(byChunk.flat()));
       },
       onError,
     ),
@@ -203,7 +226,7 @@ export function subscribeToPlacesByIds(
         byChunk[index] = snap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Place,
         );
-        onChange(sortByCreatedDesc(byChunk.flat()));
+        onChange(sortPlacesNewestFirst(byChunk.flat()));
       },
       onError,
     ),

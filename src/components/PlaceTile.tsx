@@ -3,6 +3,7 @@
 import Link from "next/link";
 import PlaceThumb from "@/components/PlaceThumb";
 import TileMenu, { type TileMenuItem } from "@/components/TileMenu";
+import { formatPlaceDate } from "@/lib/places";
 import type { Place } from "@/lib/types";
 
 /**
@@ -61,15 +62,19 @@ export default function PlaceTile({
     });
   }
 
+  const taken = formatPlaceDate(place);
+
   return (
     <div className="group relative aspect-square bg-neutral-100">
-      <Link
-        href={href}
-        className="absolute inset-0 overflow-hidden"
-      >
+      <Link href={href} className="absolute inset-0 overflow-hidden">
         <PlaceThumb place={place} />
-        <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-6 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
-          {place.name}
+        <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-6 text-white opacity-0 transition group-hover:opacity-100">
+          <span className="block truncate text-xs font-medium">{place.name}</span>
+          {taken && (
+            <span className="block truncate text-[11px] font-normal text-white/85">
+              {taken}
+            </span>
+          )}
         </span>
       </Link>
       <TileMenu items={items} />
