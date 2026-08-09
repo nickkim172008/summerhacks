@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Place, Vec3 } from "@/lib/types";
+import { storedAssetUrl } from "@/lib/assetUrl";
 
 const SplatViewer = dynamic(() => import("./SplatViewer"), { ssr: false });
 
@@ -183,7 +184,7 @@ export default function PlaceExperience({
             {showPlayer && place.audioUrl && (
               <AmbientPlayer
                 key={place.id}
-                url={place.audioUrl}
+                url={storedAssetUrl(place.audioUrl)}
                 seconds={place.audioSeconds}
                 leaving={jumping}
               />

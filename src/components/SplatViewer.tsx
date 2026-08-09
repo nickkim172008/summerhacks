@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { PivotControls } from "@/lib/pivotControls";
 import { frameCapture } from "@/lib/splatFraming";
+import { storedAssetUrl } from "@/lib/assetUrl";
 import type { EntryPoint, Hotspot, Vec3 } from "@/lib/types";
 
 export interface SplatViewerProps {
@@ -85,7 +86,10 @@ export default function SplatViewer({
     // it into something unreachable, and the failure arrives as an uncaught
     // "Failed to fetch" — a black canvas with nothing said. Absolute from here
     // means a missing file at least fails as the 404 it is.
-    const resolvedUrl = new URL(splatUrl, window.location.href).href;
+    const resolvedUrl = new URL(
+      storedAssetUrl(splatUrl),
+      window.location.href,
+    ).href;
     // The one fact that separates "this record predates Firebase storage" from
     // "Storage refused the read", and it is invisible without saying it out loud.
     console.info("[splat] loading", resolvedUrl);
