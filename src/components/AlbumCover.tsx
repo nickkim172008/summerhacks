@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { canOptimizeImage } from "@/lib/imageHosts";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Place } from "@/lib/types";
 
@@ -30,6 +31,7 @@ export default function AlbumCover({
           alt={alt}
           fill
           sizes="(min-width: 768px) 300px, 45vw"
+          unoptimized={!canOptimizeImage(coverUrl)}
           className="object-cover"
         />
       </div>

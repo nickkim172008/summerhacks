@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { canOptimizeImage } from "@/lib/imageHosts";
 import type { Place } from "@/lib/types";
 
 /* Splats rarely have thumbnails yet, so fall back to a stable
@@ -32,6 +33,7 @@ export default function PlaceThumb({ place }: { place: Place }) {
           fill
           // Widest the grid ever paints one: five columns inside a 64rem page.
           sizes="(min-width: 768px) 210px, (min-width: 640px) 25vw, 33vw"
+          unoptimized={!canOptimizeImage(place.thumbnailUrl)}
           className="object-cover"
         />
       </div>

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { IMAGE_HOSTS } from "./src/lib/imageHosts";
 
 const nextConfig: NextConfig = {
   // StrictMode's double-mount creates two WebGL contexts and downloads each
@@ -15,19 +16,11 @@ const nextConfig: NextConfig = {
      * Download URLs carry ?alt=media&token=…, and omitting `search` is what
      * allows a query string through — pinning it to "" would reject every one.
      */
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "firebasestorage.googleapis.com",
-        pathname: "/v0/b/**",
-      },
-      // Google account photos, which arrive on the profile rather than from us.
-      {
-        protocol: "https",
-        hostname: "lh3.googleusercontent.com",
-        pathname: "/**",
-      },
-    ],
+    remotePatterns: IMAGE_HOSTS.map((host) => ({
+      protocol: "https" as const,
+      hostname: host.hostname,
+      pathname: host.pathname,
+    })),
     // A capture's cover changes about never; the default of a few minutes would
     // have the optimizer re-fetching and re-encoding the same frame all day.
     minimumCacheTTL: 60 * 60 * 24 * 30,

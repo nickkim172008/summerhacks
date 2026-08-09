@@ -27,6 +27,7 @@ import {
 import PlaceThumb from "@/components/PlaceThumb";
 import AlbumCover from "@/components/AlbumCover";
 import { resolveAlbumPlaces } from "@/lib/albums";
+import { canOptimizeImage } from "@/lib/imageHosts";
 import type { Album, Place, Profile } from "@/lib/types";
 
 export default function ProfilePage({
@@ -279,6 +280,7 @@ function ProfileAvatar({
       alt=""
       fill
       sizes="80px"
+      unoptimized={!canOptimizeImage(profile.photoURL)}
       className="object-cover"
     />
   ) : (

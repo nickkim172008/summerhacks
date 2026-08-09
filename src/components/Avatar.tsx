@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { canOptimizeImage } from "@/lib/imageHosts";
 
 /**
  * Profile photo, falling back to the first letter of the handle. Google
@@ -24,6 +25,9 @@ export default function Avatar({
         alt=""
         width={64}
         height={64}
+        // A photo from somewhere unlisted is still worth showing; the optimizer
+        // would refuse it, and next/image turns that refusal into a crash.
+        unoptimized={!canOptimizeImage(profile.photoURL)}
         className={`${className} shrink-0 rounded-full object-cover`}
       />
     );
