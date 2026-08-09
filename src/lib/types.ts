@@ -41,6 +41,16 @@ export interface Album {
   id: string;
   name: string;
   ownerId: string;
+  /**
+   * Everyone who may add to this album, the owner included. Absent on albums
+   * created before sharing existed, so treat a missing value as [ownerId].
+   */
+  memberIds?: string[];
+  /**
+   * When each collaborator was added, keyed by uid. The album's own createdAt
+   * cannot stand in for this: being invited to a year-old album is news today.
+   */
+  memberAddedAt?: Record<string, Timestamp>;
   placeIds: string[];
   createdAt: Timestamp;
 }

@@ -3,6 +3,7 @@ import {
   collection,
   deleteField,
   doc,
+  documentId,
   getDoc,
   onSnapshot,
   orderBy,
@@ -89,6 +90,45 @@ export function subscribeToPlacesByUploaders(
   const unsubs = chunks.map((chunk, index) =>
     onSnapshot(
       query(collection(db, "places"), where("uploaderId", "in", chunk)),
+      (snap) => {
+        byChunk[index] = snap.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as Place,
+        );
+        onChange(sortByCreatedDesc(byChunk.flat()));
+      },
+      onError,
+    ),
+  );
+
+  return () => unsubs.forEach((off) => off());
+}
+
+/**
+ * The places an album holds, whoever captured them.
+ *
+ * A shared album mixes several people's environments, so its grid cannot be
+ * built by filtering the viewer's own uploads — everything a collaborator
+ * added would quietly go missing. Chunked for the same `in` cap as above.
+ */
+export function subscribeToPlacesByIds(
+  placeIds: string[],
+  onChange: (places: Place[]) => void,
+  onError?: (error: Error) => void,
+) {
+  if (placeIds.length === 0) {
+    onChange([]);
+    return () => {};
+  }
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < placeIds.length; i += IN_CHUNK) {
+    chunks.push(placeIds.slice(i, i + IN_CHUNK));
+  }
+
+  const byChunk: Place[][] = chunks.map(() => []);
+  const unsubs = chunks.map((chunk, index) =>
+    onSnapshot(
+      query(collection(db, "places"), where(documentId(), "in", chunk)),
       (snap) => {
         byChunk[index] = snap.docs.map(
           (d) => ({ id: d.id, ...d.data() }) as Place,

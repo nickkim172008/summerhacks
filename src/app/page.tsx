@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { subscribeToPlacesByUploader } from "@/lib/places";
-import { createAlbum, subscribeToAlbumsByOwner } from "@/lib/albums";
+import { createAlbum, subscribeToEditableAlbums } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
 import PlaceThumb from "@/components/PlaceThumb";
@@ -36,7 +36,7 @@ export default function AlbumsPage() {
 
   useEffect(() => {
     if (!isFirebaseConfigured || !user) return;
-    return subscribeToAlbumsByOwner(user.uid, setAlbums, () => setError(true));
+    return subscribeToEditableAlbums(user.uid, setAlbums, () => setError(true));
   }, [user]);
 
   const placeById = useMemo(

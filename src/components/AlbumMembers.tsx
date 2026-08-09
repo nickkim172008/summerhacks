@@ -1,0 +1,254 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  addCollaborator,
+  albumMemberIds,
+  removeCollaborator,
+} from "@/lib/albums";
+import { getProfile, getProfileByUsername } from "@/lib/profiles";
+import { subscribeToFollowingIds } from "@/lib/follows";
+import Avatar from "@/components/Avatar";
+import type { Album, Profile } from "@/lib/types";
+
+export default function AlbumMembers({
+  album,
+  viewerId,
+}: {
+  album: Album;
+  viewerId: string;
+}) {
+  const memberIds = albumMemberIds(album);
+  const isOwner = album.ownerId === viewerId;
+  const [members, setMembers] = useState<Profile[] | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [handle, setHandle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [followed, setFollowed] = useState<Profile[] | null>(null);
+
+  const memberKey = memberIds.join(",");
+  useEffect(() => {
+    let active = true;
+    const ids = memberKey ? memberKey.split(",") : [];
+    Promise.all(ids.map((id) => getProfile(id)))
+      .then((found) => {
+        if (active) {
+          setMembers(found.filter((p): p is Profile => Boolean(p)));
+        }
+      })
+      .catch(() => {
+        if (active) setMembers([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [memberKey]);
+
+  // Only the owner can invite, so nobody else pays for these reads. The
+  // profile lookups are async, so a resolved batch is dropped once this has
+  // gone away — and once a newer snapshot has superseded it.
+  useEffect(() => {
+    if (!isOwner) return;
+    let active = true;
+    let latest = 0;
+    const stop = subscribeToFollowingIds(viewerId, async (ids) => {
+      const ticket = ++latest;
+      const found = await Promise.all(ids.map((id) => getProfile(id)));
+      if (!active || ticket !== latest) return;
+      setFollowed(found.filter((p): p is Profile => Boolean(p)));
+    });
+    return () => {
+      active = false;
+      stop();
+    };
+  }, [isOwner, viewerId]);
+
+  const typed = handle.trim().replace(/^@/, "").toLowerCase();
+  const suggestions = (followed ?? []).filter(
+    (p) =>
+      !memberIds.includes(p.id) &&
+      (typed === "" ||
+        p.username.toLowerCase().startsWith(typed) ||
+        p.displayName.toLowerCase().includes(typed)),
+  );
+
+  async function inviteProfile(profile: Profile) {
+    setBusy(true);
+    setError(null);
+    try {
+      await addCollaborator(album, profile.id);
+      setHandle("");
+      setInviting(false);
+    } catch {
+      setError("Couldn’t add them. You may not have permission.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function invite() {
+    const wanted = handle.trim().replace(/^@/, "");
+    if (!wanted || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const profile = await getProfileByUsername(wanted);
+      if (!profile) {
+        setError(`No account called @${wanted}.`);
+        return;
+      }
+      if (memberIds.includes(profile.id)) {
+        setError(`@${profile.username} is already on this album.`);
+        return;
+      }
+      await addCollaborator(album, profile.id);
+      setHandle("");
+      setInviting(false);
+    } catch {
+      setError("Couldn’t add them. You may not have permission.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(profile: Profile) {
+    setBusy(true);
+    setError(null);
+    try {
+      await removeCollaborator(album, profile.id);
+    } catch {
+      setError("Couldn’t remove them.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-4">
+      <div className="flex flex-wrap items-center gap-3">
+        {members === null ? (
+          <span className="text-[13px] text-neutral-400">Loading people…</span>
+        ) : (
+          members.map((profile) => (
+            <span key={profile.id} className="group relative">
+              <Link
+                href={`/u/${profile.username}`}
+                title={
+                  profile.id === album.ownerId
+                    ? `@${profile.username} · owner`
+                    : `@${profile.username}`
+                }
+                className="block rounded-full ring-black/10 transition hover:ring-2"
+              >
+                <Avatar profile={profile} />
+              </Link>
+              {isOwner && profile.id !== album.ownerId && (
+                <button
+                  onClick={() => remove(profile)}
+                  disabled={busy}
+                  aria-label={`Remove @${profile.username}`}
+                  className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-neutral-700 text-[10px] leading-none text-white group-hover:flex"
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))
+        )}
+
+        {isOwner && !inviting && (
+          <button
+            onClick={() => setInviting(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-black/20 text-[15px] leading-none text-[#0071e3] transition hover:border-[#0071e3]"
+            aria-label="Invite someone"
+            title="Invite someone"
+          >
+            +
+          </button>
+        )}
+      </div>
+
+      {inviting && (
+        <div className="mt-3 max-w-sm">
+        <div className="flex items-center gap-2">
+          <input
+            autoFocus
+            value={handle}
+            onChange={(e) => setHandle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") invite();
+              if (e.key === "Escape") {
+                setInviting(false);
+                setError(null);
+              }
+            }}
+            placeholder="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            className="min-w-0 flex-1 rounded-lg border border-black/10 bg-neutral-50 px-3 py-1.5 text-[15px] outline-none focus:border-[#0071e3]"
+          />
+          <button
+            onClick={invite}
+            disabled={!handle.trim() || busy}
+            className="shrink-0 text-[15px] font-semibold text-[#0071e3] disabled:opacity-40"
+          >
+            {busy ? "Adding…" : "Add"}
+          </button>
+          <button
+            onClick={() => {
+              setInviting(false);
+              setError(null);
+            }}
+            className="shrink-0 text-[15px] text-neutral-500"
+          >
+            Cancel
+          </button>
+        </div>
+
+        {followed === null ? (
+          <p className="mt-2 text-[13px] text-neutral-400">
+            Loading who you follow…
+          </p>
+        ) : suggestions.length > 0 ? (
+          <ul className="mt-2 overflow-hidden rounded-lg ring-1 ring-black/5">
+            {suggestions.map((profile) => (
+              <li key={profile.id}>
+                <button
+                  onClick={() => inviteProfile(profile)}
+                  disabled={busy}
+                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition hover:bg-neutral-50 disabled:opacity-40"
+                >
+                  <Avatar
+                    profile={profile}
+                    className="h-7 w-7"
+                    textClassName="text-[12px]"
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[14px]">
+                    {profile.displayName}
+                    <span className="ml-1.5 text-[13px] text-neutral-500">
+                      @{profile.username}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-[13px] text-neutral-400">
+            {followed.length === 0
+              ? "You’re not following anyone yet — type a username instead."
+              : typed
+                ? "Nobody you follow matches. Enter adds by exact username."
+                : "Everyone you follow is already here."}
+          </p>
+        )}
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-[13px] text-red-500">{error}</p>}
+    </div>
+  );
+}

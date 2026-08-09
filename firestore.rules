@@ -10,6 +10,14 @@ service cloud.firestore {
       return signedIn() && resource.data.ownerId == request.auth.uid;
     }
 
+    // Albums created before sharing carry no memberIds, so the owner has to be
+    // treated as a member on their own album rather than read out of the list.
+    function editsAlbum() {
+      return ownsAlbum()
+             || (signedIn()
+                 && request.auth.uid in resource.data.get('memberIds', []));
+    }
+
     function ownsPlace() {
       return signedIn() && resource.data.uploaderId == request.auth.uid;
     }
@@ -36,13 +44,24 @@ service cloud.firestore {
     // Readable by any signed-in account so profiles and the map can show other
     // people's work — following someone is pointless if their captures are
     // invisible. Writing stays owner-only.
+    // Collaborators may fill an album but not take it over: only the owner
+    // changes who else is on it, and ownerId is frozen for everyone, so a
+    // member cannot promote themselves and then evict the person who made it.
+    // Deleting stays with the owner alone.
     match /albums/{albumId} {
       allow create: if signedIn()
                     && request.resource.data.ownerId == request.auth.uid;
       allow read: if signedIn();
       allow delete: if ownsAlbum();
-      allow update: if ownsAlbum()
-                    && request.resource.data.ownerId == resource.data.ownerId;
+      allow update: if editsAlbum()
+                    && request.resource.data.ownerId == resource.data.ownerId
+                    && (ownsAlbum()
+                        || (request.resource.data.get('memberIds', [])
+                            == resource.data.get('memberIds', [])
+                            // Drives "added you to" in the inbox, so a member
+                            // rewriting it could fake an invite from the owner.
+                            && request.resource.data.get('memberAddedAt', {})
+                               == resource.data.get('memberAddedAt', {})));
     }
 
     match /places/{placeId} {

@@ -74,6 +74,7 @@ export function subscribeToFollowingCount(
   return onSnapshot(q, (snap) => onChange(snap.size), onError);
 }
 
+
 /** The edges themselves, newest first — who followed `uid`, and when. */
 export function subscribeToFollowers(
   uid: string,
