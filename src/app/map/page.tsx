@@ -17,7 +17,7 @@ const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
 import TimelineBar from "@/components/TimelineBar";
 import AlbumTourButton from "@/components/AlbumTourButton";
 import { TourIntroVeil, useTourIntro } from "@/components/TourIntro";
-import { subscribeToAlbumsByOwner } from "@/lib/albums";
+import { subscribeToEditableAlbums } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useLiveLocation } from "@/lib/geolocation";
 import { useResolvedPlaces, type LocatedPlace } from "@/lib/geocode";
@@ -28,7 +28,12 @@ import type { Album, Place } from "@/lib/types";
 type Scope =
   | { kind: "public" }
   | { kind: "personal" }
-  | { kind: "album"; albumId: string };
+  /**
+   * Several albums at once, layered on the same map. Empty means exactly that:
+   * an album turned off stops contributing, and turning the last one off leaves
+   * nothing rather than quietly falling back to everything.
+   */
+  | { kind: "albums"; ids: string[] };
 
 const NO_ALBUMS: Album[] = [];
 const PUBLIC_SCOPE: Scope = { kind: "public" };
@@ -50,7 +55,7 @@ function MapView() {
   const [allPlaces, setAllPlaces] = useState<Place[] | null>(
     isFirebaseConfigured ? null : [],
   );
-  const [ownedAlbums, setOwnedAlbums] = useState<Album[]>([]);
+  const [myAlbums, setMyAlbums] = useState<Album[]>([]);
   // Null until something is picked, so a scope named in the URL can stand in
   // without a chosen one ever being overwritten by it.
   const [chosenScope, setScope] = useState<Scope | null>(null);
@@ -81,12 +86,14 @@ function MapView() {
 
   useEffect(() => {
     if (!isFirebaseConfigured || !user) return;
-    return subscribeToAlbumsByOwner(user.uid, setOwnedAlbums);
+    // Owned and shared together: an album someone put you on is one of yours
+    // for every purpose the map has.
+    return subscribeToEditableAlbums(user.uid, setMyAlbums);
   }, [user]);
 
   // Gated on the signed-in user rather than cleared on sign-out, so the last
   // account's albums can never linger.
-  const albums = user ? ownedAlbums : NO_ALBUMS;
+  const albums = user ? myAlbums : NO_ALBUMS;
 
   // A walkthrough link names its album in the query, and the album is the scope
   // it opens on. Memoised because inScope is derived from this: a fresh object
@@ -97,7 +104,7 @@ function MapView() {
   const scope = useMemo((): Scope => {
     if (!user) return PUBLIC_SCOPE;
     if (chosenScope) return chosenScope;
-    return urlAlbumId ? { kind: "album", albumId: urlAlbumId } : PUBLIC_SCOPE;
+    return urlAlbumId ? { kind: "albums", ids: [urlAlbumId] } : PUBLIC_SCOPE;
   }, [user, chosenScope, urlAlbumId]);
 
   // Which places the chosen scope covers. Personal is every album's contents
@@ -123,11 +130,13 @@ function MapView() {
       return [...new Map(everyAlbumsPlaces.map((p) => [p.id, p])).values()];
     }
 
-    const album = albums.find((a) => a.id === scope.albumId);
-    return album ? collect(album.placeIds ?? []) : [];
+    const chosen = albums.filter((album) => scope.ids.includes(album.id));
+    const across = collect(chosen.flatMap((album) => album.placeIds ?? []));
+    // Dedupe: one place can sit in several of the albums turned on.
+    return [...new Map(across.map((p) => [p.id, p])).values()];
   }, [allPlaces, albums, scope, user]);
 
-  const { located, pending, byName, unplaceable } = useResolvedPlaces(inScope);
+  const { located, pending } = useResolvedPlaces(inScope);
 
   // Derived from the live array every render, never snapshotted: a capture
   // saved while the bar is open has to widen the axis and grow a tick on its
@@ -162,6 +171,23 @@ function MapView() {
   );
 
   // Also the hook for dismissing the bar from elsewhere on this page, since it
+  /**
+   * Albums layer rather than replace one another, so this adds and removes
+   * rather than setting. Coming from Everyone or Yours the click means "just
+   * this one" — those are a different question, and keeping them lit beside a
+   * chosen album would say the map was showing both.
+   */
+  function toggleAlbum(albumId: string) {
+    setScope((current) => {
+      if (!current || current.kind !== "albums") {
+        return { kind: "albums", ids: [albumId] };
+      }
+      return current.ids.includes(albumId)
+        ? { kind: "albums", ids: current.ids.filter((id) => id !== albumId) }
+        : { kind: "albums", ids: [...current.ids, albumId] };
+    });
+  }
+
   // parks the playhead as well as hiding the track.
   function closeTimeline() {
     timeline.reset();
@@ -182,21 +208,6 @@ function MapView() {
           : null;
   const noticeVisible = useTransientNotice(notice);
 
-  const scopeLabel =
-    scope.kind === "public"
-      ? "Everyone"
-      : scope.kind === "personal"
-        ? "Yours"
-        : (albums.find((a) => a.id === scope.albumId)?.name ?? "Album");
-
-  const locationHint = liveLoading
-    ? "Finding you…"
-    : liveError
-      ? "Location off"
-      : liveLocation
-        ? "Location on"
-        : null;
-
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-white text-[#1d1d1f]">
       <div className="relative flex h-[calc(100dvh-3.25rem)] flex-1">
@@ -212,25 +223,9 @@ function MapView() {
         {sidebarOpen && (
           <aside className="absolute inset-y-0 left-0 z-10 flex w-[min(100%,17.5rem)] flex-col bg-white/92 shadow-[8px_0_32px_rgba(0,0,0,0.06)] backdrop-blur-2xl sm:static sm:shadow-none sm:ring-1 sm:ring-black/6">
             <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-5">
-              <div className="min-w-0">
-                <p className="text-[17px] font-semibold tracking-tight">
-                  Places
-                </p>
-                <p className="mt-1 text-[12px] leading-snug text-neutral-500">
-                  {scopeLabel}
-                  <span className="text-neutral-300"> · </span>
-                  {located.length} on the map
-                  {byName > 0 && ` · ${byName} by name`}
-                  {pending > 0 && ` · ${pending} resolving…`}
-                  {unplaceable > 0 && ` · ${unplaceable} no location`}
-                  {locationHint && (
-                    <>
-                      <span className="text-neutral-300"> · </span>
-                      {locationHint}
-                    </>
-                  )}
-                </p>
-              </div>
+              <p className="min-w-0 text-[17px] font-semibold tracking-tight">
+                Places
+              </p>
               <button
                 onClick={() => setSidebarOpen(false)}
                 aria-label="Close places panel"
@@ -258,7 +253,9 @@ function MapView() {
                     setScope({ kind: "personal" });
                   }}
                   title="Yours"
-                  subtitle={user ? "Every album combined" : "Sign in to view"}
+                  subtitle={
+                    user ? "Your albums and shared ones" : "Sign in to view"
+                  }
                 />
               </div>
 
@@ -284,18 +281,14 @@ function MapView() {
                     <div key={album.id} className="flex items-center gap-1">
                       <div className="min-w-0 flex-1">
                         <FilterButton
+                          toggle
                           active={
-                            scope.kind === "album" && scope.albumId === album.id
+                            scope.kind === "albums" &&
+                            scope.ids.includes(album.id)
                           }
-                          onClick={() =>
-                            setScope({ kind: "album", albumId: album.id })
-                          }
+                          onClick={() => toggleAlbum(album.id)}
                           title={album.name}
-                          subtitle={`${album.placeIds?.length ?? 0} ${
-                            (album.placeIds?.length ?? 0) === 1
-                              ? "place"
-                              : "places"
-                          }`}
+                          subtitle={albumSubtitle(album, user?.uid)}
                         />
                       </div>
                       {(album.placeIds?.length ?? 0) > 0 && (
@@ -378,36 +371,85 @@ function useTransientNotice(message: string | null) {
   return Boolean(message) && settled !== message;
 }
 
+/**
+ * A row in the filter list. Unselected it used to be bare text on white, which
+ * read as a label rather than something to press — so every row carries a
+ * border and a control on it, lit or not.
+ *
+ * `toggle` says which control: albums layer, several at a time, and get a
+ * checkbox and aria-pressed. Everyone and Yours answer a different question and
+ * are one-of, so they get a radio dot.
+ */
 function FilterButton({
   active,
   onClick,
   title,
   subtitle,
+  toggle = false,
 }: {
   active: boolean;
   onClick: () => void;
   title: string;
   subtitle: string;
+  toggle?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-2xl px-3.5 py-3 text-left transition ${
+      aria-pressed={active}
+      className={`flex w-full items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition ${
         active
-          ? "bg-[#0071e3] text-white shadow-sm shadow-[#0071e3]/25"
-          : "text-[#1d1d1f] hover:bg-neutral-100/90"
+          ? "border-[#0071e3] bg-[#0071e3] text-white shadow-sm shadow-[#0071e3]/25"
+          : "border-black/10 bg-white text-[#1d1d1f] hover:border-black/20 hover:bg-neutral-50"
       }`}
     >
-      <p className="text-[14px] font-medium tracking-tight">{title}</p>
-      <p
-        className={`mt-0.5 text-[12px] leading-snug ${
-          active ? "text-white/75" : "text-neutral-500"
+      <span
+        aria-hidden
+        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center border transition ${
+          toggle ? "rounded-[5px]" : "rounded-full"
+        } ${
+          active
+            ? "border-white bg-white text-[#0071e3]"
+            : "border-black/25 bg-white"
         }`}
       >
-        {subtitle}
-      </p>
+        {active &&
+          (toggle ? (
+            <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
+              <path
+                d="M2.5 6.2 4.8 8.5 9.5 3.8"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <span className="h-2 w-2 rounded-full bg-[#0071e3]" />
+          ))}
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className="block text-[14px] font-medium tracking-tight">
+          {title}
+        </span>
+        <span
+          className={`mt-0.5 block text-[12px] leading-snug ${
+            active ? "text-white/75" : "text-neutral-500"
+          }`}
+        >
+          {subtitle}
+        </span>
+      </span>
     </button>
   );
+}
+
+/** Whose album it is matters here: a shared one is yours to see, not to own. */
+function albumSubtitle(album: Album, uid: string | undefined) {
+  const count = album.placeIds?.length ?? 0;
+  const places = `${count} ${count === 1 ? "place" : "places"}`;
+  return album.ownerId === uid ? places : `${places} · Shared with you`;
 }
 
 function ClockIcon() {
