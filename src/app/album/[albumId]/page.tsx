@@ -4,15 +4,13 @@ import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  movePlaceToTrash,
   subscribeToPlacesByIds,
   subscribeToPlacesByUploader,
 } from "@/lib/places";
 import {
   addPlacesToAlbum,
   canEditAlbum,
-import { movePlaceToTrash, subscribeToPlacesByUploader } from "@/lib/places";
-import {
-  addPlacesToAlbum,
   removePlacesFromAlbum,
   resolveAlbumPlaces,
   subscribeToAlbum,
