@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { Place } from "@/lib/types";
 
 /* Splats rarely have thumbnails yet, so fall back to a stable
@@ -22,12 +23,18 @@ function gradientFor(id: string) {
 export default function PlaceThumb({ place }: { place: Place }) {
   if (place.thumbnailUrl) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={place.thumbnailUrl}
-        alt={place.name}
-        className="h-full w-full object-cover"
-      />
+      // Its own positioning context: `fill` measures the nearest positioned
+      // ancestor, and this tile is dropped into several different grids.
+      <div className="relative h-full w-full">
+        <Image
+          src={place.thumbnailUrl}
+          alt={place.name}
+          fill
+          // Widest the grid ever paints one: five columns inside a 64rem page.
+          sizes="(min-width: 768px) 210px, (min-width: 640px) 25vw, 33vw"
+          className="object-cover"
+        />
+      </div>
     );
   }
   return (

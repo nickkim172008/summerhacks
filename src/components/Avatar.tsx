@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 /**
  * Profile photo, falling back to the first letter of the handle. Google
  * accounts without a photo, and profiles claimed before one was set, both
@@ -14,13 +16,14 @@ export default function Avatar({
 }) {
   if (profile.photoURL) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
+      // Twice the largest frame an avatar gets, so a retina screen has enough
+      // and nobody downloads a 400px face for a 32px circle. The optimizer
+      // fetches it server-side, which also settles the referrer Google rejects.
+      <Image
         src={profile.photoURL}
         alt=""
-        // Google's lh3.googleusercontent.com photos 403 when a referrer is
-        // sent, so every avatar has to suppress it.
-        referrerPolicy="no-referrer"
+        width={64}
+        height={64}
         className={`${className} shrink-0 rounded-full object-cover`}
       />
     );

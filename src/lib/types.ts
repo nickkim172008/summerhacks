@@ -19,6 +19,12 @@ export interface EntryPoint {
 }
 
 export interface Place {
+  /**
+   * Set when the place is in the trash. Deleting is reversible until it is
+   * emptied, because the bytes behind a place took an hour of reconstruction
+   * and a misplaced tap should not be able to spend that.
+   */
+  deletedAt?: Timestamp;
   id: string;
   name: string;
   uploaderId: string;

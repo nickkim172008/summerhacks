@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useAuthProfile } from "@/lib/auth";
 import { subscribeToAlbumsByOwner } from "@/lib/albums";
@@ -60,14 +61,10 @@ export default function ProfilePage({
     }
     setAlbumsError(null);
     setPlacesError(null);
-    const unsubAlbums = subscribeToAlbumsByOwner(
-      profile.id,
-      setAlbums,
-      () => {
-        setAlbums([]);
-        setAlbumsError("Couldn’t load albums (check Firestore rules).");
-      },
-    );
+    const unsubAlbums = subscribeToAlbumsByOwner(profile.id, setAlbums, () => {
+      setAlbums([]);
+      setAlbumsError("Couldn’t load albums (check Firestore rules).");
+    });
     const unsubPlaces = subscribeToPlacesByUploader(
       profile.id,
       setPlaces,
@@ -277,11 +274,12 @@ function ProfileAvatar({
   }
 
   const face = profile.photoURL ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <Image
       src={profile.photoURL}
       alt=""
-      className="h-full w-full object-cover"
+      fill
+      sizes="80px"
+      className="object-cover"
     />
   ) : (
     <span className="text-xl font-semibold text-neutral-500">
@@ -492,4 +490,3 @@ function BioSection({
     </button>
   ) : null;
 }
-

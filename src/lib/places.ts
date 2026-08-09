@@ -12,7 +12,9 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { deleteObject, listAll, ref } from "firebase/storage";
+import { deleteDoc } from "firebase/firestore";
+import { db, storage } from "./firebase";
 import { uploadAudio, uploadSplat, uploadThumbnail } from "./splatStore";
 import type { Place, Vec3 } from "./types";
 
@@ -32,10 +34,75 @@ export function subscribeToPlaces(
   return onSnapshot(
     q,
     (snap) => {
-      onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place));
+      onChange(livePlaces(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place)));
     },
     onError,
   );
+}
+
+/**
+ * A place in the trash is still a document, so every listing has to say it does
+ * not want one. Filtering here rather than in the query is deliberate: Firestore
+ * cannot match "field absent" with an equality, and every place saved before the
+ * trash existed has no deletedAt at all.
+ */
+function livePlaces(places: Place[]) {
+  return places.filter((place) => !place.deletedAt);
+}
+
+/**
+ * Reversible on purpose. The bytes behind a place cost an hour of
+ * reconstruction, so a tap that means "get this out of my library" should not
+ * be the same act as spending that hour.
+ */
+export async function movePlaceToTrash(placeId: string) {
+  await updateDoc(doc(db, "places", placeId), { deletedAt: serverTimestamp() });
+}
+
+export async function restorePlace(placeId: string) {
+  await updateDoc(doc(db, "places", placeId), { deletedAt: deleteField() });
+}
+
+/** What is in the trash, for whoever put it there. */
+export function subscribeToTrashedPlaces(
+  uploaderId: string,
+  onChange: (places: Place[]) => void,
+  onError?: (error: Error) => void,
+) {
+  const q = query(
+    collection(db, "places"),
+    where("uploaderId", "==", uploaderId),
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place);
+      onChange(sortByCreatedDesc(all.filter((place) => place.deletedAt)));
+    },
+    onError,
+  );
+}
+
+/**
+ * Gone for good: the stored bytes first, then the document.
+ *
+ * That order matters. Losing the document while its files remain leaves bytes
+ * nothing names and no way to find them again; losing the files first leaves a
+ * document that renders as a missing capture, which at least says what happened
+ * and can be cleared. Storage is listed rather than addressed directly because a
+ * splat keeps the name it was captured under, and only the folder is known.
+ */
+export async function deletePlaceForever(placeId: string) {
+  for (const folder of ["splats", "audio", "thumbnails"]) {
+    try {
+      const listing = await listAll(ref(storage, `${folder}/${placeId}`));
+      await Promise.all(listing.items.map((item) => deleteObject(item)));
+    } catch {
+      // Already gone, or never written for this place. Either way there is
+      // nothing here to clean up, and it must not stop the rest.
+    }
+  }
+  await deleteDoc(doc(db, "places", placeId));
 }
 
 export function subscribeToPlacesByUploader(
@@ -52,7 +119,7 @@ export function subscribeToPlacesByUploader(
     (snap) => {
       onChange(
         sortByCreatedDesc(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place),
+          livePlaces(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place)),
         ),
       );
     },
@@ -90,8 +157,8 @@ export function subscribeToPlacesByUploaders(
     onSnapshot(
       query(collection(db, "places"), where("uploaderId", "in", chunk)),
       (snap) => {
-        byChunk[index] = snap.docs.map(
-          (d) => ({ id: d.id, ...d.data() }) as Place,
+        byChunk[index] = livePlaces(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Place),
         );
         onChange(sortByCreatedDesc(byChunk.flat()));
       },
