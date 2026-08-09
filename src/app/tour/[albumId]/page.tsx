@@ -16,7 +16,7 @@ import PlaceExperience, { FADE_MS } from "@/components/PlaceExperience";
 import { resolveAlbumPlaces, subscribeToAlbum } from "@/lib/albums";
 import { toTimelineEntries } from "@/lib/captureTimeline";
 import { isFirebaseConfigured } from "@/lib/firebase";
-import { subscribeToPlacesByUploader } from "@/lib/places";
+import { subscribeToPlacesByIds } from "@/lib/places";
 import { warmSplat } from "@/lib/splatPrefetch";
 import { useAuth } from "@/lib/auth";
 import type { Album, Place } from "@/lib/types";
@@ -57,12 +57,20 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
     return subscribeToAlbum(albumId, setAlbum, () => setAlbum(null));
   }, [albumId]);
 
-  // The album's owner, not the viewer — a walkthrough of someone else's album
-  // has to resolve their placeIds, and this account's captures will not.
+  // Fetched by id rather than by uploader, the same way the album grid loads:
+  // a shared journey mixes several people's captures, and querying one
+  // account's uploads resolves everyone else's placeIds to nothing — a
+  // walkthrough that silently skips every clip a collaborator contributed.
+  //
+  // Joined so the listener is rebuilt when the contents change, not on every
+  // snapshot that leaves the same array with a new identity.
+  const placeIdKey = (album?.placeIds ?? []).join(",");
+  const albumLoaded = album !== undefined;
   useEffect(() => {
-    if (!isFirebaseConfigured || !user || !album?.ownerId) return;
-    return subscribeToPlacesByUploader(album.ownerId, setPlaces);
-  }, [user, album?.ownerId]);
+    if (!isFirebaseConfigured || !user || !albumLoaded) return;
+    const ids = placeIdKey ? placeIdKey.split(",") : [];
+    return subscribeToPlacesByIds(ids, setPlaces, () => setPlaces([]));
+  }, [user, albumLoaded, placeIdKey]);
 
   /**
    * The walkthrough's running order. Ascending on the shared axis, the same one
