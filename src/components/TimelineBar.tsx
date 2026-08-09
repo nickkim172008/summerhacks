@@ -5,8 +5,6 @@ import {
   clusterTicks,
   positionOf,
   type TickCluster,
-  type TimelineEntry,
-  type TimelineSpan,
 } from "@/lib/captureTimeline";
 import type { CaptureTimeline } from "@/lib/timelinePlayback";
 
@@ -98,34 +96,36 @@ export default function TimelineBar({
       // the timeline is open.
       style={{ bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }}
     >
-      <div className="mx-auto max-w-5xl px-4 pb-3 pt-2.5">
-        <div className="flex items-start gap-3">
+      <div className="mx-auto max-w-5xl px-4 pb-2 pt-2">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={timeline.toggle}
             disabled={entries.length === 0}
             aria-label={playing ? "Pause timeline" : "Play timeline"}
-            className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0071e3] text-white shadow-sm shadow-[#0071e3]/25 transition hover:bg-[#0077ed] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0071e3] text-white shadow-sm shadow-[#0071e3]/25 transition hover:bg-[#0077ed] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
           >
             {playing ? <PauseIcon /> : <PlayIcon />}
           </button>
 
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-medium tracking-tight">
-              Timeline
+            {/* One line, not two: the bar sits over the map, and the note is
+                context rather than something to read every frame. */}
+            <p className="truncate text-[12px] leading-tight">
+              <span className="font-medium tracking-tight">Timeline</span>
               <span className="text-neutral-300"> · </span>
-              <span className="font-normal text-neutral-500">{scopeLabel}</span>
-            </p>
-            <p className="mt-0.5 text-[12px] leading-snug text-neutral-500">
-              {exclusionNote(entries.length, scopeCount, offMap, undated)}
+              <span className="text-neutral-500">{scopeLabel}</span>
+              <span className="text-neutral-300"> · </span>
+              <span className="text-neutral-500">
+                {exclusionNote(entries.length, scopeCount, offMap, undated)}
+              </span>
             </p>
           </div>
 
           {onMap.length > 0 && (
-            <p className="shrink-0 pt-0.5 text-right text-[12px] leading-tight text-neutral-500">
-              <span className="text-[15px] font-medium tabular-nums text-[#1d1d1f]">
+            <p className="shrink-0 text-[12px] leading-none text-neutral-500">
+              <span className="text-[14px] font-medium tabular-nums text-[#1d1d1f]">
                 {reachedOnMap} of {onMap.length}
-              </span>
-              <br />
+              </span>{" "}
               on the map
             </p>
           )}
@@ -133,7 +133,7 @@ export default function TimelineBar({
           <button
             onClick={onClose}
             aria-label="Close timeline"
-            className="-mr-1 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-[#1d1d1f]"
+            className="-mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-[#1d1d1f]"
           >
             <CloseIcon />
           </button>
@@ -141,7 +141,7 @@ export default function TimelineBar({
 
         {span && (
           <>
-            <div className="relative mt-2.5 h-[18px] select-none">
+            <div className="relative mt-2 h-[16px] select-none">
               <div
                 className="absolute -translate-x-1/2 whitespace-nowrap rounded-full bg-[#1d1d1f] px-2 py-[3px] text-[10px] font-medium tabular-nums text-white"
                 style={{ left: `${inset(playPct)}%` }}
@@ -205,15 +205,13 @@ export default function TimelineBar({
               </div>
             </div>
 
-            <div className="flex items-baseline justify-between gap-3 text-[11px] tabular-nums text-neutral-400">
+            <div className="mt-0.5 flex items-baseline justify-between gap-3 text-[10px] tabular-nums text-neutral-400">
               <span>{formatStamp(span.start, spansDays)}</span>
               <span className="text-neutral-500">
                 {formatDuration(span.end - span.start)} end to end
               </span>
               <span>{formatStamp(span.end, spansDays)}</span>
             </div>
-
-            <PairRow entries={entries} span={span} spansDays={spansDays} />
           </>
         )}
       </div>
@@ -311,181 +309,6 @@ function Tick({
   );
 }
 
-/**
- * Filming against upload, one capture per lane. Lanes rather than a single
- * strip because the interesting part is four separate films landing on one
- * upload minute, and drawn on top of each other that is a single mark.
- */
-function PairRow({
-  entries,
-  span,
-  spansDays,
-}: {
-  entries: TimelineEntry[];
-  span: TimelineSpan;
-  spansDays: boolean;
-}) {
-  const [hovered, setHovered] = useState<string | null>(null);
-
-  const lanes = useMemo(
-    () =>
-      entries.map((entry) => {
-        const filmed =
-          entry.filmedAt === null
-            ? null
-            : positionOf(entry.filmedAt, span) * 100;
-        const uploaded =
-          entry.uploadedAt === null
-            ? null
-            : positionOf(entry.uploadedAt, span) * 100;
-        const ends = [filmed, uploaded].filter(
-          (at): at is number => at !== null,
-        );
-        return {
-          entry,
-          filmed,
-          uploaded,
-          from: Math.min(...ends),
-          to: Math.max(...ends),
-        };
-      }),
-    [entries, span],
-  );
-
-  const summary = useMemo(() => {
-    const lags: number[] = [];
-    const uploadMinutes = new Map<number, number>();
-
-    for (const entry of entries) {
-      if (entry.filmedAt !== null && entry.uploadedAt !== null) {
-        lags.push(entry.uploadedAt - entry.filmedAt);
-      }
-      if (entry.uploadedAt !== null) {
-        const minute = Math.floor(entry.uploadedAt / 60_000);
-        uploadMinutes.set(minute, (uploadMinutes.get(minute) ?? 0) + 1);
-      }
-    }
-
-    const parts: string[] = [];
-    if (lags.length > 0) {
-      const sorted = [...lags].sort((a, b) => a - b);
-      parts.push(
-        `median wait ${formatDuration(sorted[Math.floor(sorted.length / 2)])}`,
-      );
-    }
-
-    let biggest: [number, number] | null = null;
-    for (const batch of uploadMinutes) {
-      if (!biggest || batch[1] > biggest[1]) biggest = batch;
-    }
-    if (biggest && biggest[1] > 1) {
-      parts.push(
-        `${biggest[1]} uploaded together at ${formatClock(biggest[0] * 60_000)}`,
-      );
-    }
-
-    return parts.join(" · ");
-  }, [entries]);
-
-  if (entries.length === 0) return null;
-
-  const active = lanes.find((lane) => lane.entry.id === hovered);
-
-  return (
-    <div className="relative mt-2.5 border-t border-black/5 pt-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
-          <span className="h-[7px] w-[7px] rounded-full bg-[#0071e3]" />
-          Filmed
-          <span className="text-neutral-300">→</span>
-          <span className="h-[7px] w-[7px] rounded-full border-[1.5px] border-[#0071e3]" />
-          uploaded
-        </p>
-        <p className="truncate text-[11px] text-neutral-500">
-          {summary || "No capture carries both times."}
-        </p>
-      </div>
-
-      {/* Tooltips live above the lanes rather than inside them: a scrolling
-          list of lanes would clip its own hover card. */}
-      {active && (
-        <div
-          className="pointer-events-none absolute bottom-full z-10 mb-1 w-max max-w-[17rem] rounded-xl bg-white px-3 py-2 shadow-lg ring-1 ring-black/10"
-          style={laneTooltipAnchor((active.from + active.to) / 2)}
-        >
-          <p className="text-[11px] font-medium leading-snug text-[#1d1d1f]">
-            {active.entry.name}
-          </p>
-          <p className="text-[11px] leading-snug tabular-nums text-neutral-500">
-            {active.entry.filmedAt === null
-              ? "No filmed time — dated by upload"
-              : `Filmed ${formatStamp(active.entry.filmedAt, spansDays)}`}
-            {active.entry.uploadedAt !== null &&
-              ` · uploaded ${formatStamp(active.entry.uploadedAt, spansDays)}`}
-          </p>
-          {active.entry.filmedAt !== null &&
-            active.entry.uploadedAt !== null &&
-            active.entry.uploadedAt > active.entry.filmedAt && (
-              <p className="text-[11px] leading-snug text-neutral-400">
-                {formatDuration(
-                  active.entry.uploadedAt - active.entry.filmedAt,
-                )}{" "}
-                later
-              </p>
-            )}
-        </div>
-      )}
-
-      <div className="mt-1.5 max-h-[5.5rem] overflow-y-auto">
-        {lanes.map((lane) => {
-          const lit = lane.entry.id === hovered;
-          return (
-            <div
-              key={lane.entry.id}
-              className={`relative h-[11px] rounded transition-colors ${
-                lit ? "bg-neutral-100" : ""
-              }`}
-              onPointerEnter={() => setHovered(lane.entry.id)}
-              onPointerLeave={() => setHovered(null)}
-            >
-              <div
-                className={`absolute top-1/2 h-[2px] -translate-y-1/2 rounded-full ${
-                  lit ? "bg-[#0071e3]/60" : "bg-[#0071e3]/25"
-                }`}
-                style={{
-                  left: `${lane.from}%`,
-                  width: `${lane.to - lane.from}%`,
-                }}
-              />
-              {lane.filmed !== null && (
-                <span
-                  className="absolute top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0071e3]"
-                  style={{ left: `${lane.filmed}%` }}
-                />
-              )}
-              {lane.uploaded !== null && (
-                <span
-                  className="absolute top-1/2 h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-[#0071e3] bg-white"
-                  style={{ left: `${lane.uploaded}%` }}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/**
- * What the animation is leaving out, in words and in the real counts. The map
- * can only warm where a capture says it was, and stating that is the difference
- * between a sparse map that is true and one that invented a point to look busy.
- *
- * The denominator moves with what is actually being counted: an undated capture
- * is not on the axis at all, so it cannot be one of the dated ones that lack a
- * location.
- */
 function exclusionNote(
   dated: number,
   scopeCount: number,
@@ -528,12 +351,6 @@ function tickTooltipAnchor(pct: number) {
   if (pct < 18) return { left: 0 };
   if (pct > 82) return { right: 0 };
   return { left: "50%", transform: "translateX(-50%)" };
-}
-
-function laneTooltipAnchor(pct: number) {
-  if (pct < 18) return { left: 0 };
-  if (pct > 82) return { right: 0 };
-  return { left: `${pct}%`, transform: "translateX(-50%)" };
 }
 
 function inset(pct: number) {
