@@ -85,8 +85,12 @@ export default function SplatViewer({
     // it into something unreachable, and the failure arrives as an uncaught
     // "Failed to fetch" — a black canvas with nothing said. Absolute from here
     // means a missing file at least fails as the 404 it is.
+    const resolvedUrl = new URL(splatUrl, window.location.href).href;
+    // The one fact that separates "this record predates Firebase storage" from
+    // "Storage refused the read", and it is invisible without saying it out loud.
+    console.info("[splat] loading", resolvedUrl);
     const splat = new SplatMesh({
-      url: new URL(splatUrl, window.location.href).href,
+      url: resolvedUrl,
       onLoad: (mesh) => {
         // Captures arrive at arbitrary scale and centering, so work out where the
         // place actually is before standing the camera in it and setting the
@@ -128,6 +132,7 @@ export default function SplatViewer({
 
     // The only handle on a load that never arrives: SplatMesh takes no onError.
     void splat.initialized.catch((error: unknown) => {
+      console.error("[splat] failed", resolvedUrl, error);
       if (!mounted) return;
       setLoadError(
         error instanceof Error && error.message
@@ -268,16 +273,27 @@ export default function SplatViewer({
   }, [hotspots, sceneRadius]);
 
   if (loadError) {
+    // A relative url means the record predates Firebase storage and its bytes
+    // were only ever on one machine. An absolute one that will not load is a
+    // live file the browser was refused — almost always the bucket's CORS,
+    // since a missing object answers 404 rather than failing outright.
+    const onDisk = !/^https?:/i.test(splatUrl);
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-neutral-950 px-6 text-center">
         <p className="text-[15px] font-medium text-white">
-          This environment&apos;s file is missing.
+          {onDisk
+            ? "This environment's file is missing."
+            : "This environment could not be loaded."}
         </p>
         <p className="max-w-sm text-sm text-neutral-400">
-          Its splat was saved to a machine rather than to storage, so the bytes
-          are not here. Capturing it again is the only way back.
+          {onDisk
+            ? "Its splat was saved to a machine rather than to storage, so the bytes are not here. Capturing it again is the only way back."
+            : "The file is in storage, but the browser was refused it. The bucket most likely has no CORS rule — see cors.json in the repo. Nothing is lost."}
         </p>
         <p className="mt-1 text-xs text-neutral-600">{loadError}</p>
+        <p className="mt-2 max-w-md break-all text-[11px] text-neutral-700">
+          {splatUrl}
+        </p>
       </div>
     );
   }

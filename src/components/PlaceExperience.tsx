@@ -92,6 +92,12 @@ export default function PlaceExperience({
 
   const canAuthor = Boolean(onAddHotspot) && linkTargets.length > 0;
   const showPlayer = entered && Boolean(place.audioUrl);
+  useEffect(() => {
+    console.info("[place]", place.id, {
+      splatUrl: place.splatUrl,
+      audioUrl: place.audioUrl ?? "(none saved)",
+    });
+  }, [place.id, place.splatUrl, place.audioUrl]);
   const captured = describeCapture(place);
 
   return (
