@@ -25,10 +25,18 @@ export default function PlacesMap({
   places,
   liveLocation = null,
   className = "",
+  weightOf,
 }: {
   places: LocatedPlace[];
   liveLocation?: LatLng | null;
   className?: string;
+  /**
+   * How hard to draw each point, 0..1. Absent means full strength, which is
+   * every caller but the timeline: it fades a capture in as the playhead
+   * reaches it, and needs an identity that only changes when the picture does,
+   * since each new one repaints the whole canvas.
+   */
+  weightOf?: (place: LocatedPlace) => number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -71,6 +79,8 @@ export default function PlacesMap({
         mapRef.current = map;
 
         const heat = createCanvasHeatmap(libs.OverlayView);
+        // Full strength for the first paint; the effect below re-weights as
+        // soon as ready flips, which is the frame after this one.
         heat.setData(placesToHeatPoints(placesRef.current));
         heat.setMap(map);
         heatRef.current = heat;
@@ -110,11 +120,11 @@ export default function PlacesMap({
     const libs = libsRef.current;
     if (!map || !libs || !ready) return;
 
-    heatRef.current?.setData(placesToHeatPoints(places));
+    heatRef.current?.setData(placesToHeatPoints(places, weightOf));
     if (!didCenterRef.current) {
       fitMap(libs, map, places, liveRef.current, didCenterRef);
     }
-  }, [places, ready]);
+  }, [places, ready, weightOf]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -110,7 +110,11 @@ export function createCanvasHeatmap(
 
       ctx.globalCompositeOperation = "source-over";
       for (const cell of cells.values()) {
-        ctx.globalAlpha = clamp(cell.value / normalizer, MIN_ALPHA, 1);
+        // The floor keeps a lone capture from vanishing, but a point the
+        // timeline is fading in has to be able to start at nothing, so the
+        // floor scales with weight below one. At full weight it is unchanged.
+        const floor = MIN_ALPHA * Math.min(1, cell.value);
+        ctx.globalAlpha = clamp(cell.value / normalizer, floor, 1);
         ctx.drawImage(brush, cell.x - radius, cell.y - radius);
       }
       ctx.globalAlpha = 1;

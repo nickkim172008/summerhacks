@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -14,11 +14,13 @@ const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
     </div>
   ),
 });
+import TimelineBar from "@/components/TimelineBar";
 import { subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useLiveLocation } from "@/lib/geolocation";
-import { useResolvedPlaces } from "@/lib/geocode";
+import { useResolvedPlaces, type LocatedPlace } from "@/lib/geocode";
 import { subscribeToPlaces, subscribeToPlacesByUploader } from "@/lib/places";
+import { useCaptureTimeline } from "@/lib/timelinePlayback";
 import type { Album, Place } from "@/lib/types";
 
 type Scope =
@@ -38,6 +40,7 @@ export default function MapPage() {
   const [ownedAlbums, setOwnedAlbums] = useState<Album[]>([]);
   const [requestedScope, setScope] = useState<Scope>(PUBLIC_SCOPE);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [timelineOpen, setTimelineOpen] = useState(false);
   const [libraryDenied, setLibraryDenied] = useState(false);
   const {
     location: liveLocation,
@@ -102,6 +105,35 @@ export default function MapPage() {
   }, [allPlaces, albums, scope, user]);
 
   const { located, pending, byName, unplaceable } = useResolvedPlaces(inScope);
+
+  // Derived from the live array every render, never snapshotted: a capture
+  // saved while the bar is open has to widen the axis and grow a tick on its
+  // own.
+  const timeline = useCaptureTimeline(inScope, timelineOpen);
+
+  // The animation is a filter over what the map already had. PlacesMap keeps
+  // its own idea of framing, so the map stays fitted to the whole scope while
+  // the points inside it arrive one at a time.
+  const mapPlaces = useMemo(
+    () =>
+      timelineOpen
+        ? located.filter((place) => !timeline.hiddenIds.has(place.id))
+        : located,
+    [located, timeline.hiddenIds, timelineOpen],
+  );
+
+  const heatWeightOf = useCallback(
+    (place: LocatedPlace) => timeline.weights[place.id] ?? 1,
+    [timeline.weights],
+  );
+
+  // Also the hook for dismissing the bar from elsewhere on this page — a tour
+  // starting over the map, say — since it parks the playhead as well as hiding
+  // the track, leaving the map showing everything again.
+  function closeTimeline() {
+    timeline.reset();
+    setTimelineOpen(false);
+  }
 
   // At most one thing to say, and only for a moment: an empty scope is worth a
   // word, but not a banner sitting over the map for as long as it stays empty.
@@ -242,17 +274,45 @@ export default function MapPage() {
 
         <section className="relative min-h-0 min-w-0 flex-1 pb-16">
           <PlacesMap
-            places={located}
+            places={mapPlaces}
             liveLocation={liveLocation}
+            weightOf={timelineOpen ? heatWeightOf : undefined}
             className="absolute inset-0"
           />
-          {notice && (
+
+          {/* Spelled out rather than left as an icon: a tour button elsewhere
+              on this page also plays, and means something else entirely. */}
+          <button
+            onClick={() =>
+              timelineOpen ? closeTimeline() : setTimelineOpen(true)
+            }
+            aria-pressed={timelineOpen}
+            className={`absolute left-3 top-12 z-[2] flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-medium shadow-md ring-1 transition ${
+              timelineOpen
+                ? "bg-[#0071e3] text-white ring-[#0071e3]/30"
+                : "bg-white/95 text-[#1d1d1f] ring-black/8 hover:bg-white"
+            }`}
+          >
+            <ClockIcon />
+            Timeline
+          </button>
+
+          {notice && !timelineOpen && (
             <div
               className="pointer-events-none absolute bottom-20 left-1/2 z-[1] max-w-sm -translate-x-1/2 rounded-full bg-white/95 px-4 py-2 text-center text-[12px] text-neutral-600 shadow-md ring-1 ring-black/10 transition-opacity duration-700"
               style={{ opacity: noticeVisible ? 1 : 0 }}
             >
               {notice}
             </div>
+          )}
+
+          {timelineOpen && (
+            <TimelineBar
+              timeline={timeline}
+              scopeCount={inScope.length}
+              scopeLabel={scopeLabel}
+              onClose={closeTimeline}
+            />
           )}
         </section>
       </div>
@@ -308,6 +368,14 @@ function FilterButton({
         {subtitle}
       </p>
     </button>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden>
+      <path d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm-.75 2.75a.75.75 0 0 1 1.5 0v3.44l2.28 1.32a.75.75 0 1 1-.75 1.3l-2.65-1.53a.75.75 0 0 1-.38-.65V6.25Z" />
+    </svg>
   );
 }
 
