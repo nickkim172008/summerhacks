@@ -13,14 +13,9 @@
  * ceiling, or a blur while the phone is still coming up, and by two seconds it
  * is pointing at the room.
  */
-const POSTER_SECONDS = 2;
+import { THUMBNAIL_EDGE } from "./imageFile";
 
-/**
- * Longest edge. A grid tile is a few hundred CSS pixels at most, so this covers
- * a retina one with room to spare and still lands well under 100 KB — small
- * enough that keeping one per queued capture costs nothing.
- */
-const MAX_EDGE = 640;
+const POSTER_SECONDS = 2;
 const JPEG_QUALITY = 0.82;
 
 /**
@@ -97,12 +92,12 @@ function seekTo(
   });
 }
 
-/** Downscaled to fit MAX_EDGE, aspect intact — the tiles crop it themselves. */
+/** Downscaled to a thumbnail, aspect intact — the tiles crop it themselves. */
 function toJpeg(el: HTMLVideoElement): Promise<Blob | null> {
   const { videoWidth, videoHeight } = el;
   if (!videoWidth || !videoHeight) return Promise.resolve(null);
 
-  const scale = Math.min(1, MAX_EDGE / Math.max(videoWidth, videoHeight));
+  const scale = Math.min(1, THUMBNAIL_EDGE / Math.max(videoWidth, videoHeight));
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(videoWidth * scale));
   canvas.height = Math.max(1, Math.round(videoHeight * scale));

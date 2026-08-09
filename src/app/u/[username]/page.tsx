@@ -24,6 +24,8 @@ import {
   unfollow,
 } from "@/lib/follows";
 import PlaceThumb from "@/components/PlaceThumb";
+import AlbumCover from "@/components/AlbumCover";
+import { resolveAlbumPlaces } from "@/lib/albums";
 import type { Album, Place, Profile } from "@/lib/types";
 
 export default function ProfilePage({
@@ -176,31 +178,28 @@ export default function ProfilePage({
                 <p className="mt-3 text-sm text-neutral-500">No albums yet.</p>
               ) : (
                 <ul className="mt-4 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
-                  {albums.map((album) => {
-                    const cover = coverFor(album, placeById);
-                    return (
-                      <li key={album.id}>
-                        <Link
-                          href={`/album/${album.id}`}
-                          className="group block"
-                        >
-                          <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
-                            {cover ? (
-                              <PlaceThumb place={cover} />
-                            ) : (
-                              <EmptyCover />
+                  {albums.map((album) => (
+                    <li key={album.id}>
+                      <Link href={`/album/${album.id}`} className="group block">
+                        <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
+                          <AlbumCover
+                            coverUrl={album.coverUrl}
+                            places={resolveAlbumPlaces(
+                              album.placeIds,
+                              placeById,
                             )}
-                          </div>
-                          <p className="mt-2 truncate text-[15px] font-medium">
-                            {album.name}
-                          </p>
-                          <p className="text-sm text-neutral-500">
-                            {album.placeIds?.length ?? 0}
-                          </p>
-                        </Link>
-                      </li>
-                    );
-                  })}
+                            alt={album.name}
+                          />
+                        </div>
+                        <p className="mt-2 truncate text-[15px] font-medium">
+                          {album.name}
+                        </p>
+                        <p className="text-sm text-neutral-500">
+                          {album.placeIds?.length ?? 0}
+                        </p>
+                      </Link>
+                    </li>
+                  ))}
                 </ul>
               )}
             </section>
@@ -494,25 +493,3 @@ function BioSection({
   ) : null;
 }
 
-function coverFor(album: Album, placeById: Map<string, Place>) {
-  for (const id of album.placeIds ?? []) {
-    const place = placeById.get(id);
-    if (place) return place;
-  }
-  return null;
-}
-
-function EmptyCover() {
-  return (
-    <div className="flex h-full w-full items-center justify-center text-neutral-300">
-      <svg
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        className="h-10 w-10"
-        aria-hidden
-      >
-        <path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm-9.5 3A1.5 1.5 0 1 1 8 9.5 1.5 1.5 0 0 1 9.5 8Zm9.5 9H5l4-5 2.5 3 3.5-4.5Z" />
-      </svg>
-    </div>
-  );
-}

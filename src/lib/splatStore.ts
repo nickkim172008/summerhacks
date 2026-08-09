@@ -75,6 +75,23 @@ export async function uploadThumbnail(
   return getDownloadURL(thumbRef);
 }
 
+/**
+ * A cover picked by hand for an album, which stands in front of the mosaic its
+ * contents would otherwise make.
+ */
+export async function uploadAlbumCover(
+  albumId: string,
+  image: Blob,
+): Promise<string> {
+  const coverRef = ref(storage, `albumCovers/${albumId}/cover.jpg`);
+  try {
+    await uploadBytes(coverRef, image, { contentType: "image/jpeg" });
+  } catch (error) {
+    throw new Error(explainStorageError(error, "Album cover"), { cause: error });
+  }
+  return getDownloadURL(coverRef);
+}
+
 /** Profile avatar — always stored as a square JPEG under avatars/{uid}. */
 export async function uploadProfilePhoto(
   uid: string,

@@ -165,6 +165,12 @@ export interface PlaceEdits {
   locationName: string;
   /** null clears the pin, leaving the name to place it on the map. */
   location: { lat: number; lng: number } | null;
+  /**
+   * Already uploaded, since only the caller knows whether a picture was
+   * chosen at all. Undefined leaves whatever is there alone; the empty string
+   * is an explicit ask for the gradient tile back.
+   */
+  thumbnailUrl?: string;
 }
 
 /**
@@ -181,6 +187,12 @@ export async function updatePlaceDetails(placeId: string, edits: PlaceEdits) {
     name: edits.name.trim(),
     locationName: locationName || deleteField(),
     location: edits.location ?? deleteField(),
+    // Written empty rather than deleted, unlike the fields above: every place
+    // carries a thumbnailUrl from the moment it is created, and the tile reads
+    // an empty one as "draw the gradient".
+    ...(edits.thumbnailUrl === undefined
+      ? {}
+      : { thumbnailUrl: edits.thumbnailUrl }),
   });
 }
 

@@ -25,10 +25,21 @@ service firebase.storage {
       allow write: if signedIn();
     }
 
-    // The frame taken off the walkthrough. Open to any signed-in writer as the
-    // splat is — the place id is minted before the document exists, so there is
-    // no owner to check against yet — but held to an image, and a small one.
+    // The frame taken off the walkthrough, or one chosen in its place. Open to
+    // any signed-in writer as the splat is — the place id is minted before the
+    // document exists, so there is no owner to check against yet — but held to
+    // an image, and a small one.
     match /thumbnails/{placeId}/{fileName} {
+      allow read: if true;
+      allow write: if signedIn()
+                   && request.resource.size < 2 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // A cover chosen for an album. Same shape as the thumbnails above: the
+    // Firestore rules are what keep the album itself owner-only, and a cover
+    // nothing points at is never shown.
+    match /albumCovers/{albumId}/{fileName} {
       allow read: if true;
       allow write: if signedIn()
                    && request.resource.size < 2 * 1024 * 1024

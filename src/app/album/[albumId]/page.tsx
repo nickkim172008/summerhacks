@@ -1,15 +1,23 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { subscribeToPlacesByUploader } from "@/lib/places";
-import { addPlacesToAlbum, subscribeToAlbum } from "@/lib/albums";
+import {
+  addPlacesToAlbum,
+  resolveAlbumPlaces,
+  subscribeToAlbum,
+  updateAlbumCover,
+} from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
+import { COVER_EDGE, prepareImage } from "@/lib/imageFile";
+import { uploadAlbumCover } from "@/lib/splatStore";
 import PlaceThumb from "@/components/PlaceThumb";
 import PlaceTile from "@/components/PlaceTile";
 import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
+import AlbumCover from "@/components/AlbumCover";
 import CaptureRunner from "@/components/CaptureRunner";
 import type { Album, Place } from "@/lib/types";
 
@@ -60,10 +68,10 @@ export default function AlbumPage({
     if (places === null) return null;
     if (isRecents) return places;
     if (!album) return [];
-    const byId = new Map(places.map((p) => [p.id, p]));
-    return (album.placeIds ?? [])
-      .map((id) => byId.get(id))
-      .filter((p): p is Place => Boolean(p));
+    return resolveAlbumPlaces(
+      album.placeIds,
+      new Map(places.map((p) => [p.id, p])),
+    );
   }, [places, album, isRecents]);
 
   const candidates = useMemo(() => {
@@ -143,14 +151,33 @@ export default function AlbumPage({
       </nav>
 
       <div className="mx-auto max-w-5xl px-6">
-        <h1 className="mt-8 text-[34px] font-bold tracking-tight">{title}</h1>
-        <p className="text-neutral-500">
-          {error
-            ? error
-            : loading
-              ? "Loading…"
-              : `${readyPlaces.length} ${readyPlaces.length === 1 ? "environment" : "environments"}`}
-        </p>
+        <div className="mt-8 flex items-end gap-5">
+          <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 shadow-sm ring-1 ring-black/5 sm:h-36 sm:w-36">
+            <AlbumCover
+              coverUrl={album?.coverUrl}
+              places={readyPlaces}
+              alt={title}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[34px] font-bold tracking-tight">
+              {title}
+            </h1>
+            <p className="text-neutral-500">
+              {error
+                ? error
+                : loading
+                  ? "Loading…"
+                  : `${readyPlaces.length} ${readyPlaces.length === 1 ? "environment" : "environments"}`}
+            </p>
+            {album && user?.uid === album.ownerId && (
+              <CoverControls
+                albumId={album.id}
+                hasCover={Boolean(album.coverUrl)}
+              />
+            )}
+          </div>
+        </div>
 
         {error && (
           <div className="mt-10">
@@ -228,6 +255,87 @@ export default function AlbumPage({
         />
       )}
     </main>
+  );
+}
+
+/**
+ * Choosing a cover, or giving one back. Nothing is staged: the album is on a
+ * live snapshot, so the tile beside these buttons redraws itself as soon as the
+ * write lands, and clearing puts the mosaic of its contents back.
+ */
+function CoverControls({
+  albumId,
+  hasCover,
+}: {
+  albumId: string;
+  hasCover: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(work: () => Promise<void>, whenItFails: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : whenItFails);
+    } finally {
+      setBusy(false);
+      // The input keeps its selection, so picking the same file twice in a row
+      // would fire no change event at all.
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          void run(async () => {
+            const cover = await prepareImage(file, {
+              maxEdge: COVER_EDGE,
+              square: true,
+            });
+            await updateAlbumCover(albumId, await uploadAlbumCover(albumId, cover));
+          }, "Couldn’t set that cover.");
+        }}
+      />
+      <div className="flex items-center gap-4 text-[13px] font-medium">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="text-[#0071e3] transition hover:opacity-70 disabled:opacity-40"
+        >
+          {busy ? "Working…" : hasCover ? "Change cover" : "Choose cover"}
+        </button>
+        {hasCover && (
+          <button
+            type="button"
+            onClick={() =>
+              void run(
+                () => updateAlbumCover(albumId, null),
+                "Couldn’t remove that cover.",
+              )
+            }
+            disabled={busy}
+            className="text-neutral-500 transition hover:text-neutral-800 disabled:opacity-40"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      {error && <p className="mt-1.5 text-[12px] text-red-600">{error}</p>}
+    </div>
   );
 }
 
