@@ -57,10 +57,12 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
     return subscribeToAlbum(albumId, setAlbum, () => setAlbum(null));
   }, [albumId]);
 
+  // The album's owner, not the viewer — a walkthrough of someone else's album
+  // has to resolve their placeIds, and this account's captures will not.
   useEffect(() => {
-    if (!isFirebaseConfigured || !user) return;
-    return subscribeToPlacesByUploader(user.uid, setPlaces);
-  }, [user]);
+    if (!isFirebaseConfigured || !user || !album?.ownerId) return;
+    return subscribeToPlacesByUploader(album.ownerId, setPlaces);
+  }, [user, album?.ownerId]);
 
   /**
    * The walkthrough's running order. Ascending on the shared axis, the same one

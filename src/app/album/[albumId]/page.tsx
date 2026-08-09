@@ -79,12 +79,17 @@ export default function AlbumPage({
     );
   }, [albumId, isRecents, user]);
 
+  // Whose captures to load: Recents is always the signed-in account, and a
+  // named album is whoever owns it — otherwise opening someone else's album
+  // would query this account's places and resolve every placeId to nothing.
+  const placesOwnerId = isRecents ? user?.uid : album?.ownerId;
+
   useEffect(() => {
-    if (!isFirebaseConfigured || !user) return;
-    return subscribeToPlacesByUploader(user.uid, setPlaces, () =>
+    if (!isFirebaseConfigured || !user || !placesOwnerId) return;
+    return subscribeToPlacesByUploader(placesOwnerId, setPlaces, () =>
       setError("Couldn’t load environments."),
     );
-  }, [user]);
+  }, [user, placesOwnerId]);
 
   // Only Recents offers filing into an album, so only Recents needs the list.
   useEffect(() => {

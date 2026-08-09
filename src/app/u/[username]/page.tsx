@@ -290,8 +290,12 @@ function ProfileAvatar({
   );
 
   if (!editable) {
+    // relative is what keeps next/image fill inside this circle. Without it the
+    // photo positions against a page ancestor and paints the whole viewport —
+    // which is what made another person's albums look like they sat on top of
+    // a blown-up profile picture.
     return (
-      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100">
+      <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100">
         {face}
       </div>
     );
