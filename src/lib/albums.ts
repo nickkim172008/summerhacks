@@ -2,6 +2,7 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
+  deleteDoc,
   deleteField,
   doc,
   onSnapshot,
@@ -192,6 +193,23 @@ export async function createAlbum(
     createdAt: serverTimestamp(),
   });
   return albumRef.id;
+}
+
+export async function renameAlbum(
+  albumId: string,
+  name: string,
+): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Name can’t be empty.");
+  await updateDoc(doc(db, "albums", albumId), { name: trimmed });
+}
+
+/**
+ * Drops the journey document only. Places stay in the library — an album is a
+ * grouping, so ending it is not the same as deleting its captures.
+ */
+export async function deleteAlbum(albumId: string): Promise<void> {
+  await deleteDoc(doc(db, "albums", albumId));
 }
 
 /**

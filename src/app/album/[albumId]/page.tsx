@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   movePlaceToTrash,
+  sortPlacesNewestFirst,
   subscribeToPlacesByIds,
   subscribeToPlacesByUploader,
 } from "@/lib/places";
@@ -111,8 +112,6 @@ export default function AlbumPage({
     );
   }, [placeIdKey, isRecents, user]);
 
-  // Album order is the order places were added, which the id query does not
-  // preserve, so the fetched docs are re-sorted back onto placeIds.
   // Only Recents offers filing into an album, so only Recents needs the list.
   useEffect(() => {
     if (!isFirebaseConfigured || !user || !isRecents) return;
@@ -126,9 +125,11 @@ export default function AlbumPage({
     // Resolved from the by-id fetch, not from `places`: that holds only the
     // viewer's own uploads, so a collaborator's environments would vanish.
     if (sharedPlaces === null) return null;
-    return resolveAlbumPlaces(
-      album.placeIds,
-      new Map(sharedPlaces.map((p) => [p.id, p])),
+    return sortPlacesNewestFirst(
+      resolveAlbumPlaces(
+        album.placeIds,
+        new Map(sharedPlaces.map((p) => [p.id, p])),
+      ),
     );
   }, [places, album, sharedPlaces, isRecents]);
 

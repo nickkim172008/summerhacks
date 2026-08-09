@@ -28,6 +28,7 @@ import PlaceThumb from "@/components/PlaceThumb";
 import AlbumCover from "@/components/AlbumCover";
 import { resolveAlbumPlaces } from "@/lib/albums";
 import { canOptimizeImage } from "@/lib/imageHosts";
+import { formatPlaceDate } from "@/lib/places";
 import type { Album, Place, Profile } from "@/lib/types";
 
 export default function ProfilePage({
@@ -216,19 +217,29 @@ export default function ProfilePage({
                 </p>
               ) : (
                 <ul className="mt-4 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5">
-                  {places.map((place) => (
-                    <li key={place.id}>
-                      <Link
-                        href={`/place/${place.id}${fromProfile}`}
-                        className="group relative block aspect-square overflow-hidden bg-neutral-100"
-                      >
-                        <PlaceThumb place={place} />
-                        <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-6 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
-                          {place.name}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
+                  {places.map((place) => {
+                    const taken = formatPlaceDate(place);
+                    return (
+                      <li key={place.id}>
+                        <Link
+                          href={`/place/${place.id}${fromProfile}`}
+                          className="group relative block aspect-square overflow-hidden bg-neutral-100"
+                        >
+                          <PlaceThumb place={place} />
+                          <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-6 text-white opacity-0 transition group-hover:opacity-100">
+                            <span className="block truncate text-xs font-medium">
+                              {place.name}
+                            </span>
+                            {taken && (
+                              <span className="block truncate text-[11px] font-normal text-white/85">
+                                {taken}
+                              </span>
+                            )}
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>
