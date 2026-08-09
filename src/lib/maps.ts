@@ -78,13 +78,17 @@ export type HeatPoint = {
   weight: number;
 };
 
-/** One heat point per place (demo + real); density drives the colour. */
-export function placesToHeatPoints(
-  places: { location: { lat: number; lng: number } }[],
-): HeatPoint[] {
+/**
+ * One heat point per place; density drives the colour. `weightOf` is how the
+ * map timeline fades a capture in: a point that climbs from nothing to one
+ * warms its patch of the map instead of arriving at full strength.
+ */
+export function placesToHeatPoints<
+  T extends { location: { lat: number; lng: number } },
+>(places: T[], weightOf?: (place: T) => number): HeatPoint[] {
   return places.map((place) => ({
     lat: place.location.lat,
     lng: place.location.lng,
-    weight: 1,
+    weight: weightOf ? weightOf(place) : 1,
   }));
 }

@@ -31,6 +31,13 @@ export interface CaptureJob {
    * megabytes and live in Cache Storage under the same serialize.
    */
   audioSeconds?: number;
+  /**
+   * Why KIRI gave up on this walkthrough. Persisted because the verdict is
+   * final — the same task id asked again returns the same answer — and a
+   * failure held only in memory came back looking like a fresh job on reload,
+   * polling its way round to the same refusal a interval later.
+   */
+  failed?: string;
 }
 
 const STORAGE_KEY = "atlas:capture-jobs";
@@ -139,6 +146,7 @@ function toJob(value: unknown): CaptureJob | null {
   if (typeof record.locationName === "string") {
     job.locationName = record.locationName;
   }
+  if (typeof record.failed === "string") job.failed = record.failed;
   if (
     typeof record.audioSeconds === "number" &&
     Number.isFinite(record.audioSeconds)

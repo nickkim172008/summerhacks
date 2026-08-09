@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useAuthProfile } from "@/lib/auth";
 import { subscribeToAlbumsByOwner } from "@/lib/albums";
@@ -26,6 +27,7 @@ import {
 import PlaceThumb from "@/components/PlaceThumb";
 import AlbumCover from "@/components/AlbumCover";
 import { resolveAlbumPlaces } from "@/lib/albums";
+import { canOptimizeImage } from "@/lib/imageHosts";
 import type { Album, Place, Profile } from "@/lib/types";
 
 export default function ProfilePage({
@@ -60,14 +62,10 @@ export default function ProfilePage({
     }
     setAlbumsError(null);
     setPlacesError(null);
-    const unsubAlbums = subscribeToAlbumsByOwner(
-      profile.id,
-      setAlbums,
-      () => {
-        setAlbums([]);
-        setAlbumsError("Couldn’t load albums (check Firestore rules).");
-      },
-    );
+    const unsubAlbums = subscribeToAlbumsByOwner(profile.id, setAlbums, () => {
+      setAlbums([]);
+      setAlbumsError("Couldn’t load albums (check Firestore rules).");
+    });
     const unsubPlaces = subscribeToPlacesByUploader(
       profile.id,
       setPlaces,
@@ -277,11 +275,13 @@ function ProfileAvatar({
   }
 
   const face = profile.photoURL ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <Image
       src={profile.photoURL}
       alt=""
-      className="h-full w-full object-cover"
+      fill
+      sizes="80px"
+      unoptimized={!canOptimizeImage(profile.photoURL)}
+      className="object-cover"
     />
   ) : (
     <span className="text-xl font-semibold text-neutral-500">
@@ -492,4 +492,3 @@ function BioSection({
     </button>
   ) : null;
 }
-

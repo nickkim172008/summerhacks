@@ -21,14 +21,40 @@ type HeatHandle = {
   setData: (points: ReturnType<typeof placesToHeatPoints>) => void;
 };
 
+/** One point to fly the camera to, and how far in to end up. */
+export type MapFocus = { lat: number; lng: number; zoom: number };
+
+/** Long enough for panTo's own glide to land before the zoom starts on top. */
+const FOCUS_PAN_MS = 550;
+/**
+ * Zoom is stepped rather than set: Maps redraws a single large setZoom as a
+ * cut, and the walkthrough's opening is meant to read as arriving somewhere.
+ */
+const FOCUS_ZOOM_STEPS = 4;
+const FOCUS_ZOOM_STEP_MS = 220;
+
 export default function PlacesMap({
   places,
   liveLocation = null,
+  focus = null,
   className = "",
+  weightOf,
 }: {
   places: LocatedPlace[];
   liveLocation?: LatLng | null;
+  /**
+   * Set to hand the camera to one place — the walkthrough's opening flight.
+   * The heatmap is untouched; this moves the viewport and nothing else.
+   */
+  focus?: MapFocus | null;
   className?: string;
+  /**
+   * How hard to draw each point, 0..1. Absent means full strength, which is
+   * every caller but the timeline: it fades a capture in as the playhead
+   * reaches it, and needs an identity that only changes when the picture does,
+   * since each new one repaints the whole canvas.
+   */
+  weightOf?: (place: LocatedPlace) => number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -71,6 +97,8 @@ export default function PlacesMap({
         mapRef.current = map;
 
         const heat = createCanvasHeatmap(libs.OverlayView);
+        // Full strength for the first paint; the effect below re-weights as
+        // soon as ready flips, which is the frame after this one.
         heat.setData(placesToHeatPoints(placesRef.current));
         heat.setMap(map);
         heatRef.current = heat;
@@ -110,11 +138,11 @@ export default function PlacesMap({
     const libs = libsRef.current;
     if (!map || !libs || !ready) return;
 
-    heatRef.current?.setData(placesToHeatPoints(places));
+    heatRef.current?.setData(placesToHeatPoints(places, weightOf));
     if (!didCenterRef.current) {
       fitMap(libs, map, places, liveRef.current, didCenterRef);
     }
-  }, [places, ready]);
+  }, [places, ready, weightOf]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -126,6 +154,26 @@ export default function PlacesMap({
     }
   }, [liveLocation, ready]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !focus) return;
+    // The flight owns the camera from here. Without this the one-time fit to
+    // the scope can still fire — the places arrive after the map does — and
+    // pull the viewport back out over the top of it.
+    didCenterRef.current = true;
+
+    map.panTo({ lat: focus.lat, lng: focus.lng });
+    const from = map.getZoom() ?? CITY_ZOOM;
+    const timers = Array.from({ length: FOCUS_ZOOM_STEPS }, (_, step) => {
+      const at = (step + 1) / FOCUS_ZOOM_STEPS;
+      return window.setTimeout(
+        () => map.setZoom(Math.round(from + (focus.zoom - from) * at)),
+        FOCUS_PAN_MS + step * FOCUS_ZOOM_STEP_MS,
+      );
+    });
+    return () => timers.forEach(window.clearTimeout);
+  }, [focus, ready]);
+
   if (error === "missing-key") {
     return (
       <div
@@ -134,7 +182,9 @@ export default function PlacesMap({
         <p>Add your Google Maps key to show the map + heatmap.</p>
         <p>
           Set{" "}
-          <code className="text-[#1d1d1f]">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>{" "}
+          <code className="text-[#1d1d1f]">
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+          </code>{" "}
           in <code className="text-[#1d1d1f]">.env.local</code>, enable{" "}
           <strong className="font-medium text-[#1d1d1f]">
             Maps JavaScript API

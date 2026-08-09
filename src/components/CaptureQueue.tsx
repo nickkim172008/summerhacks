@@ -59,9 +59,11 @@ function CaptureRow({
   return (
     <li
       className={`rounded-2xl border px-4 py-3.5 transition ${
-        previewing
-          ? "border-[#0071e3] bg-[#0071e3]/[0.04]"
-          : "border-black/10 bg-white"
+        item.phase === "failed"
+          ? "border-red-200 bg-red-50/60"
+          : previewing
+            ? "border-[#0071e3] bg-[#0071e3]/[0.04]"
+            : "border-black/10 bg-white"
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -81,7 +83,11 @@ function CaptureRow({
           )}
           <p
             className={`mt-1.5 px-0.5 text-sm ${
-              item.phase === "blocked" ? "text-amber-600" : "text-neutral-500"
+              item.phase === "failed"
+                ? "text-red-600"
+                : item.phase === "blocked"
+                  ? "text-amber-600"
+                  : "text-neutral-500"
             }`}
           >
             {describePhase(item)}
@@ -331,7 +337,11 @@ function describePhase(item: CaptureItem) {
     case "saved":
       return "Saved";
     case "failed":
-      return item.fatal ? "Stopped" : "Something went wrong";
+      // "Stopped" reads like something paused. A walkthrough KIRI refused is
+      // over, and the row should not leave that ambiguous.
+      return item.fatal
+        ? "Failed — this walkthrough could not be reconstructed"
+        : "Failed";
   }
 }
 

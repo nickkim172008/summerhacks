@@ -3,97 +3,111 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import type { Place, Vec3 } from "@/lib/types";
+import type { Place } from "@/lib/types";
 import { storedAssetUrl } from "@/lib/assetUrl";
+import TourChrome, { type TourChromeProps } from "./TourChrome";
 
 const SplatViewer = dynamic(() => import("./SplatViewer"), { ssr: false });
 
-const FADE_MS = 350;
+/** Long enough for the room's sound to fall away rather than be cut off. */
+export const FADE_MS = 350;
 /** Slow enough that the room's sound arrives rather than switches on. */
 const AUDIO_FADE_IN_MS = 2000;
 
 export interface PlaceExperienceProps {
   place: Place;
-  /** Other places this one can link to, for authoring hotspots. */
-  linkTargets?: { id: string; name: string }[];
   /** Who captured this, when their profile could be resolved. */
   uploader?: { username: string; displayName: string } | null;
-  onAddHotspot?: (point: Vec3, linksToPlaceId: string) => Promise<void>;
-  onJump: (placeId: string) => void;
   onExit?: () => void;
   /** Offered to whoever captured this, to correct its name or where it sits. */
   onEdit?: () => void;
+  /**
+   * Present only while a guided walkthrough is driving playback. The tour owns
+   * its own clock and its own idea of where it is; this only draws it.
+   */
+  tour?: TourChromeProps;
+  /**
+   * Pressed and released inside the capture. A walkthrough holds its countdown
+   * between the two: moving on while someone is mid-look is the single way this
+   * feels broken.
+   */
+  onLookingChange?: (looking: boolean) => void;
 }
 
 export default function PlaceExperience({
   place,
-  linkTargets = [],
   uploader,
-  onAddHotspot,
-  onJump,
   onExit,
   onEdit,
+  tour,
+  onLookingChange,
 }: PlaceExperienceProps) {
-  const [placing, setPlacing] = useState(false);
-  const [pending, setPending] = useState<Vec3 | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [jumping, setJumping] = useState(false);
-  const jumpTimerRef = useRef<number | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const exitTimerRef = useRef<number | null>(null);
+
+  // Whether a pointer is down on the capture. A ref rather than state: nothing
+  // on this screen looks different mid-drag, and re-rendering around the viewer
+  // while someone is turning is the one thing worth not doing here.
+  const lookingRef = useRef(false);
+  const onLookingChangeRef = useRef(onLookingChange);
+  useEffect(() => {
+    onLookingChangeRef.current = onLookingChange;
+  });
+
+  const beginLook = useCallback(() => {
+    if (lookingRef.current) return;
+    lookingRef.current = true;
+    onLookingChangeRef.current?.(true);
+  }, []);
+
+  // Release is watched on the window rather than the canvas: a drag that ends
+  // off the canvas, or off the page entirely — released over the tab strip —
+  // would otherwise leave a walkthrough paused for good.
+  useEffect(() => {
+    const release = () => {
+      if (!lookingRef.current) return;
+      lookingRef.current = false;
+      onLookingChangeRef.current?.(false);
+    };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+      release();
+    };
+  }, []);
 
   // Arriving somewhere new clears the previous place's UI state.
   const [renderedPlaceId, setRenderedPlaceId] = useState(place.id);
   if (renderedPlaceId !== place.id) {
     setRenderedPlaceId(place.id);
-    setJumping(false);
-    setPending(null);
-    setPlacing(false);
-    setError(null);
+    setLeaving(false);
   }
 
-  const cancelJump = useCallback(() => {
-    if (jumpTimerRef.current === null) return;
-    clearTimeout(jumpTimerRef.current);
-    jumpTimerRef.current = null;
-  }, []);
+  // An exit still in flight has to be called off if the place changes or the
+  // component goes away first, or it fires against a screen nobody is on.
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current === null) return;
+      clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    };
+  }, [renderedPlaceId]);
 
-  const handleHotspotClick = useCallback(
-    (placeId: string) => {
-      // Fade out first so the splat swap reads as travel, not a glitch.
-      setJumping(true);
-      jumpTimerRef.current = window.setTimeout(() => {
-        jumpTimerRef.current = null;
-        onJump(placeId);
-      }, FADE_MS);
-    },
-    [onJump],
-  );
-
-  // A jump still in flight has to be called off when the visitor leaves during
-  // the fade, or it lands afterwards and pulls them into the place they turned
-  // down. Both the place changing under us and unmounting count as leaving.
-  useEffect(() => cancelJump, [renderedPlaceId, cancelJump]);
-
-  async function saveHotspot(linksToPlaceId: string) {
-    if (!pending || !onAddHotspot) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await onAddHotspot(pending, linksToPlaceId);
-      resetDraft();
-    } catch {
-      setError("Could not save that link. Try again.");
-    } finally {
-      setSaving(false);
-    }
+  function exit() {
+    if (!onExit || exitTimerRef.current !== null) return;
+    // Marked as leaving first so the room's sound fades rather than stopping
+    // mid-note when the element goes.
+    setLeaving(true);
+    exitTimerRef.current = window.setTimeout(() => {
+      exitTimerRef.current = null;
+      onExit();
+    }, FADE_MS);
   }
 
-  function resetDraft() {
-    setPending(null);
-    setPlacing(false);
-  }
-
-  const canAuthor = Boolean(onAddHotspot) && linkTargets.length > 0;
   const showPlayer = Boolean(place.audioUrl);
   useEffect(() => {
     console.info("[place]", place.id, {
@@ -102,37 +116,31 @@ export default function PlaceExperience({
     });
   }, [place.id, place.splatUrl, place.audioUrl]);
   const captured = describeCapture(place);
+  // A walkthrough's step between captures fades exactly as a hotspot jump does,
+  // sound included — it is the same journey, taken for you.
+  const dimming = leaving || Boolean(tour?.fading);
 
   return (
     <div className="relative h-full w-full bg-black text-white">
-      <SplatViewer
-        splatUrl={place.splatUrl}
-        hotspots={place.hotspots}
-        entryPoint={place.entryPoint}
-        placementMode={placing}
-        onPlacePoint={(point) => {
-          setPending(point);
-          setPlacing(false);
-        }}
-        onHotspotClick={handleHotspotClick}
-      />
+      {/* The pointer listener sits here rather than on the root so that a press
+          on the chrome — Next, Exit — is never mistaken for a look around. */}
+      <div className="h-full w-full" onPointerDown={beginLook}>
+        <SplatViewer splatUrl={place.splatUrl} entryPoint={place.entryPoint} />
+      </div>
 
       <div
         className="pointer-events-none absolute inset-0 z-30 bg-black transition-opacity"
         style={{
-          opacity: jumping ? 1 : 0,
+          opacity: dimming ? 1 : 0,
           transitionDuration: `${FADE_MS}ms`,
         }}
       />
 
+      {tour && <TourChrome {...tour} />}
+
       {onExit && (
         <button
-          onClick={() => {
-            // Leaving can take longer than the fade, so waiting for the
-            // unmount to call off a pending jump would be too late.
-            cancelJump();
-            onExit();
-          }}
+          onClick={exit}
           className="absolute left-4 top-4 z-50 flex items-center gap-1 rounded-full bg-white/90 px-4 py-2 text-[15px] text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
         >
           <span aria-hidden className="text-xl leading-none">
@@ -182,65 +190,12 @@ export default function PlaceExperience({
                 key={place.id}
                 url={storedAssetUrl(place.audioUrl)}
                 seconds={place.audioSeconds}
-                leaving={jumping}
+                leaving={dimming}
               />
             </div>
           )}
         </div>
       </div>
-
-      {(canAuthor || error) && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center p-4">
-          <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-2xl bg-neutral-900/90 p-4 backdrop-blur">
-            {error && <p className="text-sm text-red-400">{error}</p>}
-
-            {canAuthor && !pending && (
-              <>
-                {/* Arming placement changes only the cursor, which nobody
-                    notices — without this the button looks like it did
-                    nothing. */}
-                {placing && (
-                  <p className="text-sm text-neutral-300">
-                    Now click the spot where the way out should stand.
-                  </p>
-                )}
-                <button
-                  onClick={() => setPlacing((v) => !v)}
-                  className="rounded-full bg-[#0071e3] px-5 py-2 text-sm font-medium transition hover:bg-[#0077ed]"
-                >
-                  {placing ? "Cancel" : "Add a way out"}
-                </button>
-              </>
-            )}
-
-            {pending && (
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-sm text-neutral-300">
-                  Where does this lead?
-                </p>
-                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
-                  {linkTargets.map((target) => (
-                    <button
-                      key={target.id}
-                      disabled={saving}
-                      onClick={() => saveHotspot(target.id)}
-                      className="rounded bg-neutral-800 px-4 py-2 text-sm disabled:opacity-50"
-                    >
-                      {target.name}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={resetDraft}
-                  className="rounded-full bg-neutral-700 px-4 py-1.5 text-xs"
-                >
-                  Discard
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -363,7 +318,7 @@ function AmbientPlayer({
   }
 
   return (
-    <div className="flex w-72 items-center gap-3 sm:w-96">
+    <div className="flex w-full min-w-0 items-center gap-2.5">
       <audio
         ref={audioRef}
         src={url}
@@ -411,7 +366,7 @@ function AmbientPlayer({
           setPosition(next);
           if (audioRef.current) audioRef.current.currentTime = next;
         }}
-        className="flex-1 cursor-pointer accent-white"
+        className="min-w-0 flex-1 cursor-pointer accent-white"
       />
 
       <span className="w-9 shrink-0 text-xs tabular-nums text-neutral-400">

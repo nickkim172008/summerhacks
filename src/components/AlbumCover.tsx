@@ -1,3 +1,5 @@
+import Image from "next/image";
+import { canOptimizeImage } from "@/lib/imageHosts";
 import PlaceThumb from "@/components/PlaceThumb";
 import type { Place } from "@/lib/types";
 
@@ -23,8 +25,16 @@ export default function AlbumCover({
 }) {
   if (coverUrl) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={coverUrl} alt={alt} className="h-full w-full object-cover" />
+      <div className="relative h-full w-full">
+        <Image
+          src={coverUrl}
+          alt={alt}
+          fill
+          sizes="(min-width: 768px) 300px, 45vw"
+          unoptimized={!canOptimizeImage(coverUrl)}
+          className="object-cover"
+        />
+      </div>
     );
   }
 

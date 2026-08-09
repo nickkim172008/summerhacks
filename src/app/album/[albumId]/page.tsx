@@ -10,8 +10,13 @@ import {
 import {
   addPlacesToAlbum,
   canEditAlbum,
+import { movePlaceToTrash, subscribeToPlacesByUploader } from "@/lib/places";
+import {
+  addPlacesToAlbum,
+  removePlacesFromAlbum,
   resolveAlbumPlaces,
   subscribeToAlbum,
+  subscribeToAlbumsByOwner,
   updateAlbumCover,
 } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
@@ -22,6 +27,7 @@ import PlaceThumb from "@/components/PlaceThumb";
 import PlaceTile from "@/components/PlaceTile";
 import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
 import AlbumCover from "@/components/AlbumCover";
+import AlbumPicker from "@/components/AlbumPicker";
 import CaptureRunner from "@/components/CaptureRunner";
 import AlbumMembers from "@/components/AlbumMembers";
 import type { Album, Place } from "@/lib/types";
@@ -48,6 +54,25 @@ export default function AlbumPage({
   const [showPicker, setShowPicker] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState<Place | null>(null);
+  const [trashing, setTrashing] = useState<Place | null>(null);
+  // Recents belongs to no album, so filing a capture from there needs the
+  // whole list to choose from.
+  const [ownAlbums, setOwnAlbums] = useState<Album[]>([]);
+  const [filing, setFiling] = useState<Place | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function addToAlbum(place: Place, targetAlbumId: string) {
+    await addPlacesToAlbum(targetAlbumId, [place.id]);
+  }
+
+  async function removeFromAlbum(placeId: string) {
+    setActionError(null);
+    try {
+      await removePlacesFromAlbum(albumId, [placeId]);
+    } catch {
+      setActionError("Could not remove that from the album.");
+    }
+  }
 
   useEffect(() => {
     if (authLoading) return;
@@ -85,6 +110,12 @@ export default function AlbumPage({
 
   // Album order is the order places were added, which the id query does not
   // preserve, so the fetched docs are re-sorted back onto placeIds.
+  // Only Recents offers filing into an album, so only Recents needs the list.
+  useEffect(() => {
+    if (!isFirebaseConfigured || !user || !isRecents) return;
+    return subscribeToAlbumsByOwner(user.uid, setOwnAlbums);
+  }, [user, isRecents]);
+
   const albumPlaces = useMemo(() => {
     if (isRecents) return places;
     if (album === undefined) return null;
@@ -198,6 +229,23 @@ export default function AlbumPage({
                   ? "Loading…"
                   : `${readyPlaces.length} ${readyPlaces.length === 1 ? "environment" : "environments"}`}
             </p>
+            {/* Recents is a view of everything rather than an album, so there
+                is no story through it to walk — and no album name to head one
+                with. The walkthrough starts on the map, which flies to the
+                earliest capture before handing over. */}
+            {!isRecents && !loading && !error && readyPlaces.length > 0 && (
+              <Link
+                href={`/map?album=${albumId}&tour=1&from=${encodeURIComponent(
+                  `/album/${albumId}`,
+                )}`}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#0071e3] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#0077ed]"
+              >
+                <span aria-hidden className="text-[10px]">
+                  ▶
+                </span>
+                Play walkthrough
+              </Link>
+            )}
             {album && user?.uid === album.ownerId && (
               <CoverControls
                 albumId={album.id}
@@ -244,6 +292,10 @@ export default function AlbumPage({
           </div>
         )}
 
+        {actionError && (
+          <p className="mt-4 text-sm text-red-500">{actionError}</p>
+        )}
+
         {/* Anything this album has in flight, reconstructing in place. The
             capture form starts work; this is where it is watched. */}
         <CaptureRunner albumId={isRecents ? null : albumId} mode="album" />
@@ -260,12 +312,81 @@ export default function AlbumPage({
                       ? () => setEditing(place)
                       : undefined
                   }
+                  // Recents is a view of everything, not an album, so there is
+                  // nothing there to be removed from.
+                  onRemoveFromAlbum={
+                    isRecents ? undefined : () => removeFromAlbum(place.id)
+                  }
+                  // Filing belongs where the whole library is in view; inside
+                  // an album the capture is already somewhere.
+                  onAddToAlbum={
+                    isRecents && place.uploaderId === user?.uid
+                      ? () => setFiling(place)
+                      : undefined
+                  }
+                  onTrash={
+                    place.uploaderId === user?.uid
+                      ? () => setTrashing(place)
+                      : undefined
+                  }
                 />
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {trashing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6">
+            <h2 className="text-[17px] font-semibold">
+              Delete {trashing.name}?
+            </h2>
+            <p className="mt-2 text-sm text-neutral-500">
+              It goes to the trash, and every album loses it. You can put it
+              back until you empty the trash.
+            </p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => setTrashing(null)}
+                className="text-[15px] text-[#0071e3]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const place = trashing;
+                  setTrashing(null);
+                  setActionError(null);
+                  try {
+                    await movePlaceToTrash(place.id);
+                  } catch {
+                    setActionError("Could not delete that environment.");
+                  }
+                }}
+                className="rounded-full bg-red-500 px-4 py-1.5 text-[15px] font-medium text-white"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {filing && (
+        <AlbumPicker
+          place={filing}
+          albums={ownAlbums}
+          placesIn={(album) =>
+            resolveAlbumPlaces(
+              album.placeIds,
+              new Map((places ?? []).map((p) => [p.id, p])),
+            )
+          }
+          onPick={(targetAlbumId) => addToAlbum(filing, targetAlbumId)}
+          onClose={() => setFiling(null)}
+        />
+      )}
 
       {editing && (
         <PlaceDetailsEditor
@@ -337,7 +458,10 @@ function CoverControls({
               maxEdge: COVER_EDGE,
               square: true,
             });
-            await updateAlbumCover(albumId, await uploadAlbumCover(albumId, cover));
+            await updateAlbumCover(
+              albumId,
+              await uploadAlbumCover(albumId, cover),
+            );
           }, "Couldn’t set that cover.");
         }}
       />

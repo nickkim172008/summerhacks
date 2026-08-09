@@ -92,6 +92,74 @@ export async function geocodeName(name: string): Promise<CacheEntry> {
   return lookup;
 }
 
+const REVERSE_CACHE_KEY = "atlas:reverse-geocode:v1";
+
+/** Six decimals is roughly a tenth of a metre — far past what a name needs. */
+function coordKey({ lat, lng }: Coords) {
+  return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+}
+
+/**
+ * The other direction: a capture whose video carried GPS knows exactly where it
+ * is and nothing about what that place is called. "Toronto, Canada" is what a
+ * person recognises in a list, so the coordinates are turned back into a name.
+ */
+export async function reverseGeocode(coords: Coords): Promise<string | null> {
+  const key = coordKey(coords);
+  const cached = readCache(REVERSE_CACHE_KEY)[key];
+  if (cached !== undefined) return cached;
+
+  try {
+    await loadGoogleMaps();
+    const { Geocoder } = await importLibrary("geocoding");
+    const { results } = await new Geocoder().geocode({ location: coords });
+    const name = describeResults(results);
+    writeCache(REVERSE_CACHE_KEY, key, name);
+    return name;
+  } catch {
+    writeCache(REVERSE_CACHE_KEY, key, null);
+    return null;
+  }
+}
+
+/**
+ * City and country out of the address components, rather than the first
+ * formatted_address — that one is a street address, which is both too precise
+ * to be a useful label and more than someone may want attached to a capture.
+ */
+function describeResults(results: google.maps.GeocoderResult[]) {
+  const parts = results.flatMap((result) => result.address_components ?? []);
+  const pick = (type: string) =>
+    parts.find((part) => part.types.includes(type))?.long_name;
+
+  const town =
+    pick("locality") ??
+    pick("postal_town") ??
+    pick("sublocality") ??
+    pick("administrative_area_level_2");
+  const region = pick("country");
+
+  return [town, region].filter(Boolean).join(", ") || null;
+}
+
+function readCache(storageKey: string): Record<string, string | null> {
+  try {
+    return JSON.parse(localStorage.getItem(storageKey) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeCache(storageKey: string, key: string, value: string | null) {
+  try {
+    const all = readCache(storageKey);
+    all[key] = value;
+    localStorage.setItem(storageKey, JSON.stringify(all));
+  } catch {
+    // Lookups are cheap enough to repeat; a full disk is not worth failing over.
+  }
+}
+
 export interface ResolvedPlaces {
   located: LocatedPlace[];
   /** Named but not yet resolved — the map is still filling in. */

@@ -209,7 +209,26 @@ export async function addPlacesToAlbum(albumId: string, placeIds: string[]) {
  * of its contents, and an album that never had one has to look the same as one
  * that gave its up.
  */
-export async function updateAlbumCover(albumId: string, coverUrl: string | null) {
+/**
+ * Takes places out of an album without touching the places themselves — they
+ * stay in the library and in any other album holding them. An album is a
+ * grouping, so leaving one is not the same as being deleted, and conflating the
+ * two would make tidying a collection destroy captures.
+ */
+export async function removePlacesFromAlbum(
+  albumId: string,
+  placeIds: string[],
+) {
+  if (placeIds.length === 0) return;
+  await updateDoc(doc(db, "albums", albumId), {
+    placeIds: arrayRemove(...placeIds),
+  });
+}
+
+export async function updateAlbumCover(
+  albumId: string,
+  coverUrl: string | null,
+) {
   await updateDoc(doc(db, "albums", albumId), {
     coverUrl: coverUrl ?? deleteField(),
   });

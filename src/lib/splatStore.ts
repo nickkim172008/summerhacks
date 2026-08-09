@@ -3,6 +3,15 @@ import { FirebaseError } from "firebase/app";
 import { storage } from "./firebase";
 
 /**
+ * Storage serves an object with no cache headers as good for nothing, so every
+ * navigation re-fetched every tile. A cover is replaced by hand and rarely, and
+ * a stale one for an hour costs far less than downloading the grid again on
+ * each visit.
+ */
+const IMAGE_CACHE_CONTROL =
+  "public, max-age=3600, stale-while-revalidate=86400";
+
+/**
  * Firebase reports both "there is no bucket" and "the rules said no" as an
  * upload failure, and they need opposite fixes. Telling someone to enable
  * Storage when the rules refused them sends them to a console page that already
@@ -68,7 +77,10 @@ export async function uploadThumbnail(
 ): Promise<string> {
   const thumbRef = ref(storage, `thumbnails/${placeId}/cover.jpg`);
   try {
-    await uploadBytes(thumbRef, image, { contentType: "image/jpeg" });
+    await uploadBytes(thumbRef, image, {
+      contentType: "image/jpeg",
+      cacheControl: IMAGE_CACHE_CONTROL,
+    });
   } catch (error) {
     throw new Error(explainStorageError(error, "Thumbnail"), { cause: error });
   }
@@ -85,9 +97,14 @@ export async function uploadAlbumCover(
 ): Promise<string> {
   const coverRef = ref(storage, `albumCovers/${albumId}/cover.jpg`);
   try {
-    await uploadBytes(coverRef, image, { contentType: "image/jpeg" });
+    await uploadBytes(coverRef, image, {
+      contentType: "image/jpeg",
+      cacheControl: IMAGE_CACHE_CONTROL,
+    });
   } catch (error) {
-    throw new Error(explainStorageError(error, "Album cover"), { cause: error });
+    throw new Error(explainStorageError(error, "Album cover"), {
+      cause: error,
+    });
   }
   return getDownloadURL(coverRef);
 }
@@ -99,10 +116,12 @@ export async function uploadProfilePhoto(
 ): Promise<string> {
   const photoRef = ref(storage, `avatars/${uid}/profile.jpg`);
   try {
-    await uploadBytes(photoRef, image, { contentType: "image/jpeg" });
+    await uploadBytes(photoRef, image, {
+      contentType: "image/jpeg",
+      cacheControl: IMAGE_CACHE_CONTROL,
+    });
   } catch (error) {
     throw new Error(explainStorageError(error, "Photo"), { cause: error });
   }
   return getDownloadURL(photoRef);
 }
-

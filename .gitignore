@@ -48,3 +48,6 @@ next-env.d.ts
 # local capture inputs
 *.mov
 *.MOV
+
+# agent worktrees
+/.claude/worktrees/
