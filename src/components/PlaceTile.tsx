@@ -17,6 +17,7 @@ export default function PlaceTile({
   href,
   onEdit,
   onRemoveFromAlbum,
+  onAddToAlbum,
   onTrash,
 }: {
   place: Place;
@@ -29,6 +30,8 @@ export default function PlaceTile({
    * which is what Recents is.
    */
   onRemoveFromAlbum?: () => void;
+  /** Files it into one of your albums, from a view that is not an album. */
+  onAddToAlbum?: () => void;
   /** To the trash, where it waits rather than ends. */
   onTrash?: () => void;
 }) {
@@ -50,6 +53,16 @@ export default function PlaceTile({
             className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-medium text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
           >
             Edit
+          </button>
+        )}
+        {onAddToAlbum && (
+          <button
+            onClick={onAddToAlbum}
+            aria-label={`Add ${place.name} to an album`}
+            title="Add to an album"
+            className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-medium text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
+          >
+            Add
           </button>
         )}
         {onRemoveFromAlbum && (

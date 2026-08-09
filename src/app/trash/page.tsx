@@ -53,15 +53,22 @@ export default function TrashPage() {
   return (
     <main className="min-h-screen bg-white pb-24 text-[#1d1d1f]">
       <div className="mx-auto max-w-5xl px-6">
-        <div className="flex items-baseline justify-between gap-4 pt-8">
-          <h1 className="text-[34px] font-bold tracking-tight">Trash</h1>
-          <Link href="/" className="text-[15px] text-[#0071e3]">
-            Library
-          </Link>
-        </div>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1 pt-6 text-[15px] text-[#0071e3]"
+        >
+          <span aria-hidden className="text-xl leading-none">
+            ‹
+          </span>
+          Albums
+        </Link>
+        <h1 className="mt-4 text-[34px] font-bold tracking-tight">
+          Recently Deleted
+        </h1>
         <p className="mt-2 text-sm text-neutral-500">
-          Deleted environments stay here until you empty them. Removing one from
-          an album never puts it here — that only takes it out of the album.
+          Deleted environments stay here until you remove them for good. Taking
+          one out of an album never puts it here — that only takes it out of the
+          album.
         </p>
 
         {error && <p className="mt-6 text-sm text-red-500">{error}</p>}

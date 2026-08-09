@@ -9,6 +9,7 @@ import {
   removePlacesFromAlbum,
   resolveAlbumPlaces,
   subscribeToAlbum,
+  subscribeToAlbumsByOwner,
   updateAlbumCover,
 } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
@@ -19,6 +20,7 @@ import PlaceThumb from "@/components/PlaceThumb";
 import PlaceTile from "@/components/PlaceTile";
 import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
 import AlbumCover from "@/components/AlbumCover";
+import AlbumPicker from "@/components/AlbumPicker";
 import CaptureRunner from "@/components/CaptureRunner";
 import type { Album, Place } from "@/lib/types";
 
@@ -42,7 +44,15 @@ export default function AlbumPage({
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState<Place | null>(null);
   const [trashing, setTrashing] = useState<Place | null>(null);
+  // Recents belongs to no album, so filing a capture from there needs the
+  // whole list to choose from.
+  const [ownAlbums, setOwnAlbums] = useState<Album[]>([]);
+  const [filing, setFiling] = useState<Place | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  async function addToAlbum(place: Place, targetAlbumId: string) {
+    await addPlacesToAlbum(targetAlbumId, [place.id]);
+  }
 
   async function removeFromAlbum(placeId: string) {
     setActionError(null);
@@ -75,6 +85,12 @@ export default function AlbumPage({
       setError("Couldn’t load environments."),
     );
   }, [user]);
+
+  // Only Recents offers filing into an album, so only Recents needs the list.
+  useEffect(() => {
+    if (!isFirebaseConfigured || !user || !isRecents) return;
+    return subscribeToAlbumsByOwner(user.uid, setOwnAlbums);
+  }, [user, isRecents]);
 
   const albumPlaces = useMemo(() => {
     if (places === null) return null;
@@ -249,6 +265,13 @@ export default function AlbumPage({
                   onRemoveFromAlbum={
                     isRecents ? undefined : () => removeFromAlbum(place.id)
                   }
+                  // Filing belongs where the whole library is in view; inside
+                  // an album the capture is already somewhere.
+                  onAddToAlbum={
+                    isRecents && place.uploaderId === user?.uid
+                      ? () => setFiling(place)
+                      : undefined
+                  }
                   onTrash={
                     place.uploaderId === user?.uid
                       ? () => setTrashing(place)
@@ -296,6 +319,21 @@ export default function AlbumPage({
             </div>
           </div>
         </div>
+      )}
+
+      {filing && (
+        <AlbumPicker
+          place={filing}
+          albums={ownAlbums}
+          placesIn={(album) =>
+            resolveAlbumPlaces(
+              album.placeIds,
+              new Map((places ?? []).map((p) => [p.id, p])),
+            )
+          }
+          onPick={(targetAlbumId) => addToAlbum(filing, targetAlbumId)}
+          onClose={() => setFiling(null)}
+        />
       )}
 
       {editing && (

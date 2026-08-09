@@ -57,8 +57,13 @@ export default function AlbumsPage() {
         <div className="mt-8 flex items-center justify-between gap-3">
           <h1 className="text-[34px] font-bold tracking-tight">Albums</h1>
           <div className="flex items-center gap-4">
-            <Link href="/trash" className="text-[15px] text-[#0071e3]">
-              Trash
+            <Link
+              href="/trash"
+              aria-label="Recently Deleted"
+              title="Recently Deleted"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-100 text-[#0071e3] transition hover:bg-neutral-200"
+            >
+              <TrashGlyph />
             </Link>
             <button
               onClick={() => {
@@ -142,6 +147,22 @@ export default function AlbumsPage() {
         />
       )}
     </main>
+  );
+}
+
+function TrashGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-[18px] w-[18px]"
+    >
+      <path d="M4 7h16M10 4h4M9 7v12M15 7v12M6 7l1 13h10l1-13" />
+    </svg>
   );
 }
 
