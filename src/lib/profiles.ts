@@ -64,6 +64,23 @@ export function subscribeToProfileByUsername(
   });
 }
 
+/** One-shot handle lookup, for flows that resolve a name to an account once. */
+export async function getProfileByUsername(
+  rawUsername: string,
+): Promise<Profile | null> {
+  const username = normalizeUsername(rawUsername);
+  if (!username) return null;
+  const snap = await getDocs(
+    query(
+      collection(db, "profiles"),
+      where("username", "==", username),
+      limit(1),
+    ),
+  );
+  const first = snap.docs[0];
+  return first ? ({ id: first.id, ...first.data() } as Profile) : null;
+}
+
 export const PROFILE_SEARCH_LIMIT = 20;
 
 /**

@@ -50,7 +50,7 @@ export default function NotificationsPage() {
             <p className="text-[17px] font-semibold">Nothing yet</p>
             <p className="mx-auto mt-2 max-w-xs text-sm text-neutral-500">
               New followers show up here, along with environments captured by
-              the people you follow.
+              the people you follow and albums they add you to.
             </p>
             <Link
               href="/discover"
@@ -107,6 +107,11 @@ function NotificationRow({
           <span className="font-medium">{name}</span>
           {item.kind === "follow" ? (
             " started following you."
+          ) : item.kind === "album" ? (
+            <>
+              {" added you to "}
+              <span className="font-medium">{item.album.name}</span>.
+            </>
           ) : (
             <>
               {" captured "}
@@ -134,9 +139,14 @@ function NotificationRow({
     </>
   );
 
-  // A new follow points at the follower; a new capture points at the capture.
+  // Each row points at the thing it is about: the capture, the shared album,
+  // or — for a new follow — whoever did the following.
   const target =
-    item.kind === "place" ? `/place/${item.place.id}` : href;
+    item.kind === "place"
+      ? `/place/${item.place.id}`
+      : item.kind === "album"
+        ? `/album/${item.album.id}`
+        : href;
 
   return (
     <li>

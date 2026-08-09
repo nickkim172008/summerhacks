@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { subscribeToFollowers, subscribeToFollowingIds } from "./follows";
 import { subscribeToPlacesByUploaders } from "./places";
-import type { Follow, Place } from "./types";
+import { subscribeToAlbumsSharedWith } from "./albums";
+import type { Album, Follow, Place } from "./types";
 
 /**
  * Notifications are derived from the follows and places collections rather than
@@ -18,7 +19,8 @@ import type { Follow, Place } from "./types";
  */
 export type Notification =
   | { kind: "follow"; id: string; at: number; actorId: string }
-  | { kind: "place"; id: string; at: number; actorId: string; place: Place };
+  | { kind: "place"; id: string; at: number; actorId: string; place: Place }
+  | { kind: "album"; id: string; at: number; actorId: string; album: Album };
 
 /** Anything older than this was almost certainly already seen. */
 const MAX_ITEMS = 50;
@@ -52,6 +54,7 @@ export function useNotifications(uid: string | undefined) {
   const [followers, setFollowers] = useState<Follow[]>([]);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [sharedAlbums, setSharedAlbums] = useState<Album[]>([]);
   const [seenAt, setSeenAt] = useState(0);
 
   useEffect(() => {
@@ -88,6 +91,16 @@ export function useNotifications(uid: string | undefined) {
   }, [uid, followingKey]);
 
   useEffect(() => {
+    if (!uid) {
+      setSharedAlbums([]);
+      return;
+    }
+    return subscribeToAlbumsSharedWith(uid, setSharedAlbums, () =>
+      setSharedAlbums([]),
+    );
+  }, [uid]);
+
+  useEffect(() => {
     if (!uid) return;
     const sync = () => setSeenAt(readSeenAt(uid));
     sync();
@@ -114,9 +127,20 @@ export function useNotifications(uid: string | undefined) {
         actorId: place.uploaderId,
         place,
       })),
+      // Falls back to the album's own date for anyone added before invites
+      // were timestamped, which at least keeps them in the list.
+      ...sharedAlbums.map((album) => ({
+        kind: "album" as const,
+        id: `album:${album.id}`,
+        at: uid
+          ? millis(album.memberAddedAt?.[uid]) || millis(album.createdAt)
+          : millis(album.createdAt),
+        actorId: album.ownerId,
+        album,
+      })),
     ];
     return merged.sort((a, b) => b.at - a.at).slice(0, MAX_ITEMS);
-  }, [followers, places]);
+  }, [followers, places, sharedAlbums, uid]);
 
   // A serverTimestamp reads back as null on the writer's own device until the
   // round trip lands, so a brand-new item has at === 0. Treating that as unread

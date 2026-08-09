@@ -3,6 +3,13 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  subscribeToPlacesByIds,
+  subscribeToPlacesByUploader,
+} from "@/lib/places";
+import {
+  addPlacesToAlbum,
+  canEditAlbum,
 import { movePlaceToTrash, subscribeToPlacesByUploader } from "@/lib/places";
 import {
   addPlacesToAlbum,
@@ -22,6 +29,7 @@ import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
 import AlbumCover from "@/components/AlbumCover";
 import AlbumPicker from "@/components/AlbumPicker";
 import CaptureRunner from "@/components/CaptureRunner";
+import AlbumMembers from "@/components/AlbumMembers";
 import type { Album, Place } from "@/lib/types";
 
 /** "recents" is a virtual album containing every environment you own. */
@@ -39,6 +47,9 @@ export default function AlbumPage({
     isRecents ? null : undefined,
   );
   const [places, setPlaces] = useState<Place[] | null>(null);
+  // Fetched by id rather than filtered out of `places`, which holds only the
+  // viewer's own uploads and so would hide whatever a collaborator added.
+  const [sharedPlaces, setSharedPlaces] = useState<Place[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -91,6 +102,19 @@ export default function AlbumPage({
     );
   }, [user, placesOwnerId]);
 
+  // Joined so the listener is rebuilt when the contents change, not on every
+  // snapshot that leaves the same array with a new identity.
+  const placeIdKey = (album?.placeIds ?? []).join(",");
+  useEffect(() => {
+    if (isRecents || !user) return;
+    const ids = placeIdKey ? placeIdKey.split(",") : [];
+    return subscribeToPlacesByIds(ids, setSharedPlaces, () =>
+      setError("Couldn’t load environments."),
+    );
+  }, [placeIdKey, isRecents, user]);
+
+  // Album order is the order places were added, which the id query does not
+  // preserve, so the fetched docs are re-sorted back onto placeIds.
   // Only Recents offers filing into an album, so only Recents needs the list.
   useEffect(() => {
     if (!isFirebaseConfigured || !user || !isRecents) return;
@@ -98,14 +122,17 @@ export default function AlbumPage({
   }, [user, isRecents]);
 
   const albumPlaces = useMemo(() => {
-    if (places === null) return null;
     if (isRecents) return places;
+    if (album === undefined) return null;
     if (!album) return [];
+    // Resolved from the by-id fetch, not from `places`: that holds only the
+    // viewer's own uploads, so a collaborator's environments would vanish.
+    if (sharedPlaces === null) return null;
     return resolveAlbumPlaces(
       album.placeIds,
-      new Map(places.map((p) => [p.id, p])),
+      new Map(sharedPlaces.map((p) => [p.id, p])),
     );
-  }, [places, album, isRecents]);
+  }, [places, album, sharedPlaces, isRecents]);
 
   const candidates = useMemo(() => {
     if (isRecents || !places) return [];
@@ -132,6 +159,8 @@ export default function AlbumPage({
       albumPlaces === null ||
       (!isRecents && album === undefined));
   const readyPlaces = albumPlaces ?? [];
+  // Recents is a view of your own uploads, so it is always yours to add to.
+  const canEdit = isRecents || (album ? canEditAlbum(album, user?.uid) : false);
   // ?new=1 so the entry point is always a blank form, never the saved capture.
   const captureHref = isRecents
     ? "/capture?new=1"
@@ -151,6 +180,7 @@ export default function AlbumPage({
             Albums
           </Link>
           <div className="relative">
+            {canEdit && (
             <button
               onClick={() => setMenuOpen((v) => !v)}
               aria-label="Add"
@@ -158,6 +188,7 @@ export default function AlbumPage({
             >
               +
             </button>
+            )}
             {menuOpen && (
               <div className="absolute right-0 top-10 z-30 w-64 overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-black/10">
                 <Link
@@ -228,6 +259,10 @@ export default function AlbumPage({
             )}
           </div>
         </div>
+
+        {!isRecents && album && user && (
+          <AlbumMembers album={album} viewerId={user.uid} />
+        )}
 
         {error && (
           <div className="mt-10">
