@@ -664,7 +664,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
                 {previewed.splat.name}
               </h2>
               <p className="text-sm text-neutral-500">
-                Drag to look around, scroll to zoom.
+                Drag to look around.
               </p>
             </div>
             <button

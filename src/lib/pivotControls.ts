@@ -7,14 +7,15 @@ import * as THREE from "three";
  *
  *     position = pivot - forward(yaw, pitch) * distance
  *
- * which is what keeps the pivot still. Zooming moves `distance` alone, so the
- * point you turn about is the same before and after — the failure of a
- * controller that walks the camera along its line of sight, where the pivot
- * follows the camera and every zoom re-centres the place you were looking at.
+ * which is what keeps the pivot still. A capture opens at distance zero, so the
+ * camera stands on the pivot and turns in place.
  *
- * At distance zero the camera sits on the pivot and turns in place, so standing
- * in the middle of a capture and orbiting it from further out are the same
- * gesture at two ends of one range, rather than two modes to switch between.
+ * `distance` is fixed once set. Nothing the visitor does changes it: there is no
+ * wheel, no pinch and no key that moves the camera along its line of sight. A
+ * capture is a room you stand in and look around, and pulling back out of it
+ * showed the reconstruction as an object — the floaters, the missing ceiling,
+ * the walls thinning at the edges — rather than the place it is meant to be.
+ * Only an authored entry point sets a distance other than zero.
  *
  * Roll is never applied, so the horizon stays level however far you turn.
  */
@@ -25,22 +26,9 @@ const ROTATE_SPEED = 0.004;
 const PITCH_LIMIT = Math.PI / 2 - 0.01;
 /** Fraction of the remaining distance covered per frame at 60fps. */
 const SMOOTHING = 0.25;
-/** How far out you may pull, as a fraction of the capture radius. */
-const ZOOM_OUT_LIMIT = 1;
-/** Zoom per wheel notch and per pixel of pinch, as fractions of that radius. */
-const WHEEL_STEP = 0.0015;
-const PINCH_STEP = 0.004;
-/** Held-key rates: fraction of the radius per second, and radians per second. */
-const KEY_ZOOM_SPEED = 0.6;
+/** Radians per second while a turn key is held. */
 const KEY_TURN_SPEED = 1.5;
 
-/** Negative zooms in, positive out. */
-const ZOOM_KEYS: Record<string, number> = {
-  KeyW: -1,
-  ArrowUp: -1,
-  KeyS: 1,
-  ArrowDown: 1,
-};
 /** Positive turns left, matching a drag to the right. */
 const TURN_KEYS: Record<string, number> = {
   KeyA: 1,
@@ -74,10 +62,8 @@ export class PivotControls {
   private targetPitch = 0;
   private targetDistance = 0;
   private radius = 1;
-  private maxDistance = Infinity;
   private box: THREE.Box3 | null = null;
   private pointers = new Map<number, THREE.Vector2>();
-  private pinchDistance = 0;
   private held = new Set<string>();
   private readonly euler = new THREE.Euler(0, 0, 0, "YXZ");
   private readonly forward = new THREE.Vector3();
@@ -91,7 +77,6 @@ export class PivotControls {
     domElement.addEventListener("pointermove", this.onPointerMove);
     domElement.addEventListener("pointerup", this.onPointerUp);
     domElement.addEventListener("pointercancel", this.onPointerUp);
-    domElement.addEventListener("wheel", this.onWheel, { passive: false });
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("blur", this.onBlur);
@@ -122,26 +107,19 @@ export class PivotControls {
   }
 
   /**
-   * Zoom rate and the limit on pulling back follow the size of the capture, and
-   * the camera stays within its extent. An opening shot further out than the
-   * limit sets the limit rather than being yanked inside it.
+   * The extent an authored entry point is held inside, so a distance further
+   * back than the capture cannot put the camera outside its walls.
    */
   setBounds(box: THREE.Box3, radius: number) {
     this.box = box;
     this.radius = radius;
-    this.maxDistance = Math.max(radius * ZOOM_OUT_LIMIT, this.targetDistance);
   }
 
   update(deltaTime: number) {
     const dt = Math.min(deltaTime, 0.1);
 
-    let zoom = 0;
     let turn = 0;
-    for (const code of this.held) {
-      zoom += ZOOM_KEYS[code] ?? 0;
-      turn += TURN_KEYS[code] ?? 0;
-    }
-    if (zoom !== 0) this.zoomBy(zoom * this.radius * KEY_ZOOM_SPEED * dt);
+    for (const code of this.held) turn += TURN_KEYS[code] ?? 0;
     if (turn !== 0) this.targetYaw += turn * KEY_TURN_SPEED * dt;
 
     // Frame-rate independent approach to the target.
@@ -159,7 +137,6 @@ export class PivotControls {
     el.removeEventListener("pointermove", this.onPointerMove);
     el.removeEventListener("pointerup", this.onPointerUp);
     el.removeEventListener("pointercancel", this.onPointerUp);
-    el.removeEventListener("wheel", this.onWheel);
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onBlur);
@@ -181,8 +158,8 @@ export class PivotControls {
 
     // Stop short of the wall rather than clamping the position to the box:
     // nudging the camera off this line would take the pivot off the centre of
-    // the screen, which is the one thing that has to stay true. The requested
-    // zoom is kept as it was, so turning back toward open space gives it back.
+    // the screen, which is the one thing that has to stay true. The set distance
+    // is left alone, so turning back toward open space gives it back.
     const distance = Math.min(this.distance, this.exitDistance());
     this.camera.position
       .copy(this.pivot)
@@ -209,15 +186,6 @@ export class PivotControls {
     return Math.max(limit, 0);
   }
 
-  /** Zooming in is unbounded down to the pivot; zooming out stops at the limit. */
-  private zoomBy(amount: number) {
-    this.targetDistance = THREE.MathUtils.clamp(
-      this.targetDistance + amount,
-      0,
-      this.maxDistance,
-    );
-  }
-
   private onPointerDown = (event: PointerEvent) => {
     if (!this.enabled) return;
     this.pointers.set(
@@ -234,10 +202,6 @@ export class PivotControls {
     const dy = event.clientY - last.y;
     last.set(event.clientX, event.clientY);
 
-    if (this.pointers.size >= 2) {
-      this.pinch();
-      return;
-    }
     // The scene follows your finger: drag right and you turn left to meet it.
     this.targetYaw += dx * ROTATE_SPEED;
     this.targetPitch = THREE.MathUtils.clamp(
@@ -249,29 +213,12 @@ export class PivotControls {
 
   private onPointerUp = (event: PointerEvent) => {
     this.pointers.delete(event.pointerId);
-    if (this.pointers.size < 2) this.pinchDistance = 0;
     this.domElement.releasePointerCapture?.(event.pointerId);
-  };
-
-  /** Two fingers spreading zooms in, the touch equivalent of the wheel. */
-  private pinch() {
-    const [a, b] = [...this.pointers.values()];
-    const spread = a.distanceTo(b);
-    if (this.pinchDistance !== 0) {
-      this.zoomBy(-(spread - this.pinchDistance) * this.radius * PINCH_STEP);
-    }
-    this.pinchDistance = spread;
-  }
-
-  private onWheel = (event: WheelEvent) => {
-    if (!this.enabled) return;
-    event.preventDefault();
-    this.zoomBy(event.deltaY * this.radius * WHEEL_STEP);
   };
 
   private onKeyDown = (event: KeyboardEvent) => {
     if (!this.enabled || typingInAField()) return;
-    if (!(event.code in ZOOM_KEYS) && !(event.code in TURN_KEYS)) return;
+    if (!(event.code in TURN_KEYS)) return;
     event.preventDefault(); // Otherwise the arrow keys scroll the page behind us.
     this.held.add(event.code);
   };

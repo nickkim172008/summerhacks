@@ -176,5 +176,10 @@ export default function SplatViewer({
     );
   }
 
-  return <div ref={containerRef} className="h-full w-full cursor-grab" />;
+    // touch-none: with no pinch of our own to handle, an unclaimed one falls
+  // through to the browser and zooms the page over the canvas. Dragging would
+  // scroll the page behind it for the same reason.
+  return (
+    <div ref={containerRef} className="h-full w-full cursor-grab touch-none" />
+  );
 }
