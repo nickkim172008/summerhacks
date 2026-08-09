@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuthProfile } from "@/lib/auth";
 import {
+  filterDemoOrganizers,
+  isDemoOrganizerProfile,
+} from "@/lib/demoOrganizers";
+import {
   searchProfiles,
   subscribeToRecentProfiles,
 } from "@/lib/profiles";
@@ -46,11 +50,14 @@ export default function DiscoverPage() {
     };
   }, [term]);
 
-  const pool = results ?? recent;
-  const showing = pool
-    ? pool.filter((profile) => profile.id !== user?.uid)
-    : null;
   const isSearch = Boolean(term.trim());
+  const realPool = results ?? recent;
+  const realShowing = (realPool ?? []).filter(
+    (profile) => profile.id !== user?.uid,
+  );
+  const demoShowing = filterDemoOrganizers(term);
+  // Organizers first so scrolling Discover always surfaces the team.
+  const showing = [...demoShowing, ...realShowing];
 
   return (
     <main className="min-h-screen bg-white pb-24 text-[#1d1d1f]">
@@ -71,18 +78,16 @@ export default function DiscoverPage() {
         </p>
 
         <h2 className="mt-8 text-[13px] font-semibold uppercase tracking-wider text-neutral-500">
-          {isSearch ? "Results" : "Newest"}
+          {isSearch ? "Results" : "People"}
         </h2>
 
-        {showing === null || (isSearch && searching && results === null) ? (
+        {showing.length === 0 ? (
           <p className="mt-4 text-sm text-neutral-500">
-            {isSearch ? "Searching…" : "Loading…"}
-          </p>
-        ) : showing.length === 0 ? (
-          <p className="mt-4 text-sm text-neutral-500">
-            {isSearch
-              ? `No one matches “${term.trim()}”.`
-              : "No accounts yet."}
+            {isSearch && searching
+              ? "Searching…"
+              : isSearch
+                ? `No one matches “${term.trim()}”.`
+                : "No accounts yet."}
           </p>
         ) : (
           <ul className="mt-3 divide-y divide-black/5">
@@ -92,44 +97,60 @@ export default function DiscoverPage() {
           </ul>
         )}
       </div>
-
     </main>
   );
 }
 
 function PersonRow({ profile }: { profile: Profile }) {
-  return (
-    <li>
-      <Link
-        href={`/u/${profile.username}`}
-        className="flex items-center gap-3 py-3 transition hover:opacity-70"
-      >
-        {profile.photoURL ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={profile.photoURL}
-            alt=""
-            className="h-11 w-11 shrink-0 rounded-full object-cover"
-          />
-        ) : (
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[15px] font-semibold text-neutral-500">
-            {profile.username.slice(0, 1).toUpperCase()}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium">
-            {profile.displayName}
-          </p>
-          <p className="truncate text-[13px] text-neutral-500">
-            @{profile.username}
-          </p>
+  const demo = isDemoOrganizerProfile(profile);
+  const body = (
+    <>
+      {profile.photoURL ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={profile.photoURL}
+          alt=""
+          className="h-11 w-11 shrink-0 rounded-full object-cover"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[15px] font-semibold text-neutral-500">
+          {profile.username.slice(0, 1).toUpperCase()}
         </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[15px] font-medium">
+          {profile.displayName}
+        </p>
+        <p className="truncate text-[13px] text-neutral-500">
+          @{profile.username}
+        </p>
         {profile.bio && (
-          <p className="hidden max-w-[45%] truncate text-[13px] text-neutral-400 sm:block">
+          <p className="truncate text-[12px] text-neutral-400 sm:hidden">
             {profile.bio}
           </p>
         )}
-      </Link>
+      </div>
+      {profile.bio && (
+        <p className="hidden max-w-[45%] truncate text-[13px] text-neutral-400 sm:block">
+          {profile.bio}
+        </p>
+      )}
+    </>
+  );
+
+  return (
+    <li>
+      {demo ? (
+        <div className="flex items-center gap-3 py-3">{body}</div>
+      ) : (
+        <Link
+          href={`/u/${profile.username}`}
+          className="flex items-center gap-3 py-3 transition hover:opacity-70"
+        >
+          {body}
+        </Link>
+      )}
     </li>
   );
 }
