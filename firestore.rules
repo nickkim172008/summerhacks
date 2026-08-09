@@ -67,6 +67,20 @@ service cloud.firestore {
              && albumPendingIds().size() == nextPendingIds().size() + 1;
     }
 
+    // A non-owner member may drop only themselves. The owner stays on the
+    // list, nobody else can be removed or added, and album content is frozen.
+    function leavingOwnMembership() {
+      return signedIn()
+             && request.auth.uid != resource.data.ownerId
+             && request.auth.uid in albumMemberIds()
+             && !(request.auth.uid in nextMemberIds())
+             && resource.data.ownerId in nextMemberIds()
+             && albumMemberIds().hasAll(nextMemberIds())
+             && albumMemberIds().size() == nextMemberIds().size() + 1
+             && nextPendingIds() == albumPendingIds()
+             && albumContentUnchanged();
+    }
+
     function ownsPlace() {
       return signedIn() && resource.data.uploaderId == request.auth.uid;
     }
@@ -103,12 +117,14 @@ service cloud.firestore {
       allow read: if signedIn();
       allow delete: if ownsAlbum();
       // Owner manages membership and invites. Members may edit content but
-      // not who is on the album. A pending invitee may only accept or decline
-      // for themselves — they are not in memberIds yet, so editsAlbum is false.
+      // not who else is on the album — except leaving themselves. A pending
+      // invitee may only accept or decline for themselves — they are not in
+      // memberIds yet, so editsAlbum is false.
       allow update: if request.resource.data.ownerId == resource.data.ownerId
                     && (ownsAlbum()
                         || acceptingOwnInvite()
                         || decliningOwnInvite()
+                        || leavingOwnMembership()
                         || (editsAlbum()
                             && nextMemberIds() == albumMemberIds()
                             && nextPendingIds() == albumPendingIds()
