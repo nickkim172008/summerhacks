@@ -56,13 +56,6 @@ function CaptureFlow() {
             <h1 className="font-display text-[44px] font-normal leading-[44px] tracking-[-0.02em]">
               New places
             </h1>
-            <p className="mt-2.5 max-w-[62ch] text-[15px] leading-[1.6] text-[#4A4F57]">
-              One slow walkthrough per room. Reconstruction takes 30–90 minutes
-              and keeps going without you; the video itself is never stored.
-              {albumId
-                ? " Everything you save here joins this journey."
-                : " You can watch them reconstruct in Recents."}
-            </p>
           </div>
 
           {/* The picker itself. Its input lives in CaptureRunner, beside the

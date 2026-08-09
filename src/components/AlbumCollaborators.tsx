@@ -47,7 +47,7 @@ export default function AlbumCollaborators({ album }: { album: Album }) {
   const extra = profiles.length - shown.length;
 
   return (
-    <div className="pointer-events-none absolute bottom-2.5 left-2.5 flex items-center">
+    <div className="pointer-events-none absolute bottom-3.5 left-4 flex items-center">
       <div className="flex flex-row-reverse">
         {extra > 0 && (
           <span className="relative z-0 -ml-[7px] flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[rgba(20,22,26,0.72)] text-[10px] font-semibold tabular-nums text-white shadow-[0_0_0_2px_#FAF9F7]">

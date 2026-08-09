@@ -360,7 +360,7 @@ export default function AlbumMembers({
           ) : (
             <p className="mt-2 text-[13px] text-[#6B7178]">
               {followed.length === 0
-                ? "You’re not following anyone yet — type a username instead."
+                ? "You’re not following anyone yet. Type a username instead."
                 : typed
                   ? "Nobody you follow matches. Enter invites by exact username."
                   : "Everyone you follow is already here or invited."}

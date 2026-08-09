@@ -64,7 +64,7 @@ export default function PlaceTile({
     items.push({
       label: "Remove",
       onClick: onRemoveFromAlbum,
-      title: "Remove from this journey — the place is kept",
+      title: "Remove from this journey",
     });
   }
   if (onTrash) {

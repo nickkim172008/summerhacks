@@ -65,12 +65,6 @@ export default function TrashPage() {
         <h1 className="mt-5 font-display text-[40px] font-normal leading-[40px] tracking-[-0.02em]">
           Recently Deleted
         </h1>
-        <p className="mt-3 max-w-[62ch] text-[15px] leading-6 text-[#4A4F57]">
-          Deleted places stay here until you remove them for good. Taking
-          one out of a journey never puts it here — that only takes it out of the
-          journey.
-        </p>
-
         {error && (
           <p className="mt-6 text-[15px] text-[#C0362C]">{error}</p>
         )}

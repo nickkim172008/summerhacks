@@ -18,7 +18,6 @@ export type AuthMode = "signin" | "signup";
 const COPY = {
   signin: {
     title: "Welcome back",
-    subtitle: "Pick up where you left off — journeys, walks, and shared places.",
     action: "Continue with Google",
     busy: "Signing in…",
     switchText: "New here?",
@@ -28,8 +27,6 @@ const COPY = {
   },
   signup: {
     title: "Start capturing",
-    subtitle:
-      "Capture a Place. Build a Journey. Explore Atlas.",
     action: "Sign up with Google",
     busy: "Creating account…",
     switchText: "Already have an account?",
@@ -107,9 +104,6 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
           <h1 className="auth-brand mt-8 font-display text-[40px] font-normal leading-[42px] tracking-[-0.02em]">
             {copy.title}
           </h1>
-          <p className="mt-3 max-w-sm text-[15px] leading-6 text-[#4A4F57]">
-            {copy.subtitle}
-          </p>
         </div>
 
         {!isFirebaseConfigured && (

@@ -311,7 +311,7 @@ function exclusionNote(
     parts.push(
       `${offMap} of ${undated > 0 ? `${dated} dated` : scopeCount} place${
         (undated > 0 ? dated : scopeCount) === 1 ? "" : "s"
-      } ${offMap === 1 ? "has" : "have"} no location — on the axis, never on the map`,
+      } ${offMap === 1 ? "has" : "have"} no location, on the axis but never on the map`,
     );
   }
   if (undated > 0) {

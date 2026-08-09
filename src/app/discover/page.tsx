@@ -66,10 +66,6 @@ export default function DiscoverPage() {
         <h1 className="font-display text-[44px] leading-[44px] font-normal tracking-[-0.02em]">
           Discover
         </h1>
-        <p className="mt-2.5 text-[15px] text-[#4A4F57]">
-          Find the people whose rooms you want to walk into.
-        </p>
-
         <div className="relative mt-6">
           {/* Magnifier sits inside the field, so the input owns the whole
               52px target and keeps its own focus border. */}
@@ -93,10 +89,6 @@ export default function DiscoverPage() {
             className="h-[52px] w-full rounded-[14px] border border-[rgba(20,22,26,0.12)] bg-white pl-[48px] pr-[18px] text-[16px] shadow-[0_1px_2px_rgba(20,22,26,0.04)] transition-colors duration-150 ease-linear placeholder:text-[#8A9098] focus:border-[#0071E3]"
           />
         </div>
-        <p className="mt-2 text-[13px] text-[#6B7178]">
-          Handles match from the start — “ayd” finds “aydan”.
-        </p>
-
         <h2 className="mt-9 text-[11px] leading-3 font-semibold tracking-[0.12em] uppercase text-[#6B7178]">
           {isSearch ? "Results" : "People"}
         </h2>

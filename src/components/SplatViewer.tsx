@@ -168,7 +168,7 @@ export default function SplatViewer({
         <p className="max-w-sm text-[15px] leading-6 text-[rgba(255,255,255,0.6)]">
           {onDisk
             ? "Its splat was saved to a machine rather than to storage, so the bytes are not here. Capturing it again is the only way back."
-            : "The file is in storage, but the browser was refused it. The bucket most likely has no CORS rule — see cors.json in the repo. Nothing is lost."}
+            : "The file is in storage, but the browser was refused it. The bucket most likely has no CORS rule; see cors.json in the repo. Nothing is lost."}
         </p>
         <p className="mt-1 text-[13px] text-[rgba(255,255,255,0.45)]">
           {loadError}

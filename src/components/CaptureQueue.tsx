@@ -401,7 +401,7 @@ function Source({ from }: { from: Provenance }) {
   if (from === "file") {
     return (
       <span className={`${CHIP} ${CHIP_AMBER}`}>
-        Guessed from the file — check it
+        Guessed from the file, check it
       </span>
     );
   }
@@ -542,7 +542,7 @@ function describePhase(item: CaptureItem) {
       return item.problem ?? "This video can't be used";
     case "ready-to-upload":
       return item.meta
-        ? `${item.meta.width}×${item.meta.height}, ${item.meta.seconds.toFixed(0)}s — ready`
+        ? `${item.meta.width}×${item.meta.height}, ${item.meta.seconds.toFixed(0)}s, ready`
         : "Ready";
     case "uploading":
       // Only two videos upload at a time, so the rest sit at zero and deserve to
@@ -567,7 +567,7 @@ function describePhase(item: CaptureItem) {
       // "Stopped" reads like something paused. A walkthrough KIRI refused is
       // over, and the row should not leave that ambiguous.
       return item.fatal
-        ? "Failed — this walkthrough could not be reconstructed"
+        ? "Failed. This walkthrough could not be reconstructed."
         : "Failed";
   }
 }

@@ -31,7 +31,7 @@ export function uploadVideo(
       }
     };
     xhr.onerror = () =>
-      reject(new Error("Upload failed — check your connection"));
+      reject(new Error("Upload failed. Check your connection."));
     xhr.send(form);
   });
 }

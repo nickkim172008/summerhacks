@@ -644,8 +644,8 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           {!isFirebaseConfigured && !DEMO_CAPTURE && (
             <p className="mt-6 rounded-xl border border-[rgba(138,90,18,0.25)] bg-[rgba(138,90,18,0.06)] px-4 py-3 text-[13px] leading-[18px] text-[#8A5A12]">
               Firebase isn&apos;t configured, so finished places
-              can&apos;t be saved. Capture still works — each one renders here
-              and can be downloaded.
+              can&apos;t be saved. Capture still works, and each one renders
+              here and can be downloaded.
             </p>
           )}
         </>

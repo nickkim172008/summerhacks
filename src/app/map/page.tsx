@@ -202,7 +202,7 @@ function MapView() {
         ? "No places in this scope yet."
         : `None of these ${inScope.length} places say where they were filmed.`
       : liveError
-        ? "Location off — allow GPS to show where you are"
+        ? "Location off. Allow GPS to show where you are."
         : liveLoading
           ? "Finding your live location…"
           : null;
@@ -277,7 +277,7 @@ function MapView() {
                 )}
                 {user && albums.length === 0 && (
                   <p className="px-2 py-1.5 text-[13px] leading-[18px] text-[#6B7178]">
-                    No journeys yet — make one in Library.
+                    No journeys yet. Make one in Library.
                   </p>
                 )}
                 <div className="space-y-1">

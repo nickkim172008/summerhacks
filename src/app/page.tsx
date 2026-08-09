@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -30,9 +30,6 @@ function countLabel(n: number, singular: string, plural: string) {
   return `${n} ${n === 1 ? singular : plural}`;
 }
 
-/** Which of the two lists on this page the segmented control is pointing at. */
-type Segment = "journeys" | "shared";
-
 export default function AlbumsPage() {
   const router = useRouter();
   const { user, loading: authLoading, needsUsername } = useAuthProfile();
@@ -46,9 +43,6 @@ export default function AlbumsPage() {
   const [deleting, setDeleting] = useState<Album | null>(null);
   const [leaving, setLeaving] = useState<Album | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [segment, setSegment] = useState<Segment>("journeys");
-  const journeysRef = useRef<HTMLUListElement>(null);
-  const sharedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -128,13 +122,6 @@ export default function AlbumsPage() {
     setShowNewAlbum(true);
   }
 
-  /** The control only ever points at what is already on the page. */
-  function showSegment(next: Segment) {
-    setSegment(next);
-    const target = next === "shared" ? sharedRef.current : journeysRef.current;
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   return (
     <main className="min-h-screen bg-[#FAF9F7] text-[#14161A]">
       <div className="mx-auto max-w-[1152px] px-8 py-10">
@@ -149,39 +136,6 @@ export default function AlbumsPage() {
             </h1>
           </div>
           <div className="flex flex-none items-center gap-2">
-            <div className="flex items-center gap-0.5 rounded-full bg-[rgba(20,22,26,0.05)] p-[3px]">
-              <button
-                type="button"
-                aria-pressed={segment === "journeys"}
-                onClick={() => showSegment("journeys")}
-                className={`rounded-full px-[14px] py-1.5 text-[13px] transition-colors duration-150 ${
-                  segment === "journeys"
-                    ? "bg-white font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)]"
-                    : "text-[#4A4F57] hover:text-[#14161A]"
-                }`}
-              >
-                Journeys
-              </button>
-              <button
-                type="button"
-                onClick={() => router.push("/album/recents")}
-                className="rounded-full px-[14px] py-1.5 text-[13px] text-[#4A4F57] transition-colors duration-150 hover:text-[#14161A]"
-              >
-                All places
-              </button>
-              <button
-                type="button"
-                aria-pressed={segment === "shared"}
-                onClick={() => showSegment("shared")}
-                className={`rounded-full px-[14px] py-1.5 text-[13px] transition-colors duration-150 ${
-                  segment === "shared"
-                    ? "bg-white font-medium text-[#14161A] shadow-[0_1px_2px_rgba(20,22,26,0.06)]"
-                    : "text-[#4A4F57] hover:text-[#14161A]"
-                }`}
-              >
-                Shared
-              </button>
-            </div>
             <Link
               href="/trash"
               aria-label="Recently Deleted"
@@ -212,7 +166,6 @@ export default function AlbumsPage() {
         {!error && !loading && (
           <>
             <ul
-              ref={journeysRef}
               className="mt-8 scroll-mt-20 grid grid-cols-4 gap-x-6 gap-y-7"
             >
               <RecentsCard places={ownPlaces ?? []} />
@@ -228,17 +181,7 @@ export default function AlbumsPage() {
               <NewJourneyCard onClick={startNewAlbum} />
             </ul>
 
-            {(ownedAlbums?.length ?? 0) === 0 && (
-              <p className="mt-6 max-w-[62ch] text-[15px] leading-6 text-[#4A4F57]">
-                Create a journey with the{" "}
-                <span className="font-medium text-[#14161A]">+</span> button and
-                start capturing places — for example, a “Summer Hacks” journey
-                for the whole trip.
-              </p>
-            )}
-
             <div
-              ref={sharedRef}
               className="mt-12 scroll-mt-20 border-t border-[rgba(20,22,26,0.09)] pt-6"
             >
               <h2 className="text-[20px] font-semibold leading-[26px] tracking-[-0.01em]">
@@ -484,9 +427,6 @@ function NewJourneyCard({ onClick }: { onClick: () => void }) {
           New journey
         </span>
       </button>
-      <p className="mt-3 max-w-[24ch] text-[13px] leading-[1.5] text-[#6B7178]">
-        Group places into a story someone can walk through.
-      </p>
     </li>
   );
 }
@@ -526,7 +466,6 @@ function NewAlbumDialog({
     <div className={DIALOG_SCRIM}>
       <div className={DIALOG_PANEL}>
         <h3 className={DIALOG_TITLE}>New Journey</h3>
-        <p className={DIALOG_BODY}>Enter a name for this journey.</p>
         <input
           autoFocus
           value={name}

@@ -335,7 +335,7 @@ export async function removeCollaborator(
  */
 export async function leaveAlbum(album: Album, uid: string): Promise<void> {
   if (uid === album.ownerId) {
-    throw new Error("The owner can’t leave — delete the journey instead.");
+    throw new Error("The owner can’t leave. Delete the journey instead.");
   }
   if (!albumMemberIds(album).includes(uid)) {
     throw new Error("You’re not on this journey.");
