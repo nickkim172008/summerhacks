@@ -24,6 +24,13 @@ export const UPLOAD_LIMIT = 2;
 export const DOWNLOAD_LIMIT = 2;
 export const SAVE_LIMIT = 1;
 export const AUDIO_LIMIT = 2;
+/**
+ * The frame grab holds a video decoder open per row, which is far cheaper than
+ * the lift beside it but not free — and it gets its own gate rather than
+ * sharing the audio one so a seek that takes a moment never queues behind a
+ * whole-file decode it has nothing to do with.
+ */
+export const POSTER_LIMIT = 2;
 
 export function createLimiter(
   max: number,

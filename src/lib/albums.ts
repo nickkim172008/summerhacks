@@ -2,6 +2,7 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
+  deleteField,
   doc,
   onSnapshot,
   orderBy,
@@ -13,7 +14,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { Album } from "./types";
+import type { Album, Place } from "./types";
 
 /** Albums predate sharing, so a missing memberIds still means "just the owner". */
 export function albumMemberIds(album: Album): string[] {
@@ -200,4 +201,30 @@ export async function addPlacesToAlbum(albumId: string, placeIds: string[]) {
   await updateDoc(doc(db, "albums", albumId), {
     placeIds: arrayUnion(...placeIds),
   });
+}
+
+/**
+ * Sets the album's own cover, or clears it with null. Cleared means deleted
+ * rather than written empty: absence is what sends the cover back to the mosaic
+ * of its contents, and an album that never had one has to look the same as one
+ * that gave its up.
+ */
+export async function updateAlbumCover(albumId: string, coverUrl: string | null) {
+  await updateDoc(doc(db, "albums", albumId), {
+    coverUrl: coverUrl ?? deleteField(),
+  });
+}
+
+/**
+ * The album's places, in the order the album lists them, skipping ids whose
+ * place has not loaded — or belongs to someone else, which is what a shared
+ * album looks like from a reader who can only see their own captures.
+ */
+export function resolveAlbumPlaces(
+  placeIds: string[] | undefined,
+  placeById: Map<string, Place>,
+): Place[] {
+  return (placeIds ?? [])
+    .map((id) => placeById.get(id))
+    .filter((place): place is Place => Boolean(place));
 }

@@ -1,17 +1,27 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { subscribeToPlacesByIds, subscribeToPlacesByUploader } from "@/lib/places";
+import {
+  subscribeToPlacesByIds,
+  subscribeToPlacesByUploader,
+} from "@/lib/places";
 import {
   addPlacesToAlbum,
   canEditAlbum,
+  resolveAlbumPlaces,
   subscribeToAlbum,
+  updateAlbumCover,
 } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
+import { COVER_EDGE, prepareImage } from "@/lib/imageFile";
+import { uploadAlbumCover } from "@/lib/splatStore";
 import PlaceThumb from "@/components/PlaceThumb";
+import PlaceTile from "@/components/PlaceTile";
+import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
+import AlbumCover from "@/components/AlbumCover";
 import CaptureRunner from "@/components/CaptureRunner";
 import AlbumMembers from "@/components/AlbumMembers";
 import type { Album, Place } from "@/lib/types";
@@ -37,6 +47,7 @@ export default function AlbumPage({
   const [error, setError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState<Place | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -49,19 +60,15 @@ export default function AlbumPage({
 
   useEffect(() => {
     if (isRecents || !user) return;
-    return subscribeToAlbum(
-      albumId,
-      setAlbum,
-      () => setError("Couldn’t load this album."),
+    return subscribeToAlbum(albumId, setAlbum, () =>
+      setError("Couldn’t load this album."),
     );
   }, [albumId, isRecents, user]);
 
   useEffect(() => {
     if (!isFirebaseConfigured || !user) return;
-    return subscribeToPlacesByUploader(
-      user.uid,
-      setPlaces,
-      () => setError("Couldn’t load environments."),
+    return subscribeToPlacesByUploader(user.uid, setPlaces, () =>
+      setError("Couldn’t load environments."),
     );
   }, [user]);
 
@@ -82,11 +89,13 @@ export default function AlbumPage({
     if (isRecents) return places;
     if (album === undefined) return null;
     if (!album) return [];
+    // Resolved from the by-id fetch, not from `places`: that holds only the
+    // viewer's own uploads, so a collaborator's environments would vanish.
     if (sharedPlaces === null) return null;
-    const byId = new Map(sharedPlaces.map((p) => [p.id, p]));
-    return (album.placeIds ?? [])
-      .map((id) => byId.get(id))
-      .filter((p): p is Place => Boolean(p));
+    return resolveAlbumPlaces(
+      album.placeIds,
+      new Map(sharedPlaces.map((p) => [p.id, p])),
+    );
   }, [places, album, sharedPlaces, isRecents]);
 
   const candidates = useMemo(() => {
@@ -170,14 +179,33 @@ export default function AlbumPage({
       </nav>
 
       <div className="mx-auto max-w-5xl px-6">
-        <h1 className="mt-8 text-[34px] font-bold tracking-tight">{title}</h1>
-        <p className="text-neutral-500">
-          {error
-            ? error
-            : loading
-              ? "Loading…"
-              : `${readyPlaces.length} ${readyPlaces.length === 1 ? "environment" : "environments"}`}
-        </p>
+        <div className="mt-8 flex items-end gap-5">
+          <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 shadow-sm ring-1 ring-black/5 sm:h-36 sm:w-36">
+            <AlbumCover
+              coverUrl={album?.coverUrl}
+              places={readyPlaces}
+              alt={title}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[34px] font-bold tracking-tight">
+              {title}
+            </h1>
+            <p className="text-neutral-500">
+              {error
+                ? error
+                : loading
+                  ? "Loading…"
+                  : `${readyPlaces.length} ${readyPlaces.length === 1 ? "environment" : "environments"}`}
+            </p>
+            {album && user?.uid === album.ownerId && (
+              <CoverControls
+                albumId={album.id}
+                hasCover={Boolean(album.coverUrl)}
+              />
+            )}
+          </div>
+        </div>
 
         {!isRecents && album && user && (
           <AlbumMembers album={album} viewerId={user.uid} />
@@ -224,20 +252,28 @@ export default function AlbumPage({
           <ul className="mt-6 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5">
             {readyPlaces.map((place) => (
               <li key={place.id}>
-                <Link
+                <PlaceTile
+                  place={place}
                   href={`/place/${place.id}?album=${albumId}`}
-                  className="group relative block aspect-square overflow-hidden bg-neutral-100"
-                >
-                  <PlaceThumb place={place} />
-                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-6 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
-                    {place.name}
-                  </span>
-                </Link>
+                  onEdit={
+                    place.uploaderId === user?.uid
+                      ? () => setEditing(place)
+                      : undefined
+                  }
+                />
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {editing && (
+        <PlaceDetailsEditor
+          place={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {}}
+        />
+      )}
 
       {showPicker && !isRecents && (
         <AddEnvironmentsSheet
@@ -251,6 +287,87 @@ export default function AlbumPage({
         />
       )}
     </main>
+  );
+}
+
+/**
+ * Choosing a cover, or giving one back. Nothing is staged: the album is on a
+ * live snapshot, so the tile beside these buttons redraws itself as soon as the
+ * write lands, and clearing puts the mosaic of its contents back.
+ */
+function CoverControls({
+  albumId,
+  hasCover,
+}: {
+  albumId: string;
+  hasCover: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(work: () => Promise<void>, whenItFails: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : whenItFails);
+    } finally {
+      setBusy(false);
+      // The input keeps its selection, so picking the same file twice in a row
+      // would fire no change event at all.
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          void run(async () => {
+            const cover = await prepareImage(file, {
+              maxEdge: COVER_EDGE,
+              square: true,
+            });
+            await updateAlbumCover(albumId, await uploadAlbumCover(albumId, cover));
+          }, "Couldn’t set that cover.");
+        }}
+      />
+      <div className="flex items-center gap-4 text-[13px] font-medium">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="text-[#0071e3] transition hover:opacity-70 disabled:opacity-40"
+        >
+          {busy ? "Working…" : hasCover ? "Change cover" : "Choose cover"}
+        </button>
+        {hasCover && (
+          <button
+            type="button"
+            onClick={() =>
+              void run(
+                () => updateAlbumCover(albumId, null),
+                "Couldn’t remove that cover.",
+              )
+            }
+            disabled={busy}
+            className="text-neutral-500 transition hover:text-neutral-800 disabled:opacity-40"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      {error && <p className="mt-1.5 text-[12px] text-red-600">{error}</p>}
+    </div>
   );
 }
 

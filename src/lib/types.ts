@@ -53,6 +53,11 @@ export interface Album {
   memberAddedAt?: Record<string, Timestamp>;
   placeIds: string[];
   createdAt: Timestamp;
+  /**
+   * A picture chosen for this album. Absent is the normal case, and means the
+   * cover is built out of what the album holds instead.
+   */
+  coverUrl?: string;
 }
 
 /** Public profile keyed by Firebase Auth uid. Username is unique. */

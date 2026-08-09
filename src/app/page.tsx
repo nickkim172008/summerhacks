@@ -4,10 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { subscribeToPlacesByUploader } from "@/lib/places";
-import { createAlbum, subscribeToEditableAlbums } from "@/lib/albums";
+import {
+  createAlbum,
+  resolveAlbumPlaces,
+  subscribeToEditableAlbums,
+} from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
-import PlaceThumb from "@/components/PlaceThumb";
+import AlbumCover from "@/components/AlbumCover";
 import type { Album, Place } from "@/lib/types";
 
 export default function AlbumsPage() {
@@ -96,7 +100,7 @@ export default function AlbumsPage() {
                 <AlbumCard
                   key={album.id}
                   album={album}
-                  cover={coverFor(album, placeById)}
+                  places={resolveAlbumPlaces(album.placeIds, placeById)}
                 />
               ))}
             </ul>
@@ -141,20 +145,16 @@ export default function AlbumsPage() {
   );
 }
 
-function coverFor(album: Album, placeById: Map<string, Place>) {
-  for (const id of album.placeIds ?? []) {
-    const place = placeById.get(id);
-    if (place) return place;
-  }
-  return null;
-}
-
-function AlbumCard({ album, cover }: { album: Album; cover: Place | null }) {
+function AlbumCard({ album, places }: { album: Album; places: Place[] }) {
   return (
     <li>
       <Link href={`/album/${album.id}`} className="group block">
         <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
-          {cover ? <PlaceThumb place={cover} /> : <EmptyCover />}
+          <AlbumCover
+            coverUrl={album.coverUrl}
+            places={places}
+            alt={album.name}
+          />
         </div>
         <p className="mt-2 truncate text-[15px] font-medium">{album.name}</p>
         <p className="text-sm text-neutral-500">
@@ -166,32 +166,16 @@ function AlbumCard({ album, cover }: { album: Album; cover: Place | null }) {
 }
 
 function RecentsCard({ places }: { places: Place[] }) {
-  const cover = places[0] ?? null;
   return (
     <li>
       <Link href="/album/recents" className="group block">
         <div className="aspect-square overflow-hidden rounded-2xl bg-neutral-100 transition group-hover:opacity-90">
-          {cover ? <PlaceThumb place={cover} /> : <EmptyCover />}
+          <AlbumCover places={places} alt="Recents" />
         </div>
         <p className="mt-2 truncate text-[15px] font-medium">Recents</p>
         <p className="text-sm text-neutral-500">{places.length}</p>
       </Link>
     </li>
-  );
-}
-
-function EmptyCover() {
-  return (
-    <div className="flex h-full w-full items-center justify-center text-neutral-300">
-      <svg
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        className="h-10 w-10"
-        aria-hidden
-      >
-        <path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm-9.5 3A1.5 1.5 0 1 1 8 9.5 1.5 1.5 0 0 1 9.5 8Zm9.5 9H5l4-5 2.5 3 3.5-4.5Z" />
-      </svg>
-    </div>
   );
 }
 
