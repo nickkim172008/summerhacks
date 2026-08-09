@@ -13,7 +13,6 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import PlaceExperience, { FADE_MS } from "@/components/PlaceExperience";
-import TourHop from "@/components/TourHop";
 import { resolveAlbumPlaces, subscribeToAlbum } from "@/lib/albums";
 import { toTimelineEntries } from "@/lib/captureTimeline";
 import { isFirebaseConfigured } from "@/lib/firebase";
@@ -93,9 +92,6 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
   const [progress, setProgress] = useState(0);
   const [held, setHeld] = useState(false);
   const [looking, setLooking] = useState(false);
-  // The capture being flown to. Set only for the length of the flight, and the
-  // viewer is unmounted while it runs — one WebGL context at a time.
-  const [hopTo, setHopTo] = useState<number | null>(null);
   const [hidden, setHidden] = useState(
     () =>
       typeof document !== "undefined" && document.visibilityState === "hidden",
@@ -110,7 +106,6 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
     setRenderedIndex(index);
     setFading(false);
     setProgress(0);
-    setHopTo(null);
   }
 
   // The elapsed half of that reset. Declared above the hold below so that on a
@@ -138,23 +133,16 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
 
   const travelTo = useCallback(
     (next: number) => {
-      if (travelRef.current !== null || hopTo !== null) return;
+      if (travelRef.current !== null) return;
       setFading(true);
       travelRef.current = window.setTimeout(() => {
         travelRef.current = null;
-        // Both ends on the map means the move can be shown rather than cut. The
-        // flight itself decides how far to pull back, so neighbours barely lift
-        // off the ground and a cross-town hop shows the ground it crosses.
-        if (steps?.[next]?.location && place?.location) {
-          setHopTo(next);
-          return;
-        }
         // replace, so backing out of a seven-capture walkthrough is one press
         // rather than seven.
         router.replace(stepHref(next));
       }, FADE_MS);
     },
-    [router, stepHref, hopTo, steps, place],
+    [router, stepHref],
   );
 
   useEffect(() => {
@@ -257,22 +245,6 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
   }
 
   if (!place) return <Curtain href={exitHref}>Loading…</Curtain>;
-
-  const hopTarget = hopTo === null ? null : steps[hopTo];
-
-  if (hopTarget) {
-    return (
-      <main className="relative h-screen w-screen bg-black">
-        <TourHop
-          places={places ?? []}
-          from={place.location ?? null}
-          to={hopTarget.location ?? null}
-          toName={hopTarget.name}
-          onDone={() => router.replace(stepHref(hopTo!))}
-        />
-      </main>
-    );
-  }
 
   return (
     <main className="h-screen w-screen">

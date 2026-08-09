@@ -22,19 +22,14 @@ import type { CaptureTimeline } from "@/lib/timelinePlayback";
 /** Below this the ticks stop being separate marks and become a smear. */
 const MIN_TICK_GAP_PX = 14;
 
-/** Kept off the ends so a tooltip or the readout cannot leave the bar. */
-const EDGE_INSET_PCT = 6;
-
 export default function TimelineBar({
   timeline,
   scopeCount,
-  scopeLabel,
   onClose,
 }: {
   timeline: CaptureTimeline;
   /** Everything the scope holds, including what has no place on the axis. */
   scopeCount: number;
-  scopeLabel: string;
   onClose: () => void;
 }) {
   const { entries, span, playheadMs, playing, weights } = timeline;
@@ -91,65 +86,26 @@ export default function TimelineBar({
 
   return (
     <div
-      className="fixed inset-x-0 z-30 border-t border-black/10 bg-white/95 shadow-[0_-8px_28px_rgba(0,0,0,0.07)] backdrop-blur-xl"
-      // Above the tab bar rather than over it: the tabs stay reachable while
-      // the timeline is open.
-      style={{ bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }}
+      className="pointer-events-none fixed inset-x-0 z-30 flex justify-center px-3"
+      // Clear of the tab bar rather than a slab across the bottom: the map is
+      // the thing being looked at, and the timeline is a control on it.
+      style={{ bottom: "calc(3rem + env(safe-area-inset-bottom))" }}
     >
-      <div className="mx-auto max-w-5xl px-4 pb-2 pt-2">
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={timeline.toggle}
-            disabled={entries.length === 0}
-            aria-label={playing ? "Pause timeline" : "Play timeline"}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0071e3] text-white shadow-sm shadow-[#0071e3]/25 transition hover:bg-[#0077ed] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
-          >
-            {playing ? <PauseIcon /> : <PlayIcon />}
-          </button>
+      <div className="pointer-events-auto flex w-full max-w-3xl items-center gap-2.5 rounded-full bg-white/90 py-1.5 pl-1.5 pr-2.5 shadow-lg ring-1 ring-black/10 backdrop-blur-xl">
+        <button
+          onClick={timeline.toggle}
+          disabled={entries.length === 0}
+          aria-label={playing ? "Pause timeline" : "Play timeline"}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0071e3] text-white transition hover:bg-[#0077ed] disabled:bg-neutral-200 disabled:text-neutral-400"
+        >
+          {playing ? <PauseIcon /> : <PlayIcon />}
+        </button>
 
-          <div className="min-w-0 flex-1">
-            {/* One line, not two: the bar sits over the map, and the note is
-                context rather than something to read every frame. */}
-            <p className="truncate text-[12px] leading-tight">
-              <span className="font-medium tracking-tight">Timeline</span>
-              <span className="text-neutral-300"> · </span>
-              <span className="text-neutral-500">{scopeLabel}</span>
-              <span className="text-neutral-300"> · </span>
-              <span className="text-neutral-500">
-                {exclusionNote(entries.length, scopeCount, offMap, undated)}
-              </span>
-            </p>
-          </div>
-
-          {onMap.length > 0 && (
-            <p className="shrink-0 text-[12px] leading-none text-neutral-500">
-              <span className="text-[14px] font-medium tabular-nums text-[#1d1d1f]">
-                {reachedOnMap} of {onMap.length}
-              </span>{" "}
-              on the map
-            </p>
-          )}
-
-          <button
-            onClick={onClose}
-            aria-label="Close timeline"
-            className="-mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-[#1d1d1f]"
-          >
-            <CloseIcon />
-          </button>
-        </div>
-
-        {span && (
+        {span ? (
           <>
-            <div className="relative mt-2 h-[16px] select-none">
-              <div
-                className="absolute -translate-x-1/2 whitespace-nowrap rounded-full bg-[#1d1d1f] px-2 py-[3px] text-[10px] font-medium tabular-nums text-white"
-                style={{ left: `${inset(playPct)}%` }}
-              >
-                {formatClock(playheadMs)}
-                {spansDays && ` · ${formatDay(playheadMs)}`}
-              </div>
-            </div>
+            <span className="shrink-0 text-[10px] tabular-nums text-neutral-400">
+              {formatStamp(span.start, spansDays)}
+            </span>
 
             <div
               ref={trackRef}
@@ -176,7 +132,7 @@ export default function TimelineBar({
                 else return;
                 event.preventDefault();
               }}
-              className="relative h-7 cursor-pointer touch-none select-none"
+              className="relative h-7 min-w-0 flex-1 cursor-pointer touch-none select-none"
             >
               <div className="absolute inset-x-0 top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-neutral-200" />
               <div
@@ -202,18 +158,45 @@ export default function TimelineBar({
                 style={{ left: `${playPct}%` }}
               >
                 <span className="absolute -top-[3px] left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-[#1d1d1f] ring-2 ring-white" />
+                {/* The clock rides the playhead rather than sitting in a row of
+                    its own, which is a whole line of screen back. */}
+                <span className="absolute -top-[19px] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#1d1d1f] px-1.5 py-px text-[10px] font-medium tabular-nums text-white">
+                  {formatClock(playheadMs)}
+                </span>
               </div>
             </div>
 
-            <div className="mt-0.5 flex items-baseline justify-between gap-3 text-[10px] tabular-nums text-neutral-400">
-              <span>{formatStamp(span.start, spansDays)}</span>
-              <span className="text-neutral-500">
-                {formatDuration(span.end - span.start)} end to end
-              </span>
-              <span>{formatStamp(span.end, spansDays)}</span>
-            </div>
+            <span className="shrink-0 text-[10px] tabular-nums text-neutral-400">
+              {formatStamp(span.end, spansDays)}
+            </span>
+
+            {/* The count carries the honesty about what is missing, since there
+                is no second line left to put it on. */}
+            <span
+              title={exclusionNote(entries.length, scopeCount, offMap, undated)}
+              className="shrink-0 text-[13px] font-medium tabular-nums text-[#1d1d1f]"
+            >
+              {reachedOnMap}/{onMap.length}
+              {offMap + undated > 0 && (
+                <span className="ml-1 text-[10px] font-normal text-neutral-500">
+                  +{offMap + undated} off
+                </span>
+              )}
+            </span>
           </>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-[12px] text-neutral-500">
+            {exclusionNote(entries.length, scopeCount, offMap, undated)}
+          </span>
         )}
+
+        <button
+          onClick={onClose}
+          aria-label="Close timeline"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-[#1d1d1f]"
+        >
+          <CloseIcon />
+        </button>
       </div>
     </div>
   );
@@ -353,10 +336,6 @@ function tickTooltipAnchor(pct: number) {
   return { left: "50%", transform: "translateX(-50%)" };
 }
 
-function inset(pct: number) {
-  return Math.min(Math.max(pct, EDGE_INSET_PCT), 100 - EDGE_INSET_PCT);
-}
-
 const CLOCK = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
   minute: "2-digit",
@@ -380,14 +359,6 @@ function formatDay(at: number) {
  */
 function formatStamp(at: number, spansDays: boolean) {
   return spansDays ? `${formatClock(at)} ${formatDay(at)}` : formatClock(at);
-}
-
-function formatDuration(ms: number) {
-  const minutes = Math.max(0, Math.round(ms / 60_000));
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  if (hours === 0) return `${rest}m`;
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
 function PlayIcon() {

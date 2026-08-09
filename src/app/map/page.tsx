@@ -348,7 +348,6 @@ function MapView() {
             <TimelineBar
               timeline={timeline}
               scopeCount={inScope.length}
-              scopeLabel={scopeLabel}
               onClose={closeTimeline}
             />
           )}
