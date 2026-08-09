@@ -226,16 +226,11 @@ export default function ProfilePage({
                           className="group relative block aspect-square overflow-hidden bg-neutral-100"
                         >
                           <PlaceThumb place={place} />
-                          <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-6 text-white opacity-0 transition group-hover:opacity-100">
-                            <span className="block truncate text-xs font-medium">
-                              {place.name}
+                          {taken && (
+                            <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 to-transparent px-2 pb-1.5 pt-6 text-right text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100">
+                              {taken}
                             </span>
-                            {taken && (
-                              <span className="block truncate text-[11px] font-normal text-white/85">
-                                {taken}
-                              </span>
-                            )}
-                          </span>
+                          )}
                         </Link>
                       </li>
                     );

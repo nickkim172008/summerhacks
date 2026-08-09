@@ -36,14 +36,17 @@ export function sortPlacesNewestFirst(places: Place[]) {
   });
 }
 
-/** Date only — no time of day on tiles. */
+/** Date + time with AM/PM for tile hover captions. */
 export function formatPlaceDate(place: Place): string | null {
   const ms = placeTakenMs(place);
   if (!ms) return null;
-  return new Date(ms).toLocaleDateString(undefined, {
+  return new Date(ms).toLocaleString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
   });
 }
 
