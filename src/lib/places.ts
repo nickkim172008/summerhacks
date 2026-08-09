@@ -331,3 +331,18 @@ export async function updatePlaceDetails(placeId: string, edits: PlaceEdits) {
       : { thumbnailUrl: edits.thumbnailUrl }),
   });
 }
+
+/** Location pin only — what shared-journey collaborators are allowed to change. */
+export async function updatePlaceLocation(
+  placeId: string,
+  edits: {
+    locationName: string;
+    location: { lat: number; lng: number } | null;
+  },
+) {
+  const locationName = edits.locationName.trim();
+  await updateDoc(doc(db, "places", placeId), {
+    locationName: locationName || deleteField(),
+    location: edits.location ?? deleteField(),
+  });
+}

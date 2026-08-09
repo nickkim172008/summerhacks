@@ -33,6 +33,11 @@ export interface Place {
   capturedAt?: string;
   location?: { lat: number; lng: number };
   locationName?: string;
+  /**
+   * Journeys that list this place. Rules use these ids to let collaborators
+   * edit location without opening every album up to a collection query.
+   */
+  albumIds?: string[];
 }
 
 /** A user-created collection of places, shown like an Apple Photos album. */

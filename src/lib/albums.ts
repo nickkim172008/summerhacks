@@ -302,6 +302,36 @@ export async function addPlacesToAlbum(albumId: string, placeIds: string[]) {
   await updateDoc(doc(db, "albums", albumId), {
     placeIds: arrayUnion(...placeIds),
   });
+  // Stamp the journey onto each place so collaborators can edit location
+  // without a collection query in security rules.
+  await Promise.all(
+    placeIds.map((placeId) =>
+      updateDoc(doc(db, "places", placeId), {
+        albumIds: arrayUnion(albumId),
+      }).catch(() => {
+        // Place may already be linked, or rules may refuse a rare edge case —
+        // the album membership itself still stands.
+      }),
+    ),
+  );
+}
+
+/**
+ * Ensures every place in the journey carries this albumId. Safe to call on
+ * open: only adds the link, and only for captures the journey still holds.
+ */
+export async function ensurePlacesLinkedToAlbum(
+  albumId: string,
+  placeIds: string[],
+) {
+  if (placeIds.length === 0) return;
+  await Promise.all(
+    placeIds.map((placeId) =>
+      updateDoc(doc(db, "places", placeId), {
+        albumIds: arrayUnion(albumId),
+      }).catch(() => {}),
+    ),
+  );
 }
 
 /**

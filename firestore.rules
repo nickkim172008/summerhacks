@@ -85,6 +85,67 @@ service cloud.firestore {
       return signedIn() && resource.data.uploaderId == request.auth.uid;
     }
 
+    // A journey member may edit location on a place that journey still holds.
+    // albumIds on the place is the index; membership is read off each album.
+    function memberOfAlbumWithPlace(albumId, id) {
+      let album = get(/databases/$(database)/documents/albums/$(albumId)).data;
+      return id in album.get('placeIds', [])
+             && (request.auth.uid == album.ownerId
+                 || request.auth.uid in album.get('memberIds', []));
+    }
+
+    function memberOfListedAlbumContainingPlace(id) {
+      let ids = resource.data.get('albumIds', []);
+      return (ids.size() > 0 && memberOfAlbumWithPlace(ids[0], id))
+             || (ids.size() > 1 && memberOfAlbumWithPlace(ids[1], id))
+             || (ids.size() > 2 && memberOfAlbumWithPlace(ids[2], id))
+             || (ids.size() > 3 && memberOfAlbumWithPlace(ids[3], id))
+             || (ids.size() > 4 && memberOfAlbumWithPlace(ids[4], id));
+    }
+
+    // Collaborators may correct where a capture sits — not rename it, replace
+    // its splat, trash it, or rewrite which journeys it belongs to.
+    function collaboratorLocationEdit(id) {
+      return signedIn()
+             && !ownsPlace()
+             && memberOfListedAlbumContainingPlace(id)
+             && request.resource.data.uploaderId == resource.data.uploaderId
+             && request.resource.data.name == resource.data.name
+             && request.resource.data.splatUrl == resource.data.splatUrl
+             && request.resource.data.createdAt == resource.data.createdAt
+             && request.resource.data.get('thumbnailUrl', '')
+                == resource.data.get('thumbnailUrl', '')
+             && request.resource.data.get('audioUrl', null)
+                == resource.data.get('audioUrl', null)
+             && request.resource.data.get('audioSeconds', null)
+                == resource.data.get('audioSeconds', null)
+             && request.resource.data.get('deletedAt', null)
+                == resource.data.get('deletedAt', null)
+             && request.resource.data.get('entryPoint', null)
+                == resource.data.get('entryPoint', null)
+             && request.resource.data.get('capturedAt', null)
+                == resource.data.get('capturedAt', null)
+             && request.resource.data.get('albumIds', [])
+                == resource.data.get('albumIds', []);
+    }
+
+    // Members (and owners) may stamp albumIds onto places the journey holds,
+    // so older captures pick up the link collaborators need for location edits.
+    function linkingAlbumIds(id) {
+      let next = request.resource.data.get('albumIds', []);
+      let prev = resource.data.get('albumIds', []);
+      return signedIn()
+             && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['albumIds'])
+             && request.resource.data.uploaderId == resource.data.uploaderId
+             && next.hasAll(prev)
+             && (next.size() == 0 || memberOfAlbumWithPlace(next[0], id))
+             && (next.size() <= 1 || memberOfAlbumWithPlace(next[1], id))
+             && (next.size() <= 2 || memberOfAlbumWithPlace(next[2], id))
+             && (next.size() <= 3 || memberOfAlbumWithPlace(next[3], id))
+             && (next.size() <= 4 || memberOfAlbumWithPlace(next[4], id));
+    }
+
     // Profiles remain discoverable to authenticated users, but only the
     // account owner can create or edit their profile.
     match /profiles/{userId} {
@@ -139,9 +200,11 @@ service cloud.firestore {
                     && request.resource.data.uploaderId == request.auth.uid;
       allow read: if signedIn();
       allow delete: if ownsPlace();
-      allow update: if ownsPlace()
-                    && request.resource.data.uploaderId
-                       == resource.data.uploaderId;
+      allow update: if (ownsPlace()
+                        && request.resource.data.uploaderId
+                           == resource.data.uploaderId)
+                    || collaboratorLocationEdit(placeId)
+                    || linkingAlbumIds(placeId);
 
       match /audioPins/{pinId} {
         allow read, create, update, delete: if signedIn()

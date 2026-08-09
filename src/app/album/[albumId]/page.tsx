@@ -12,6 +12,7 @@ import {
 import {
   addPlacesToAlbum,
   canEditAlbum,
+  ensurePlacesLinkedToAlbum,
   removePlacesFromAlbum,
   resolveAlbumPlaces,
   subscribeToAlbum,
@@ -53,6 +54,7 @@ export default function AlbumPage({
   const [showPicker, setShowPicker] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState<Place | null>(null);
+  const [editingLocationOnly, setEditingLocationOnly] = useState(false);
   const [trashing, setTrashing] = useState<Place | null>(null);
   // Recents belongs to no album, so filing a capture from there needs the
   // whole list to choose from.
@@ -117,6 +119,16 @@ export default function AlbumPage({
     if (!isFirebaseConfigured || !user || !isRecents) return;
     return subscribeToAlbumsByOwner(user.uid, setOwnAlbums);
   }, [user, isRecents]);
+
+  // Older places predate albumIds; stamp this journey on so collaborators can
+  // edit location under the new rules.
+  useEffect(() => {
+    if (isRecents || !album || !user) return;
+    if (!canEditAlbum(album, user.uid)) return;
+    const ids = album.placeIds ?? [];
+    if (ids.length === 0) return;
+    void ensurePlacesLinkedToAlbum(album.id, ids);
+  }, [album, isRecents, user]);
 
   const albumPlaces = useMemo(() => {
     if (isRecents) return places;
@@ -313,8 +325,16 @@ export default function AlbumPage({
                   href={`/place/${place.id}?album=${albumId}`}
                   onEdit={
                     place.uploaderId === user?.uid
-                      ? () => setEditing(place)
-                      : undefined
+                      ? () => {
+                          setEditingLocationOnly(false);
+                          setEditing(place);
+                        }
+                      : canEdit
+                        ? () => {
+                            setEditingLocationOnly(true);
+                            setEditing(place);
+                          }
+                        : undefined
                   }
                   // Recents is a view of everything, not an album, so there is
                   // nothing there to be removed from.
@@ -395,7 +415,11 @@ export default function AlbumPage({
       {editing && (
         <PlaceDetailsEditor
           place={editing}
-          onClose={() => setEditing(null)}
+          locationOnly={editingLocationOnly}
+          onClose={() => {
+            setEditing(null);
+            setEditingLocationOnly(false);
+          }}
           onSaved={() => {}}
         />
       )}
