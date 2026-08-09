@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  addCollaborator,
   albumMemberIds,
+  inviteCollaborator,
   removeCollaborator,
 } from "@/lib/albums";
 import { getProfile, getProfileByUsername } from "@/lib/profiles";
@@ -20,8 +20,10 @@ export default function AlbumMembers({
   viewerId: string;
 }) {
   const memberIds = albumMemberIds(album);
+  const pendingIds = album.pendingMemberIds ?? [];
   const isOwner = album.ownerId === viewerId;
   const [members, setMembers] = useState<Profile[] | null>(null);
+  const [pending, setPending] = useState<Profile[] | null>(null);
   const [inviting, setInviting] = useState(false);
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,6 +48,28 @@ export default function AlbumMembers({
     };
   }, [memberKey]);
 
+  const pendingKey = pendingIds.join(",");
+  useEffect(() => {
+    if (!isOwner) {
+      setPending([]);
+      return;
+    }
+    let active = true;
+    const ids = pendingKey ? pendingKey.split(",") : [];
+    Promise.all(ids.map((id) => getProfile(id)))
+      .then((found) => {
+        if (active) {
+          setPending(found.filter((p): p is Profile => Boolean(p)));
+        }
+      })
+      .catch(() => {
+        if (active) setPending([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [pendingKey, isOwner]);
+
   // Only the owner can invite, so nobody else pays for these reads. The
   // profile lookups are async, so a resolved batch is dropped once this has
   // gone away — and once a newer snapshot has superseded it.
@@ -65,10 +89,11 @@ export default function AlbumMembers({
     };
   }, [isOwner, viewerId]);
 
+  const taken = new Set([...memberIds, ...pendingIds]);
   const typed = handle.trim().replace(/^@/, "").toLowerCase();
   const suggestions = (followed ?? []).filter(
     (p) =>
-      !memberIds.includes(p.id) &&
+      !taken.has(p.id) &&
       (typed === "" ||
         p.username.toLowerCase().startsWith(typed) ||
         p.displayName.toLowerCase().includes(typed)),
@@ -78,11 +103,15 @@ export default function AlbumMembers({
     setBusy(true);
     setError(null);
     try {
-      await addCollaborator(album, profile.id);
+      await inviteCollaborator(album, profile.id);
       setHandle("");
       setInviting(false);
-    } catch {
-      setError("Couldn’t add them. You may not have permission.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Couldn’t invite them. You may not have permission.",
+      );
     } finally {
       setBusy(false);
     }
@@ -103,11 +132,19 @@ export default function AlbumMembers({
         setError(`@${profile.username} is already on this album.`);
         return;
       }
-      await addCollaborator(album, profile.id);
+      if (pendingIds.includes(profile.id)) {
+        setError(`@${profile.username} already has an invite waiting.`);
+        return;
+      }
+      await inviteCollaborator(album, profile.id);
       setHandle("");
       setInviting(false);
-    } catch {
-      setError("Couldn’t add them. You may not have permission.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Couldn’t invite them. You may not have permission.",
+      );
     } finally {
       setBusy(false);
     }
@@ -170,81 +207,115 @@ export default function AlbumMembers({
         )}
       </div>
 
-      {inviting && (
-        <div className="mt-3 max-w-sm">
-        <div className="flex items-center gap-2">
-          <input
-            autoFocus
-            value={handle}
-            onChange={(e) => setHandle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") invite();
-              if (e.key === "Escape") {
-                setInviting(false);
-                setError(null);
-              }
-            }}
-            placeholder="username"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            className="min-w-0 flex-1 rounded-lg border border-black/10 bg-neutral-50 px-3 py-1.5 text-[15px] outline-none focus:border-[#0071e3]"
-          />
-          <button
-            onClick={invite}
-            disabled={!handle.trim() || busy}
-            className="shrink-0 text-[15px] font-semibold text-[#0071e3] disabled:opacity-40"
-          >
-            {busy ? "Adding…" : "Add"}
-          </button>
-          <button
-            onClick={() => {
-              setInviting(false);
-              setError(null);
-            }}
-            className="shrink-0 text-[15px] text-neutral-500"
-          >
-            Cancel
-          </button>
-        </div>
-
-        {followed === null ? (
-          <p className="mt-2 text-[13px] text-neutral-400">
-            Loading who you follow…
+      {isOwner && pending && pending.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
+            Pending
           </p>
-        ) : suggestions.length > 0 ? (
-          <ul className="mt-2 overflow-hidden rounded-lg ring-1 ring-black/5">
-            {suggestions.map((profile) => (
-              <li key={profile.id}>
+          <ul className="mt-1.5 space-y-1">
+            {pending.map((profile) => (
+              <li
+                key={profile.id}
+                className="flex items-center gap-2 text-[13px] text-neutral-600"
+              >
+                <Avatar
+                  profile={profile}
+                  className="h-6 w-6"
+                  textClassName="text-[10px]"
+                />
+                <span className="min-w-0 flex-1 truncate">
+                  @{profile.username}
+                  <span className="text-neutral-400"> · waiting</span>
+                </span>
                 <button
-                  onClick={() => inviteProfile(profile)}
+                  type="button"
+                  onClick={() => remove(profile)}
                   disabled={busy}
-                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition hover:bg-neutral-50 disabled:opacity-40"
+                  className="text-[12px] text-neutral-400 transition hover:text-neutral-700 disabled:opacity-40"
                 >
-                  <Avatar
-                    profile={profile}
-                    className="h-7 w-7"
-                    textClassName="text-[12px]"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[14px]">
-                    {profile.displayName}
-                    <span className="ml-1.5 text-[13px] text-neutral-500">
-                      @{profile.username}
-                    </span>
-                  </span>
+                  Cancel
                 </button>
               </li>
             ))}
           </ul>
-        ) : (
-          <p className="mt-2 text-[13px] text-neutral-400">
-            {followed.length === 0
-              ? "You’re not following anyone yet — type a username instead."
-              : typed
-                ? "Nobody you follow matches. Enter adds by exact username."
-                : "Everyone you follow is already here."}
-          </p>
-        )}
+        </div>
+      )}
+
+      {inviting && (
+        <div className="mt-3 max-w-sm">
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") invite();
+                if (e.key === "Escape") {
+                  setInviting(false);
+                  setError(null);
+                }
+              }}
+              placeholder="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-lg border border-black/10 bg-neutral-50 px-3 py-1.5 text-[15px] outline-none focus:border-[#0071e3]"
+            />
+            <button
+              onClick={invite}
+              disabled={!handle.trim() || busy}
+              className="shrink-0 text-[15px] font-semibold text-[#0071e3] disabled:opacity-40"
+            >
+              {busy ? "Inviting…" : "Invite"}
+            </button>
+            <button
+              onClick={() => {
+                setInviting(false);
+                setError(null);
+              }}
+              className="shrink-0 text-[15px] text-neutral-500"
+            >
+              Cancel
+            </button>
+          </div>
+
+          {followed === null ? (
+            <p className="mt-2 text-[13px] text-neutral-400">
+              Loading who you follow…
+            </p>
+          ) : suggestions.length > 0 ? (
+            <ul className="mt-2 overflow-hidden rounded-lg ring-1 ring-black/5">
+              {suggestions.map((profile) => (
+                <li key={profile.id}>
+                  <button
+                    onClick={() => inviteProfile(profile)}
+                    disabled={busy}
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left transition hover:bg-neutral-50 disabled:opacity-40"
+                  >
+                    <Avatar
+                      profile={profile}
+                      className="h-7 w-7"
+                      textClassName="text-[12px]"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-[14px]">
+                      {profile.displayName}
+                      <span className="ml-1.5 text-[13px] text-neutral-500">
+                        @{profile.username}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-[13px] text-neutral-400">
+              {followed.length === 0
+                ? "You’re not following anyone yet — type a username instead."
+                : typed
+                  ? "Nobody you follow matches. Enter invites by exact username."
+                  : "Everyone you follow is already here or invited."}
+            </p>
+          )}
         </div>
       )}
 

@@ -25,6 +25,7 @@ import PlaceThumb from "@/components/PlaceThumb";
 import PlaceTile from "@/components/PlaceTile";
 import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
 import AlbumCover from "@/components/AlbumCover";
+import AlbumCollaborators from "@/components/AlbumCollaborators";
 import AlbumPicker from "@/components/AlbumPicker";
 import CaptureRunner from "@/components/CaptureRunner";
 import AlbumMembers from "@/components/AlbumMembers";
@@ -214,12 +215,13 @@ export default function AlbumPage({
 
       <div className="mx-auto max-w-5xl px-6">
         <div className="mt-8 flex items-end gap-5">
-          <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 shadow-sm ring-1 ring-black/5 sm:h-36 sm:w-36">
+          <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-neutral-100 shadow-sm ring-1 ring-black/5 sm:h-36 sm:w-36">
             <AlbumCover
               coverUrl={album?.coverUrl}
               places={readyPlaces}
               alt={title}
             />
+            {album && <AlbumCollaborators album={album} />}
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[34px] font-bold tracking-tight">

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { subscribeToFollowers, subscribeToFollowingIds } from "./follows";
 import { subscribeToPlacesByUploaders } from "./places";
-import { subscribeToAlbumsSharedWith } from "./albums";
+import { subscribeToAlbumInvites } from "./albums";
 import type { Album, Follow, Place } from "./types";
 
 /**
@@ -16,11 +16,20 @@ import type { Album, Follow, Place } from "./types";
  * answer and this project has no Cloud Functions, so the feed is assembled from
  * the source of truth instead. It costs a few extra listeners and needs no new
  * rules, and nothing can be faked into someone else's inbox.
+ *
+ * Album invites work the same way: pendingMemberIds is the invite, and accepting
+ * clears it, so the row disappears on its own once it has been answered.
  */
 export type Notification =
   | { kind: "follow"; id: string; at: number; actorId: string }
   | { kind: "place"; id: string; at: number; actorId: string; place: Place }
-  | { kind: "album"; id: string; at: number; actorId: string; album: Album };
+  | {
+      kind: "album_invite";
+      id: string;
+      at: number;
+      actorId: string;
+      album: Album;
+    };
 
 /** Anything older than this was almost certainly already seen. */
 const MAX_ITEMS = 50;
@@ -54,7 +63,7 @@ export function useNotifications(uid: string | undefined) {
   const [followers, setFollowers] = useState<Follow[]>([]);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
-  const [sharedAlbums, setSharedAlbums] = useState<Album[]>([]);
+  const [invites, setInvites] = useState<Album[]>([]);
   const [seenAt, setSeenAt] = useState(0);
 
   useEffect(() => {
@@ -92,12 +101,10 @@ export function useNotifications(uid: string | undefined) {
 
   useEffect(() => {
     if (!uid) {
-      setSharedAlbums([]);
+      setInvites([]);
       return;
     }
-    return subscribeToAlbumsSharedWith(uid, setSharedAlbums, () =>
-      setSharedAlbums([]),
-    );
+    return subscribeToAlbumInvites(uid, setInvites, () => setInvites([]));
   }, [uid]);
 
   useEffect(() => {
@@ -127,20 +134,18 @@ export function useNotifications(uid: string | undefined) {
         actorId: place.uploaderId,
         place,
       })),
-      // Falls back to the album's own date for anyone added before invites
-      // were timestamped, which at least keeps them in the list.
-      ...sharedAlbums.map((album) => ({
-        kind: "album" as const,
-        id: `album:${album.id}`,
+      ...invites.map((album) => ({
+        kind: "album_invite" as const,
+        id: `album_invite:${album.id}`,
         at: uid
-          ? millis(album.memberAddedAt?.[uid]) || millis(album.createdAt)
+          ? millis(album.invitePendingAt?.[uid]) || millis(album.createdAt)
           : millis(album.createdAt),
         actorId: album.ownerId,
         album,
       })),
     ];
     return merged.sort((a, b) => b.at - a.at).slice(0, MAX_ITEMS);
-  }, [followers, places, sharedAlbums, uid]);
+  }, [followers, places, invites, uid]);
 
   // A serverTimestamp reads back as null on the writer's own device until the
   // round trip lands, so a brand-new item has at === 0. Treating that as unread

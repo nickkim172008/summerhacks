@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthProfile } from "@/lib/auth";
+import {
+  acceptAlbumInvite,
+  declineAlbumInvite,
+} from "@/lib/albums";
 import {
   markAllSeen,
   useActorProfiles,
@@ -50,7 +54,7 @@ export default function NotificationsPage() {
             <p className="text-[17px] font-semibold">Nothing yet</p>
             <p className="mx-auto mt-2 max-w-xs text-sm text-neutral-500">
               New followers show up here, along with environments captured by
-              the people you follow and albums they add you to.
+              the people you follow and album invites waiting on a reply.
             </p>
             <Link
               href="/discover"
@@ -66,6 +70,7 @@ export default function NotificationsPage() {
                 key={item.id}
                 item={item}
                 actor={profiles[item.actorId]}
+                viewerId={user.uid}
                 isNew={item.at > 0 && item.at > seenAt}
               />
             ))}
@@ -79,16 +84,32 @@ export default function NotificationsPage() {
 function NotificationRow({
   item,
   actor,
+  viewerId,
   isNew,
 }: {
   item: Notification;
   actor: Profile | null | undefined;
+  viewerId: string;
   isNew: boolean;
 }) {
   // Until the lookup lands there is no handle to link to, so the row shows a
   // neutral placeholder rather than a broken /u/undefined link.
   const name = actor?.displayName ?? "Someone";
   const href = actor ? `/u/${actor.username}` : null;
+
+  if (item.kind === "album_invite") {
+    return (
+      <li>
+        <AlbumInviteRow
+          item={item}
+          actor={actor}
+          name={name}
+          viewerId={viewerId}
+          isNew={isNew}
+        />
+      </li>
+    );
+  }
 
   const body = (
     <>
@@ -107,11 +128,6 @@ function NotificationRow({
           <span className="font-medium">{name}</span>
           {item.kind === "follow" ? (
             " started following you."
-          ) : item.kind === "album" ? (
-            <>
-              {" added you to "}
-              <span className="font-medium">{item.album.name}</span>.
-            </>
           ) : (
             <>
               {" captured "}
@@ -139,14 +155,8 @@ function NotificationRow({
     </>
   );
 
-  // Each row points at the thing it is about: the capture, the shared album,
-  // or — for a new follow — whoever did the following.
   const target =
-    item.kind === "place"
-      ? `/place/${item.place.id}`
-      : item.kind === "album"
-        ? `/album/${item.album.id}`
-        : href;
+    item.kind === "place" ? `/place/${item.place.id}` : href;
 
   return (
     <li>
@@ -161,6 +171,105 @@ function NotificationRow({
         <div className="flex items-center gap-3 py-3">{body}</div>
       )}
     </li>
+  );
+}
+
+function AlbumInviteRow({
+  item,
+  actor,
+  name,
+  viewerId,
+  isNew,
+}: {
+  item: Extract<Notification, { kind: "album_invite" }>;
+  actor: Profile | null | undefined;
+  name: string;
+  viewerId: string;
+  isNew: boolean;
+}) {
+  const [busy, setBusy] = useState<"accept" | "decline" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  async function accept() {
+    if (busy) return;
+    setBusy("accept");
+    setError(null);
+    try {
+      await acceptAlbumInvite(item.album, viewerId);
+      router.push(`/album/${item.album.id}`);
+    } catch {
+      setError("Couldn’t join that album.");
+      setBusy(null);
+    }
+  }
+
+  async function decline() {
+    if (busy) return;
+    setBusy("decline");
+    setError(null);
+    try {
+      await declineAlbumInvite(item.album, viewerId);
+    } catch {
+      setError("Couldn’t decline that invite.");
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="py-3">
+      <div className="flex items-center gap-3">
+        {actor ? (
+          <Avatar
+            profile={actor}
+            className="h-11 w-11"
+            textClassName="text-[15px]"
+          />
+        ) : (
+          <div className="h-11 w-11 shrink-0 rounded-full bg-neutral-100" />
+        )}
+
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] leading-snug">
+            <span className="font-medium">{name}</span>
+            {" invited you to "}
+            <span className="font-medium">{item.album.name}</span>.
+          </p>
+          <p className="mt-0.5 text-[13px] text-neutral-500">
+            {item.at > 0 ? timeAgo(item.at) : "Just now"}
+          </p>
+        </div>
+
+        {isNew && (
+          <span
+            aria-label="New"
+            className="h-2 w-2 shrink-0 rounded-full bg-[#0071e3]"
+          />
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center gap-2 pl-14">
+        <button
+          type="button"
+          onClick={() => void accept()}
+          disabled={busy !== null}
+          className="rounded-full bg-[#0071e3] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40"
+        >
+          {busy === "accept" ? "Joining…" : "Accept"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void decline()}
+          disabled={busy !== null}
+          className="rounded-full border border-black/10 px-4 py-1.5 text-[13px] font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:opacity-40"
+        >
+          {busy === "decline" ? "…" : "Decline"}
+        </button>
+      </div>
+      {error && (
+        <p className="mt-2 pl-14 text-[13px] text-red-500">{error}</p>
+      )}
+    </div>
   );
 }
 

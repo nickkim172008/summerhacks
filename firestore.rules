@@ -18,6 +18,55 @@ service cloud.firestore {
                  && request.auth.uid in resource.data.get('memberIds', []));
     }
 
+    function albumMemberIds() {
+      return resource.data.get('memberIds', []);
+    }
+
+    function albumPendingIds() {
+      return resource.data.get('pendingMemberIds', []);
+    }
+
+    function nextMemberIds() {
+      return request.resource.data.get('memberIds', []);
+    }
+
+    function nextPendingIds() {
+      return request.resource.data.get('pendingMemberIds', []);
+    }
+
+    // An invitee may only move themselves out of pending — either into
+    // members (accept) or off the list (decline). Everything else on the
+    // album has to stay put so accepting cannot rewrite the collection.
+    function albumContentUnchanged() {
+      return request.resource.data.name == resource.data.name
+             && request.resource.data.placeIds == resource.data.placeIds
+             && request.resource.data.get('coverUrl', null)
+                == resource.data.get('coverUrl', null);
+    }
+
+    function acceptingOwnInvite() {
+      return signedIn()
+             && request.auth.uid in albumPendingIds()
+             && !(request.auth.uid in nextPendingIds())
+             && request.auth.uid in nextMemberIds()
+             && !(request.auth.uid in albumMemberIds())
+             && albumContentUnchanged()
+             && nextMemberIds().hasAll(albumMemberIds())
+             && nextMemberIds().size() == albumMemberIds().size() + 1
+             && albumPendingIds().hasAll(nextPendingIds())
+             && albumPendingIds().size() == nextPendingIds().size() + 1;
+    }
+
+    function decliningOwnInvite() {
+      return signedIn()
+             && request.auth.uid in albumPendingIds()
+             && !(request.auth.uid in nextPendingIds())
+             && nextMemberIds() == albumMemberIds()
+             && albumContentUnchanged()
+             && albumPendingIds().hasAll(nextPendingIds())
+             && albumPendingIds().size() == nextPendingIds().size() + 1;
+    }
+
     function ownsPlace() {
       return signedIn() && resource.data.uploaderId == request.auth.uid;
     }
@@ -53,15 +102,20 @@ service cloud.firestore {
                     && request.resource.data.ownerId == request.auth.uid;
       allow read: if signedIn();
       allow delete: if ownsAlbum();
-      allow update: if editsAlbum()
-                    && request.resource.data.ownerId == resource.data.ownerId
+      // Owner manages membership and invites. Members may edit content but
+      // not who is on the album. A pending invitee may only accept or decline
+      // for themselves — they are not in memberIds yet, so editsAlbum is false.
+      allow update: if request.resource.data.ownerId == resource.data.ownerId
                     && (ownsAlbum()
-                        || (request.resource.data.get('memberIds', [])
-                            == resource.data.get('memberIds', [])
-                            // Drives "added you to" in the inbox, so a member
-                            // rewriting it could fake an invite from the owner.
+                        || acceptingOwnInvite()
+                        || decliningOwnInvite()
+                        || (editsAlbum()
+                            && nextMemberIds() == albumMemberIds()
+                            && nextPendingIds() == albumPendingIds()
                             && request.resource.data.get('memberAddedAt', {})
-                               == resource.data.get('memberAddedAt', {})));
+                               == resource.data.get('memberAddedAt', {})
+                            && request.resource.data.get('invitePendingAt', {})
+                               == resource.data.get('invitePendingAt', {})));
     }
 
     match /places/{placeId} {

@@ -137,6 +137,32 @@ export function subscribeToAlbumsSharedWith(
   );
 }
 
+/**
+ * Albums this account has been invited to but has not joined yet. Drives the
+ * accept/decline rows in the inbox — membership alone is not enough, because
+ * an invite that auto-joined never needed a reply.
+ */
+export function subscribeToAlbumInvites(
+  uid: string,
+  onChange: (albums: Album[]) => void,
+  onError?: (error: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    query(
+      collection(db, "albums"),
+      where("pendingMemberIds", "array-contains", uid),
+    ),
+    (snap) => {
+      onChange(
+        sortByCreatedDesc(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Album),
+        ),
+      );
+    },
+    onError,
+  );
+}
+
 export function subscribeToAlbum(
   albumId: string,
   onChange: (album: Album | null) => void,
@@ -169,20 +195,54 @@ export async function createAlbum(
 }
 
 /**
- * Invites someone to add to this album. arrayUnion keeps a repeat invite
- * harmless, and the owner is seeded alongside so albums created before
- * sharing pick up a correct member list on their first invite instead of a
- * list that silently omits the owner.
+ * Asks someone to join. They stay in pendingMemberIds until they accept from
+ * the notification — landing them on memberIds immediately is what used to
+ * skip that step. arrayUnion keeps a repeat invite harmless.
  */
-export async function addCollaborator(
+export async function inviteCollaborator(
+  album: Album,
+  uid: string,
+): Promise<void> {
+  if (uid === album.ownerId) {
+    throw new Error("The owner is already on this album.");
+  }
+  if (albumMemberIds(album).includes(uid)) {
+    throw new Error("They are already on this album.");
+  }
+  await updateDoc(doc(db, "albums", album.id), {
+    // Seed the owner so a pre-sharing album has a real memberIds before the
+    // first accept — otherwise the invitee would be the only name on it.
+    memberIds: arrayUnion(album.ownerId),
+    pendingMemberIds: arrayUnion(uid),
+    [`invitePendingAt.${uid}`]: serverTimestamp(),
+  });
+}
+
+/**
+ * The invitee joins: leave pending, enter members. The owner is seeded into
+ * memberIds so albums created before sharing pick up a correct list on the
+ * first accept instead of one that silently omits them.
+ */
+export async function acceptAlbumInvite(
   album: Album,
   uid: string,
 ): Promise<void> {
   await updateDoc(doc(db, "albums", album.id), {
     memberIds: arrayUnion(...new Set([album.ownerId, uid])),
-    // Dot notation so this touches one key rather than replacing the whole map
-    // and wiping when everyone else was added.
+    pendingMemberIds: arrayRemove(uid),
     [`memberAddedAt.${uid}`]: serverTimestamp(),
+    [`invitePendingAt.${uid}`]: deleteField(),
+  });
+}
+
+/** The invitee turns the invite down — pending only, membership untouched. */
+export async function declineAlbumInvite(
+  album: Album,
+  uid: string,
+): Promise<void> {
+  await updateDoc(doc(db, "albums", album.id), {
+    pendingMemberIds: arrayRemove(uid),
+    [`invitePendingAt.${uid}`]: deleteField(),
   });
 }
 
@@ -193,6 +253,9 @@ export async function removeCollaborator(
   if (uid === album.ownerId) throw new Error("The owner can't be removed.");
   await updateDoc(doc(db, "albums", album.id), {
     memberIds: arrayRemove(uid),
+    pendingMemberIds: arrayRemove(uid),
+    [`memberAddedAt.${uid}`]: deleteField(),
+    [`invitePendingAt.${uid}`]: deleteField(),
   });
 }
 
