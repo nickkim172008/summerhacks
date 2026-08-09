@@ -75,7 +75,7 @@ export default function PlaceDetailsEditor({
   }
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 text-[#1d1d1f] shadow-2xl">
         <h2 className="text-[22px] font-semibold tracking-tight">
           Edit environment

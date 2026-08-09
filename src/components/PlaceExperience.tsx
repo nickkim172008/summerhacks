@@ -34,7 +34,6 @@ export default function PlaceExperience({
   onExit,
   onEdit,
 }: PlaceExperienceProps) {
-  const [entered, setEntered] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [pending, setPending] = useState<Vec3 | null>(null);
   const [saving, setSaving] = useState(false);
@@ -95,7 +94,7 @@ export default function PlaceExperience({
   }
 
   const canAuthor = Boolean(onAddHotspot) && linkTargets.length > 0;
-  const showPlayer = entered && Boolean(place.audioUrl);
+  const showPlayer = Boolean(place.audioUrl);
   useEffect(() => {
     console.info("[place]", place.id, {
       splatUrl: place.splatUrl,
@@ -152,55 +151,48 @@ export default function PlaceExperience({
         </button>
       )}
 
-      {!entered && (
-        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/85 px-6 backdrop-blur">
-          <h1 className="text-2xl font-semibold">{place.name}</h1>
-          {uploader && (
-            <Link
-              href={`/u/${uploader.username}`}
-              className="text-sm text-sky-400 transition hover:text-sky-300"
-            >
-              by @{uploader.username}
-            </Link>
-          )}
-          {captured && (
-            // Rendered in the visitor's locale and time zone, neither of which
-            // the server shares, so the two passes legitimately differ.
-            <p
-              suppressHydrationWarning
-              className="text-center text-sm text-neutral-500"
-            >
-              {captured}
-            </p>
-          )}
-          <p className="max-w-sm text-center text-sm text-neutral-300">
-            Drag to look around.
-            {place.audioUrl
-              ? " The sound recorded while this place was filmed fades in as you arrive."
-              : ""}
-          </p>
-          <button
-            onClick={() => setEntered(true)}
-            className="rounded-full bg-white px-6 py-2 font-medium text-black"
-          >
-            Enter
-          </button>
-        </div>
-      )}
+      {/* Everything known about the capture, out of the way in the corner —
+          the scene is the point, and a title card in front of it was a door to
+          open before anyone could look. */}
+      <div className="pointer-events-none absolute bottom-4 left-4 z-20 max-w-[min(24rem,calc(100%-2rem))]">
+        <div className="pointer-events-auto rounded-2xl bg-neutral-900/85 p-4 backdrop-blur">
+          <h1 className="text-[17px] font-semibold leading-tight">
+            {place.name}
+          </h1>
 
-      {(showPlayer || canAuthor || error) && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center p-4">
-          <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-2xl bg-neutral-900/90 p-4 backdrop-blur">
-            {error && <p className="text-sm text-red-400">{error}</p>}
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-neutral-400">
+            {uploader && (
+              <Link
+                href={`/u/${uploader.username}`}
+                className="pointer-events-auto text-sky-400 transition hover:text-sky-300"
+              >
+                by @{uploader.username}
+              </Link>
+            )}
+            {captured && (
+              // Rendered in the visitor's locale and time zone, neither of
+              // which the server shares, so the two passes legitimately differ.
+              <span suppressHydrationWarning>{captured}</span>
+            )}
+          </div>
 
-            {showPlayer && place.audioUrl && (
+          {showPlayer && place.audioUrl && (
+            <div className="mt-3">
               <AmbientPlayer
                 key={place.id}
                 url={storedAssetUrl(place.audioUrl)}
                 seconds={place.audioSeconds}
                 leaving={jumping}
               />
-            )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {(canAuthor || error) && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center p-4">
+          <div className="pointer-events-auto flex flex-col items-center gap-3 rounded-2xl bg-neutral-900/90 p-4 backdrop-blur">
+            {error && <p className="text-sm text-red-400">{error}</p>}
 
             {canAuthor && !pending && (
               <>
@@ -255,8 +247,9 @@ export default function PlaceExperience({
 
 /**
  * The walkthrough's own audio, played back under the place it was filmed in.
- * Mounted only once the visitor has pressed Enter, which is the gesture the
- * autoplay policy waits for.
+ * There is no entry gesture to wait behind any more, so playback is attempted
+ * on arrival and picked up again on the first pointer press if the browser
+ * refused it.
  */
 function AmbientPlayer({
   url,

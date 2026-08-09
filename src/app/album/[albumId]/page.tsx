@@ -8,6 +8,8 @@ import { addPlacesToAlbum, subscribeToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
 import PlaceThumb from "@/components/PlaceThumb";
+import PlaceTile from "@/components/PlaceTile";
+import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
 import CaptureRunner from "@/components/CaptureRunner";
 import type { Album, Place } from "@/lib/types";
 
@@ -29,6 +31,7 @@ export default function AlbumPage({
   const [error, setError] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState<Place | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -41,19 +44,15 @@ export default function AlbumPage({
 
   useEffect(() => {
     if (isRecents || !user) return;
-    return subscribeToAlbum(
-      albumId,
-      setAlbum,
-      () => setError("Couldn’t load this album."),
+    return subscribeToAlbum(albumId, setAlbum, () =>
+      setError("Couldn’t load this album."),
     );
   }, [albumId, isRecents, user]);
 
   useEffect(() => {
     if (!isFirebaseConfigured || !user) return;
-    return subscribeToPlacesByUploader(
-      user.uid,
-      setPlaces,
-      () => setError("Couldn’t load environments."),
+    return subscribeToPlacesByUploader(user.uid, setPlaces, () =>
+      setError("Couldn’t load environments."),
     );
   }, [user]);
 
@@ -194,20 +193,28 @@ export default function AlbumPage({
           <ul className="mt-6 grid grid-cols-3 gap-0.5 sm:grid-cols-4 md:grid-cols-5">
             {readyPlaces.map((place) => (
               <li key={place.id}>
-                <Link
+                <PlaceTile
+                  place={place}
                   href={`/place/${place.id}?album=${albumId}`}
-                  className="group relative block aspect-square overflow-hidden bg-neutral-100"
-                >
-                  <PlaceThumb place={place} />
-                  <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-6 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
-                    {place.name}
-                  </span>
-                </Link>
+                  onEdit={
+                    place.uploaderId === user?.uid
+                      ? () => setEditing(place)
+                      : undefined
+                  }
+                />
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {editing && (
+        <PlaceDetailsEditor
+          place={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {}}
+        />
+      )}
 
       {showPicker && !isRecents && (
         <AddEnvironmentsSheet
