@@ -67,7 +67,7 @@ export default function SetupUsernamePage() {
           Choose a username
         </h1>
         <p className="mt-2 text-sm text-neutral-500">
-          This is how people find your albums and environments.
+          This is how people find your journeys and places.
         </p>
 
         <div className="mt-8">

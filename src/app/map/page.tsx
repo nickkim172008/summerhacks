@@ -173,8 +173,8 @@ function MapView() {
   const notice =
     located.length === 0 && pending === 0
       ? inScope.length === 0
-        ? "No environments in this scope yet."
-        : `None of these ${inScope.length} environments say where they were filmed.`
+        ? "No places in this scope yet."
+        : `None of these ${inScope.length} places say where they were filmed.`
       : liveError
         ? "Location off — allow GPS to show where you are"
         : liveLoading
@@ -187,7 +187,7 @@ function MapView() {
       ? "Everyone"
       : scope.kind === "personal"
         ? "Yours"
-        : (albums.find((a) => a.id === scope.albumId)?.name ?? "Album");
+        : (albums.find((a) => a.id === scope.albumId)?.name ?? "Journey");
 
   const locationHint = liveLoading
     ? "Finding you…"
@@ -258,25 +258,25 @@ function MapView() {
                     setScope({ kind: "personal" });
                   }}
                   title="Yours"
-                  subtitle={user ? "Every album combined" : "Sign in to view"}
+                  subtitle={user ? "Every journey combined" : "Sign in to view"}
                 />
               </div>
 
               <div className="mt-6">
                 <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
-                  Albums
+                  Journeys
                 </p>
                 {!user && (
                   <p className="px-2 py-1.5 text-[12px] leading-relaxed text-neutral-500">
                     <Link href="/signin" className="font-medium text-[#0071e3]">
                       Sign in
                     </Link>{" "}
-                    to browse by album.
+                    to browse by journey.
                   </p>
                 )}
                 {user && albums.length === 0 && (
                   <p className="px-2 py-1.5 text-[12px] leading-relaxed text-neutral-500">
-                    No albums yet — make one in Library.
+                    No journeys yet — make one in Library.
                   </p>
                 )}
                 <div className="space-y-1">

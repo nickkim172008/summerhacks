@@ -43,7 +43,7 @@ export default function AlbumPicker({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl bg-white text-[#1d1d1f] shadow-2xl">
         <div className="border-b border-black/5 px-6 py-4">
-          <h2 className="text-[17px] font-semibold">Add to album</h2>
+          <h2 className="text-[17px] font-semibold">Add to journey</h2>
           <p className="mt-0.5 truncate text-[13px] text-neutral-500">
             {place.name}
           </p>
@@ -52,7 +52,7 @@ export default function AlbumPicker({
         <div className="flex-1 overflow-y-auto px-3 py-3">
           {albums.length === 0 && (
             <p className="px-3 py-6 text-center text-[13px] text-neutral-500">
-              No albums yet. Create one from the library first.
+              No journeys yet. Create one from the library first.
             </p>
           )}
 
@@ -77,7 +77,7 @@ export default function AlbumPicker({
                     {album.name}
                   </p>
                   <p className="text-[12px] text-neutral-500">
-                    {album.placeIds?.length ?? 0} environments
+                    {album.placeIds?.length ?? 0} places
                   </p>
                 </div>
                 <span className="shrink-0 text-[13px] text-neutral-400">

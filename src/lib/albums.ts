@@ -204,10 +204,10 @@ export async function inviteCollaborator(
   uid: string,
 ): Promise<void> {
   if (uid === album.ownerId) {
-    throw new Error("The owner is already on this album.");
+    throw new Error("The owner is already on this journey.");
   }
   if (albumMemberIds(album).includes(uid)) {
-    throw new Error("They are already on this album.");
+    throw new Error("They are already on this journey.");
   }
   await updateDoc(doc(db, "albums", album.id), {
     // Seed the owner so a pre-sharing album has a real memberIds before the

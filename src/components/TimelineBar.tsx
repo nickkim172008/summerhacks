@@ -303,13 +303,13 @@ function exclusionNote(
   if (dated === 0) {
     return scopeCount === 0
       ? "Nothing in this scope, so there is nothing to animate."
-      : `None of these ${scopeCount} environments carry a date.`;
+      : `None of these ${scopeCount} places carry a date.`;
   }
 
   const parts: string[] = [];
   if (offMap > 0) {
     parts.push(
-      `${offMap} of ${undated > 0 ? `${dated} dated` : scopeCount} environment${
+      `${offMap} of ${undated > 0 ? `${dated} dated` : scopeCount} place${
         (undated > 0 ? dated : scopeCount) === 1 ? "" : "s"
       } ${offMap === 1 ? "has" : "have"} no location — on the axis, never on the map`,
     );

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     default: "Atlas",
     template: "%s · Atlas",
   },
-  description: "Spatial memories, mapped and organized into albums.",
+  description: "Capture a Place. Build a Journey. Explore Atlas.",
   icons: {
     icon: "/brand/atlas-mark.png",
     apple: "/brand/atlas-mark.png",

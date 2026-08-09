@@ -18,7 +18,7 @@ export type AuthMode = "signin" | "signup";
 const COPY = {
   signin: {
     title: "Welcome back",
-    subtitle: "Pick up where you left off — albums, walks, and shared places.",
+    subtitle: "Pick up where you left off — journeys, walks, and shared places.",
     action: "Continue with Google",
     busy: "Signing in…",
     switchText: "New here?",
@@ -29,7 +29,7 @@ const COPY = {
   signup: {
     title: "Start capturing",
     subtitle:
-      "Save walkable environments, organize them into albums, and claim your profile.",
+      "Capture a Place. Build a Journey. Explore Atlas.",
     action: "Sign up with Google",
     busy: "Creating account…",
     switchText: "Already have an account?",

@@ -129,7 +129,7 @@ export default function AlbumMembers({
         return;
       }
       if (memberIds.includes(profile.id)) {
-        setError(`@${profile.username} is already on this album.`);
+        setError(`@${profile.username} is already on this journey.`);
         return;
       }
       if (pendingIds.includes(profile.id)) {

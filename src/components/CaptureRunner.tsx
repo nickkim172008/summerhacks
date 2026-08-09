@@ -416,7 +416,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
         dispatch({
           type: "save-failed",
           id: item.id,
-          message: messageOf(err, "Could not save this environment"),
+          message: messageOf(err, "Could not save this place"),
         });
       } finally {
         claimedRef.current.delete(`save:${item.id}`);
@@ -626,7 +626,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
               Choose Videos
             </span>
             <span className="text-xs text-neutral-500">
-              One continuous walkthrough per environment
+              One continuous walkthrough per place
             </span>
             <input
               key={formKey}
@@ -648,7 +648,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
 
           {!isFirebaseConfigured && !DEMO_CAPTURE && (
             <p className="text-sm text-amber-600">
-              Firebase isn&apos;t configured, so finished environments
+              Firebase isn&apos;t configured, so finished places
               can&apos;t be saved. Capture still works — each one renders here
               and can be downloaded.
             </p>

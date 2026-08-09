@@ -58,8 +58,8 @@ export default function PlaceTile({
         {onAddToAlbum && (
           <button
             onClick={onAddToAlbum}
-            aria-label={`Add ${place.name} to an album`}
-            title="Add to an album"
+            aria-label={`Add ${place.name} to a journey`}
+            title="Add to a journey"
             className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-medium text-[#0071e3] shadow-sm backdrop-blur transition hover:bg-white"
           >
             Add
@@ -68,8 +68,8 @@ export default function PlaceTile({
         {onRemoveFromAlbum && (
           <button
             onClick={onRemoveFromAlbum}
-            aria-label={`Remove ${place.name} from this album`}
-            title="Remove from this album — the environment is kept"
+            aria-label={`Remove ${place.name} from this journey`}
+            title="Remove from this journey — the place is kept"
             className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-medium text-[#1d1d1f] shadow-sm backdrop-blur transition hover:bg-white"
           >
             Remove

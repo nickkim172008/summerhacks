@@ -68,7 +68,7 @@ export default function AlbumPage({
     try {
       await removePlacesFromAlbum(albumId, [placeId]);
     } catch {
-      setActionError("Could not remove that from the album.");
+      setActionError("Could not remove that from the journey.");
     }
   }
 
@@ -84,7 +84,7 @@ export default function AlbumPage({
   useEffect(() => {
     if (isRecents || !user) return;
     return subscribeToAlbum(albumId, setAlbum, () =>
-      setError("Couldn’t load this album."),
+      setError("Couldn’t load this journey."),
     );
   }, [albumId, isRecents, user]);
 
@@ -96,7 +96,7 @@ export default function AlbumPage({
   useEffect(() => {
     if (!isFirebaseConfigured || !user || !placesOwnerId) return;
     return subscribeToPlacesByUploader(placesOwnerId, setPlaces, () =>
-      setError("Couldn’t load environments."),
+      setError("Couldn’t load places."),
     );
   }, [user, placesOwnerId]);
 
@@ -107,7 +107,7 @@ export default function AlbumPage({
     if (isRecents || !user) return;
     const ids = placeIdKey ? placeIdKey.split(",") : [];
     return subscribeToPlacesByIds(ids, setSharedPlaces, () =>
-      setError("Couldn’t load environments."),
+      setError("Couldn’t load places."),
     );
   }, [placeIdKey, isRecents, user]);
 
@@ -141,9 +141,9 @@ export default function AlbumPage({
   if (!isRecents && album === null) {
     return (
       <main className="flex h-screen flex-col items-center justify-center gap-3 bg-white text-[#1d1d1f]">
-        <p>That album doesn&apos;t exist.</p>
+        <p>That journey doesn&apos;t exist.</p>
         <Link href="/" className="text-[#0071e3]">
-          Back to Albums
+          Back to Journeys
         </Link>
       </main>
     );
@@ -175,7 +175,7 @@ export default function AlbumPage({
             <span aria-hidden className="text-xl leading-none">
               ‹
             </span>
-            Albums
+            Journeys
           </Link>
           <div className="relative">
             {canEdit && (
@@ -193,7 +193,7 @@ export default function AlbumPage({
                   href={captureHref}
                   className="block px-4 py-3 text-[15px] transition hover:bg-neutral-50"
                 >
-                  Capture New Environment
+                  Capture New Place
                 </Link>
                 {!isRecents && (
                   <button
@@ -203,7 +203,7 @@ export default function AlbumPage({
                     }}
                     className="block w-full border-t border-black/5 px-4 py-3 text-left text-[15px] transition hover:bg-neutral-50"
                   >
-                    Add Existing Environment
+                    Add Existing Place
                   </button>
                 )}
               </div>
@@ -230,7 +230,7 @@ export default function AlbumPage({
                 ? error
                 : loading
                   ? "Loading…"
-                  : `${readyPlaces.length} ${readyPlaces.length === 1 ? "environment" : "environments"}`}
+                  : `${readyPlaces.length} ${readyPlaces.length === 1 ? "place" : "places"}`}
             </p>
             {/* Recents is a view of everything rather than an album, so there
                 is no story through it to walk — and no album name to head one
@@ -265,31 +265,31 @@ export default function AlbumPage({
         {error && (
           <div className="mt-10">
             <Link href="/" className="text-[#0071e3]">
-              Back to Albums
+              Back to Journeys
             </Link>
           </div>
         )}
 
         {!error && !loading && readyPlaces.length === 0 && (
           <div className="mt-24 flex flex-col items-center gap-2 text-center">
-            <p className="text-[22px] font-semibold">No Environments</p>
+            <p className="text-[22px] font-semibold">No Places</p>
             <p className="max-w-xs text-sm text-neutral-500">
-              Capture a place or add existing environments to tell the story of
-              this album.
+              Capture a place or add existing ones to tell the story of
+              this journey.
             </p>
             {isRecents ? (
               <Link
                 href="/capture?new=1"
                 className="mt-3 rounded-full bg-[#0071e3] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#0077ed]"
               >
-                Capture an Environment
+                Capture a Place
               </Link>
             ) : (
               <button
                 onClick={() => setShowPicker(true)}
                 className="mt-3 rounded-full bg-[#0071e3] px-5 py-2 text-sm font-medium text-white transition hover:bg-[#0077ed]"
               >
-                Add Environments
+                Add Places
               </button>
             )}
           </div>
@@ -346,7 +346,7 @@ export default function AlbumPage({
               Delete {trashing.name}?
             </h2>
             <p className="mt-2 text-sm text-neutral-500">
-              It goes to the trash, and every album loses it. You can put it
+              It goes to the trash, and every journey loses it. You can put it
               back until you empty the trash.
             </p>
             <div className="mt-5 flex justify-end gap-3">
@@ -364,7 +364,7 @@ export default function AlbumPage({
                   try {
                     await movePlaceToTrash(place.id);
                   } catch {
-                    setActionError("Could not delete that environment.");
+                    setActionError("Could not delete that place.");
                   }
                 }}
                 className="rounded-full bg-red-500 px-4 py-1.5 text-[15px] font-medium text-white"
@@ -528,7 +528,7 @@ function AddEnvironmentsSheet({
           <button onClick={onClose} className="text-[17px] text-[#0071e3]">
             Cancel
           </button>
-          <h3 className="text-[17px] font-semibold">Add to Album</h3>
+          <h3 className="text-[17px] font-semibold">Add to Journey</h3>
           <button
             disabled={selected.size === 0 || saving}
             onClick={async () => {
@@ -544,7 +544,7 @@ function AddEnvironmentsSheet({
         <div className="overflow-y-auto p-4">
           {candidates.length === 0 ? (
             <p className="py-10 text-center text-sm text-neutral-500">
-              Every environment is already in this album.{" "}
+              Every place is already in this journey.{" "}
               <Link href={captureHref} className="text-[#0071e3]">
                 Capture a new one
               </Link>

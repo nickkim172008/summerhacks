@@ -60,15 +60,15 @@ export default function TrashPage() {
           <span aria-hidden className="text-xl leading-none">
             ‹
           </span>
-          Albums
+          Journeys
         </Link>
         <h1 className="mt-4 text-[34px] font-bold tracking-tight">
           Recently Deleted
         </h1>
         <p className="mt-2 text-sm text-neutral-500">
-          Deleted environments stay here until you remove them for good. Taking
-          one out of an album never puts it here — that only takes it out of the
-          album.
+          Deleted places stay here until you remove them for good. Taking
+          one out of a journey never puts it here — that only takes it out of the
+          journey.
         </p>
 
         {error && <p className="mt-6 text-sm text-red-500">{error}</p>}
@@ -108,7 +108,7 @@ export default function TrashPage() {
                         run(
                           place.id,
                           () => deletePlaceForever(place.id),
-                          "Could not delete that environment.",
+                          "Could not delete that place.",
                         )
                       }
                       className="rounded-full bg-red-500 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
@@ -130,7 +130,7 @@ export default function TrashPage() {
                         run(
                           place.id,
                           () => restorePlace(place.id),
-                          "Could not restore that environment.",
+                          "Could not restore that place.",
                         )
                       }
                       className="text-sm text-[#0071e3] disabled:opacity-50"

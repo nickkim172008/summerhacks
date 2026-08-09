@@ -107,7 +107,7 @@ export default function SplatViewer({
       setLoadError(
         error instanceof Error && error.message
           ? error.message
-          : "This environment could not be loaded.",
+          : "This place could not be loaded.",
       );
     });
 
@@ -160,8 +160,8 @@ export default function SplatViewer({
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-neutral-950 px-6 text-center">
         <p className="text-[15px] font-medium text-white">
           {onDisk
-            ? "This environment's file is missing."
-            : "This environment could not be loaded."}
+            ? "This place's file is missing."
+            : "This place could not be loaded."}
         </p>
         <p className="max-w-sm text-sm text-neutral-400">
           {onDisk
