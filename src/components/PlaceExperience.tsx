@@ -363,7 +363,7 @@ function AmbientPlayer({
   }
 
   return (
-    <div className="flex w-72 items-center gap-3 sm:w-96">
+    <div className="flex w-full min-w-0 items-center gap-2.5">
       <audio
         ref={audioRef}
         src={url}
@@ -411,7 +411,7 @@ function AmbientPlayer({
           setPosition(next);
           if (audioRef.current) audioRef.current.currentTime = next;
         }}
-        className="flex-1 cursor-pointer accent-white"
+        className="min-w-0 flex-1 cursor-pointer accent-white"
       />
 
       <span className="w-9 shrink-0 text-xs tabular-nums text-neutral-400">

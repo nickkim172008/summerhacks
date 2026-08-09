@@ -169,8 +169,14 @@ export type CaptureEvent =
       problem: string | null;
       details: CaptureDetails;
     }
-  | { type: "when-edited"; id: string; whenLocal: string; capturedAt: string | null }
+  | {
+      type: "when-edited";
+      id: string;
+      whenLocal: string;
+      capturedAt: string | null;
+    }
   | { type: "location-named"; id: string; locationName: string }
+  | { type: "location-suggested"; id: string; locationName: string }
   | { type: "audio-lifted"; id: string; audio: ExtractedAudio | null }
   | { type: "poster-grabbed"; id: string; poster: Blob | null }
   | { type: "cache-checked"; id: string; splat: SplatHandle | null }
@@ -297,7 +303,12 @@ export function reduceQueue(
       const items = state.items.map((item) => {
         if (item.phase !== "ready-to-upload") return item;
         changed = true;
-        return { ...item, phase: "uploading" as const, uploadFraction: 0, error: null };
+        return {
+          ...item,
+          phase: "uploading" as const,
+          uploadFraction: 0,
+          error: null,
+        };
       });
       return changed ? { ...state, items } : state;
     }
@@ -343,7 +354,10 @@ function updateItem(
   // straight out of the cache — anything later waits to be asked for, so a
   // finishing job never yanks the viewer off what is on screen.
   const opens =
-    state.autoPreview && state.previewId === null && before.splat === null && after.splat !== null;
+    state.autoPreview &&
+    state.previewId === null &&
+    before.splat === null &&
+    after.splat !== null;
   return { ...state, items, previewId: opens ? after.id : state.previewId };
 }
 
@@ -383,13 +397,28 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
       // whenFrom is left alone on purpose: the badge says where the prefilled
       // answer came from, which is what makes a correction worth making, and
       // that stays true of the value being corrected.
-      return { ...item, whenLocal: event.whenLocal, capturedAt: event.capturedAt };
+      return {
+        ...item,
+        whenLocal: event.whenLocal,
+        capturedAt: event.capturedAt,
+      };
     }
 
     case "location-named": {
-      if (!isDetailable(item.phase) || item.locationName === event.locationName) {
+      if (
+        !isDetailable(item.phase) ||
+        item.locationName === event.locationName
+      ) {
         return item;
       }
+      return { ...item, locationName: event.locationName };
+    }
+
+    case "location-suggested": {
+      // A name read back from the video's own coordinates. It fills the field
+      // only while it is empty: whatever the user typed is the better answer,
+      // and this lookup can land after they have started typing.
+      if (!isDetailable(item.phase) || item.locationName.trim()) return item;
       return { ...item, locationName: event.locationName };
     }
 
@@ -416,12 +445,16 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
       if (item.phase !== "checking" || item.serialize === null) return item;
       // A capture downloaded once needs neither the status check nor the
       // transfer; it renders straight off disk.
-      if (event.splat) return { ...item, phase: "previewable", splat: event.splat };
+      if (event.splat)
+        return { ...item, phase: "previewable", splat: event.splat };
       return { ...item, phase: "waiting" };
     }
 
     case "upload-progress": {
-      if (item.phase !== "uploading" || item.uploadFraction === event.fraction) {
+      if (
+        item.phase !== "uploading" ||
+        item.uploadFraction === event.fraction
+      ) {
         return item;
       }
       return { ...item, uploadFraction: event.fraction };
@@ -442,7 +475,12 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
 
     case "upload-failed": {
       if (item.phase !== "uploading") return item;
-      return { ...item, phase: "failed", failedFrom: "uploading", error: event.message };
+      return {
+        ...item,
+        phase: "failed",
+        failedFrom: "uploading",
+        error: event.message,
+      };
     }
 
     case "demo-queued": {
@@ -471,7 +509,13 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
       if (event.report.failed) {
         // KIRI could not reconstruct this walkthrough. Retrying the same task id
         // asks the same question and gets the same answer.
-        return { ...settled, phase: "failed", failedFrom: "waiting", fatal: true, error: event.message };
+        return {
+          ...settled,
+          phase: "failed",
+          failedFrom: "waiting",
+          fatal: true,
+          error: event.message,
+        };
       }
       if (event.report.ready) return { ...settled, phase: "downloading" };
       return settled;
@@ -483,7 +527,10 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
       return {
         ...item,
         pollFailures,
-        error: pollFailures >= FAILURES_BEFORE_REPORTING ? event.message : item.error,
+        error:
+          pollFailures >= FAILURES_BEFORE_REPORTING
+            ? event.message
+            : item.error,
       };
     }
 
@@ -494,7 +541,12 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
 
     case "download-failed": {
       if (item.phase !== "downloading") return item;
-      return { ...item, phase: "failed", failedFrom: "downloading", error: event.message };
+      return {
+        ...item,
+        phase: "failed",
+        failedFrom: "downloading",
+        error: event.message,
+      };
     }
 
     case "save-requested": {
@@ -517,14 +569,16 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
     }
 
     case "retried": {
-      if (item.phase !== "failed" || item.fatal || item.failedFrom === null) return item;
+      if (item.phase !== "failed" || item.fatal || item.failedFrom === null)
+        return item;
       return {
         ...item,
         phase: item.failedFrom,
         failedFrom: null,
         error: null,
         pollFailures: 0,
-        uploadFraction: item.failedFrom === "uploading" ? 0 : item.uploadFraction,
+        uploadFraction:
+          item.failedFrom === "uploading" ? 0 : item.uploadFraction,
       };
     }
 
@@ -534,7 +588,9 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
 }
 
 function isNameable(phase: CapturePhase) {
-  return phase === "checking" || phase === "ready-to-upload" || phase === "blocked";
+  return (
+    phase === "checking" || phase === "ready-to-upload" || phase === "blocked"
+  );
 }
 
 /**
@@ -555,7 +611,9 @@ export function checkTargets(items: CaptureItem[]) {
 }
 
 export function uploadTargets(items: CaptureItem[]) {
-  return items.filter((item) => item.phase === "uploading" && item.file !== null);
+  return items.filter(
+    (item) => item.phase === "uploading" && item.file !== null,
+  );
 }
 
 /**
@@ -614,7 +672,9 @@ export function pollTargets(items: CaptureItem[]) {
 }
 
 export function downloadTargets(items: CaptureItem[]) {
-  return items.filter((item) => item.phase === "downloading" && item.serialize !== null);
+  return items.filter(
+    (item) => item.phase === "downloading" && item.serialize !== null,
+  );
 }
 
 export function saveTargets(items: CaptureItem[]) {
@@ -628,7 +688,10 @@ export function canStart(items: CaptureItem[]) {
 /** Rows whose work would be lost by closing the tab, for the warning copy. */
 export function activeCount(items: CaptureItem[]) {
   return items.filter(
-    (item) => item.phase === "uploading" || item.phase === "downloading" || item.phase === "saving",
+    (item) =>
+      item.phase === "uploading" ||
+      item.phase === "downloading" ||
+      item.phase === "saving",
   ).length;
 }
 

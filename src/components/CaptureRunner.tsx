@@ -67,6 +67,7 @@ import {
 import { extractAudio } from "@/lib/audioTrack";
 import { grabPoster } from "@/lib/videoFrame";
 import { readVideoCapture, type VideoCapture } from "@/lib/videoMeta";
+import { reverseGeocode } from "@/lib/geocode";
 import { createPlace } from "@/lib/places";
 import { addPlacesToAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
@@ -247,6 +248,16 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           problem: DEMO_CAPTURE || !meta ? null : describeProblem(meta),
           details: toDetails(found, when),
         });
+
+        // The video knows where it was, not what that place is called. A name
+        // is what reads in a list, so the coordinates are turned back into one
+        // while the row waits.
+        if (found.location) {
+          reverseGeocode(found.location).then((locationName) => {
+            if (!mountedRef.current || !locationName) return;
+            dispatch({ type: "location-suggested", id: item.id, locationName });
+          });
+        }
         return;
       }
       if (!item.serialize) return;
@@ -291,7 +302,12 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           ),
         );
         const startedAt = Date.now();
-        dispatch({ type: "upload-succeeded", id: item.id, serialize, startedAt });
+        dispatch({
+          type: "upload-succeeded",
+          id: item.id,
+          serialize,
+          startedAt,
+        });
         // A row dropped mid-upload must not come back from the dead: persisting
         // the job now would have the next reconcile read it as one to resume.
         if (!discardedRef.current.has(item.id)) {
@@ -621,87 +637,86 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
 
           {!isFirebaseConfigured && !DEMO_CAPTURE && (
             <p className="text-sm text-amber-600">
-              Firebase isn&apos;t configured, so finished environments can&apos;t
-              be saved. Capture still works — each one renders here and can be
-              downloaded.
+              Firebase isn&apos;t configured, so finished environments
+              can&apos;t be saved. Capture still works — each one renders here
+              and can be downloaded.
             </p>
           )}
         </div>
       )}
 
       {previewed?.splat && (
-          <section className="mt-10">
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <div>
-                <h2 className="text-[22px] font-semibold tracking-tight">
-                  {previewed.splat.name}
-                </h2>
-                <p className="text-sm text-neutral-500">
-                  Drag to look around, scroll to zoom.
-                </p>
-              </div>
-              <button
-                onClick={() => dispatch({ type: "previewed", id: null })}
-                className="text-[15px] text-[#0071e3]"
-              >
-                Close Preview
-              </button>
+        <section className="mt-10">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <h2 className="text-[22px] font-semibold tracking-tight">
+                {previewed.splat.name}
+              </h2>
+              <p className="text-sm text-neutral-500">
+                Drag to look around, scroll to zoom.
+              </p>
             </div>
-            {/* One viewer for the whole queue: each is a WebGL2 context, which is
+            <button
+              onClick={() => dispatch({ type: "previewed", id: null })}
+              className="text-[15px] text-[#0071e3]"
+            >
+              Close Preview
+            </button>
+          </div>
+          {/* One viewer for the whole queue: each is a WebGL2 context, which is
                 costly enough that this repo turns StrictMode off to avoid a
                 second. Keyed by row so switching previews rebuilds the scene. */}
-            <div className="mt-4 h-[60vh] overflow-hidden rounded-2xl bg-black ring-1 ring-black/10">
-              <SplatViewer
-                key={previewed.id}
-                splatUrl={previewed.splat.url}
-                placementMode={false}
-                onPlacePoint={() => {}}
-              />
-            </div>
-          </section>
-        )}
+          <div className="mt-4 h-[60vh] overflow-hidden rounded-2xl bg-black ring-1 ring-black/10">
+            <SplatViewer
+              key={previewed.id}
+              splatUrl={previewed.splat.url}
+              placementMode={false}
+              onPlacePoint={() => {}}
+            />
+          </div>
+        </section>
+      )}
 
-        <CaptureQueue
-          items={queue.items}
-          previewId={queue.previewId}
-          now={now}
-          albumId={albumId}
-          canSave={isFirebaseConfigured}
-          onRename={(id, name) => dispatch({ type: "renamed", id, name })}
-          onWhenChange={(id, whenLocal) =>
-            dispatch({
-              type: "when-edited",
-              id,
-              whenLocal,
-              capturedAt: toIso(whenLocal) ?? null,
-            })
-          }
-          onLocationName={(id, locationName) =>
-            dispatch({ type: "location-named", id, locationName })
-          }
-          onPreview={(id) => dispatch({ type: "previewed", id })}
-          onSave={(id) => dispatch({ type: "save-requested", id })}
-          onRetry={(id) => dispatch({ type: "retried", id })}
-          onRemove={remove}
-        />
+      <CaptureQueue
+        items={queue.items}
+        previewId={queue.previewId}
+        now={now}
+        albumId={albumId}
+        canSave={isFirebaseConfigured}
+        onRename={(id, name) => dispatch({ type: "renamed", id, name })}
+        onWhenChange={(id, whenLocal) =>
+          dispatch({
+            type: "when-edited",
+            id,
+            whenLocal,
+            capturedAt: toIso(whenLocal) ?? null,
+          })
+        }
+        onLocationName={(id, locationName) =>
+          dispatch({ type: "location-named", id, locationName })
+        }
+        onPreview={(id) => dispatch({ type: "previewed", id })}
+        onSave={(id) => dispatch({ type: "save-requested", id })}
+        onRetry={(id) => dispatch({ type: "retried", id })}
+        onRemove={remove}
+      />
 
-        {waiting && (
-          <p className="mt-6 text-sm text-neutral-500">
-            Reconstruction takes 30–90 minutes and keeps going without you —
-            close this tab and come back, and these will still be here.
-          </p>
-        )}
-        {running > 0 && (
-          <p className="mt-2 text-sm text-neutral-500">
-            {running === 1
-              ? "1 capture is transferring right now — leave this tab open until it finishes."
-              : `${running} captures are transferring right now — leave this tab open until they finish.`}
-          </p>
-        )}
+      {waiting && (
+        <p className="mt-6 text-sm text-neutral-500">
+          Reconstruction takes 30–90 minutes and keeps going without you — close
+          this tab and come back, and these will still be here.
+        </p>
+      )}
+      {running > 0 && (
+        <p className="mt-2 text-sm text-neutral-500">
+          {running === 1
+            ? "1 capture is transferring right now — leave this tab open until it finishes."
+            : `${running} captures are transferring right now — leave this tab open until they finish.`}
+        </p>
+      )}
     </>
   );
 }
-
 
 /**
  * The last resort once the container carried no date of its own. It is the
@@ -742,8 +757,6 @@ async function liftAudio(file: File) {
   }
 }
 
-
-
 function describeProblem({ seconds, width, height }: VideoMeta) {
   if (seconds > MAX_VIDEO_SECONDS) {
     return `too long, max ${MAX_VIDEO_SECONDS / 60} minutes`;
@@ -764,7 +777,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-
 /**
  * A datetime-local input speaks wall clock and carries no offset, so the
  * instant is shifted into the viewer's zone on the way in. Date reads an
@@ -782,9 +794,6 @@ function toIso(local: string) {
   const ms = Date.parse(local);
   return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
 }
-
-
-
 
 function wavFile(blob: Blob, name: string) {
   return new File([blob], `${slug(name)}.wav`, { type: "audio/wav" });

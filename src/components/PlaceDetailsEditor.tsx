@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { geocodeName } from "@/lib/geocode";
+import { geocodeName, reverseGeocode } from "@/lib/geocode";
 import { prepareImage, THUMBNAIL_EDGE } from "@/lib/imageFile";
 import { updatePlaceDetails } from "@/lib/places";
 import { uploadThumbnail } from "@/lib/splatStore";
@@ -29,7 +29,9 @@ export default function PlaceDetailsEditor({
   const [locationName, setLocationName] = useState(place.locationName ?? "");
   const [lat, setLat] = useState(place.location?.lat?.toString() ?? "");
   const [lng, setLng] = useState(place.location?.lng?.toString() ?? "");
-  const [busy, setBusy] = useState<"saving" | "looking" | null>(null);
+  const [busy, setBusy] = useState<"saving" | "looking" | "naming" | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   // The picture is staged rather than uploaded on pick, so Cancel means cancel
@@ -46,7 +48,8 @@ export default function PlaceDetailsEditor({
 
   const coords = readCoords(lat, lng);
   const coordsBroken = (lat.trim() || lng.trim()) && !coords;
-  const hasThumbnail = Boolean(preview) || (!cleared && Boolean(place.thumbnailUrl));
+  const hasThumbnail =
+    Boolean(preview) || (!cleared && Boolean(place.thumbnailUrl));
 
   async function pickImage(file: File | undefined) {
     if (!file || busy) return;
@@ -84,6 +87,19 @@ export default function PlaceDetailsEditor({
     }
     setLat(found.lat.toFixed(6));
     setLng(found.lng.toFixed(6));
+  }
+
+  async function nameFromCoords() {
+    if (!coords) return;
+    setBusy("naming");
+    setError(null);
+    const found = await reverseGeocode(coords);
+    setBusy(null);
+    if (!found) {
+      setError("No place name came back for those coordinates.");
+      return;
+    }
+    setLocationName(found);
   }
 
   async function save() {
@@ -231,13 +247,22 @@ export default function PlaceDetailsEditor({
                 ? "Plotted from the name, which lands city-centre."
                 : "Not on the map until it has a location."}
           </p>
-          <button
-            onClick={lookUp}
-            disabled={!locationName.trim() || busy !== null}
-            className="shrink-0 text-[13px] font-medium text-[#0071e3] disabled:opacity-40"
-          >
-            {busy === "looking" ? "Looking up…" : "Use the name"}
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              onClick={nameFromCoords}
+              disabled={!coords || busy !== null}
+              className="text-[13px] font-medium text-[#0071e3] disabled:opacity-40"
+            >
+              {busy === "naming" ? "Naming…" : "Name the point"}
+            </button>
+            <button
+              onClick={lookUp}
+              disabled={!locationName.trim() || busy !== null}
+              className="text-[13px] font-medium text-[#0071e3] disabled:opacity-40"
+            >
+              {busy === "looking" ? "Looking up…" : "Use the name"}
+            </button>
+          </div>
         </div>
 
         {error && <p className="mt-4 text-[13px] text-red-600">{error}</p>}
