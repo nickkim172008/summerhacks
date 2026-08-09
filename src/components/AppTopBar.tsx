@@ -17,7 +17,11 @@ export default function AppTopBar() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-black/10 bg-white/90 backdrop-blur-xl">
-      <div className="mx-auto flex h-13 max-w-5xl items-center justify-between px-6 py-3">
+      {/* Full width rather than the max-w-5xl column the pages below use: the
+          mark belongs at the edge of the screen, not at the edge of the content.
+          Constrained, it floated inwards on a wide display and read as though it
+          had been centred by accident. */}
+      <div className="flex h-13 items-center justify-between px-6 py-3">
         <Link href="/" aria-label="Atlas home" className="shrink-0">
           <AtlasLogo priority className="h-auto w-[92px]" />
         </Link>
