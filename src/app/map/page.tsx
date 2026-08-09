@@ -17,6 +17,7 @@ const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
 import { subscribeToAlbumsByOwner } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useLiveLocation } from "@/lib/geolocation";
+import { DEMO_MAP_PLACES } from "@/lib/demoMapData";
 import { useResolvedPlaces } from "@/lib/geocode";
 import { subscribeToPlaces, subscribeToPlacesByUploader } from "@/lib/places";
 import type { Album, Place } from "@/lib/types";
@@ -79,7 +80,13 @@ export default function MapPage() {
   // separate idea of ownership.
   const inScope = useMemo((): Place[] => {
     const places = allPlaces ?? [];
-    if (scope.kind === "public") return places;
+    if (scope.kind === "public") {
+      const real = new Set(places.map((place) => place.id));
+      return [
+        ...places,
+        ...DEMO_MAP_PLACES.filter((demo) => !real.has(demo.id)),
+      ];
+    }
     if (!user) return [];
 
     const byId = new Map(places.map((place) => [place.id, place]));
@@ -136,7 +143,7 @@ export default function MapPage() {
                 active={scope.kind === "public"}
                 onClick={() => setScope({ kind: "public" })}
                 title="Public"
-                subtitle="Every geotagged environment"
+                subtitle="Everyone\u2019s captures, plus sample spots"
               />
               <FilterButton
                 active={scope.kind === "personal"}
