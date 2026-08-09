@@ -207,11 +207,6 @@ export default function PlacesMap({
       <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-white/95 px-3 py-1 text-[11px] font-medium text-[#1d1d1f] shadow ring-1 ring-black/10">
         Heatmap on · {places.length} spots
       </div>
-      {ready && places.length === 0 && (
-        <div className="pointer-events-none absolute inset-x-4 top-14 z-10 rounded-xl bg-white/95 px-4 py-3 text-center text-sm text-neutral-600 shadow ring-1 ring-black/10">
-          No geotagged places yet — capture with location to fill the heatmap.
-        </div>
-      )}
       {error && error !== "missing-key" && (
         <div className="absolute inset-x-4 bottom-24 z-10 rounded-xl bg-white/95 px-4 py-3 text-center text-sm text-red-600 shadow-lg ring-1 ring-black/10">
           Map error: {error}
