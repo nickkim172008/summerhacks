@@ -27,6 +27,12 @@ the timeline without anyone typing anything.
 - **Private and public** — a journey is private (you and collaborators) until
   its owner flips it public. Public journeys are open to explore from the
   owner's profile — and open to contribute to.
+- **No account needed to look** — a visitor with no account gets the public
+  shelf on `/`, the Feed, Discover, profiles, and every public journey and
+  capture inside it, walkthroughs included. Google sign-in is asked for only
+  where it is actually needed: capturing, keeping a library, contributing to
+  someone's journey. The ask carries `?next=` so it hands you back where you
+  were.
 - **The Feed** — a scrollable feed of live places from every public journey.
   Each card *is* the environment: the actual splat mounts as you reach it and
   you can look around right in the feed. Every card names who captured it and
@@ -107,7 +113,7 @@ a tour plays itself — is the one piece with real fixtures behind it. There is 
 
 | Route               | What it does                                               |
 | ------------------- | ---------------------------------------------------------- |
-| `/`                 | Library: your journeys, shared journeys, and Recents        |
+| `/`                 | Library: your journeys, shared journeys, and Recents. Signed out, the public shelf |
 | `/album/[albumId]`  | One journey's places. `recents` is virtual — everything     |
 | `/place/[id]`       | Walk a place and hear the walkthrough it was filmed with    |
 | `/feed`             | Live places from public journeys — explore or contribute    |
@@ -252,6 +258,17 @@ update that touches only `placeIds` and only grows it. Nothing on that path can
 rename a journey, remove someone else's place, change the cover, alter
 membership, or flip it back to private — those still take membership, and
 visibility itself only ever moves by the owner's hand.
+
+**Reading is public, writing is not.** `profiles`, `places` and `follows` are
+readable without an account, and an album is readable by anyone once its
+`visibility` is `public`; every private journey still needs a name on it. That
+split is what lets someone try the deployment before making an account. Places
+are open rather than scoped to "sits in a public album" because that condition
+needs a `get()` per document, which would price every grid in the app by the
+tile — the bytes behind them are already public in Storage, and nothing is
+surfaced except through an album, profile or feed that decides its own
+visibility. Every write rule is untouched: creating, editing, trashing and
+contributing all still require a signed-in uid that matches.
 
 ## Implementation notes
 

@@ -8,6 +8,8 @@ import {
   MAX_VIDEO_SECONDS,
   MAX_VIDEO_WIDTH,
 } from "@/lib/kiri";
+import { useAuthProfile } from "@/lib/auth";
+import { signInHref } from "@/lib/returnTo";
 import CaptureRunner, { CAPTURE_INPUT_ID } from "@/components/CaptureRunner";
 
 export default function CapturePage() {
@@ -26,8 +28,40 @@ export default function CapturePage() {
  */
 function CaptureFlow() {
   const params = useSearchParams();
+  const { user, loading } = useAuthProfile();
   const albumId = params.get("album");
   const backHref = albumId ? `/album/${albumId}` : "/";
+
+  // A capture belongs to whoever made it, and there is nowhere to put one
+  // without an account. Asked for here, at the moment it matters, rather than
+  // at the front door of a deployment someone is still deciding about.
+  if (!loading && !user) {
+    const here = albumId ? `/capture?album=${albumId}&new=1` : "/capture?new=1";
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#FAF9F7] px-8 text-center text-[#14161A]">
+        <h1 className="font-display text-[32px] font-normal leading-[38px] tracking-[-0.02em]">
+          Sign in to capture
+        </h1>
+        <p className="max-w-[44ch] text-[15px] leading-6 text-[#4A4F57]">
+          Public journeys are open to everyone. Turning a walkthrough into a
+          place of your own needs an account — Google is the only thing to
+          set up.
+        </p>
+        <Link
+          href={signInHref(here)}
+          className="mt-3 inline-flex h-10 items-center rounded-full bg-[#14161A] px-[22px] text-[15px] font-medium text-white transition hover:bg-[#2A2E35]"
+        >
+          Continue with Google
+        </Link>
+        <Link
+          href="/feed"
+          className="mt-1 text-[14px] font-medium text-[#4A4F57] transition hover:text-[#14161A]"
+        >
+          Browse public journeys instead
+        </Link>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#FAF9F7] text-[#14161A]">

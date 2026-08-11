@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import AtlasLogo from "@/components/AtlasLogo";
 import Avatar from "@/components/Avatar";
 import { signOut, useAuthProfile } from "@/lib/auth";
+import { signInHref, signUpHref } from "@/lib/returnTo";
 import { shouldHideAppChrome } from "@/lib/appChrome";
 import { useNotifications } from "@/lib/notifications";
 
@@ -51,8 +52,10 @@ export default function AppTopBar() {
           {/* No search field here: Discover is one click away in the nav and
               owns the only search, so a second one would just be a link
               wearing a field's clothes. */}
+          {/* Capturing is the one thing that needs an account, so for a
+              visitor this is the door to one — and it comes back here. */}
           <Link
-            href="/capture?new=1"
+            href={user ? "/capture?new=1" : signInHref("/capture?new=1")}
             className="press flex h-9 items-center gap-[7px] rounded-full bg-[#14161A] px-[18px] text-[14px] font-medium text-white transition hover:bg-[#2A2E35]"
           >
             <svg
@@ -96,14 +99,17 @@ export default function AppTopBar() {
             </Link>
           ) : (
             <>
+              {/* Both come back to the page the visitor was reading — being
+                  sent to the library for signing in from a journey loses the
+                  journey. */}
               <Link
-                href="/signin"
+                href={signInHref(pathname)}
                 className="text-[14px] font-medium text-[#14161A]"
               >
                 Sign In
               </Link>
               <Link
-                href="/signup"
+                href={signUpHref(pathname)}
                 className="flex h-9 items-center rounded-full bg-[#14161A] px-[18px] text-[14px] font-medium text-white transition hover:bg-[#2A2E35]"
               >
                 Sign Up

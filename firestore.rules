@@ -46,12 +46,16 @@ service cloud.firestore {
                 == resource.data.get('visibility', 'private');
     }
 
+    // A public journey is public to everyone, signed in or not — that is what
+    // makes the deployment something a visitor can try before deciding to make
+    // an account. Everything private still needs a name on the album.
     function canReadAlbum() {
-      return signedIn()
-             && (resource.data.ownerId == request.auth.uid
-                 || request.auth.uid in resource.data.get('memberIds', [])
-                 || request.auth.uid in resource.data.get('pendingMemberIds', [])
-                 || resource.data.get('visibility', 'private') == 'public');
+      return resource.data.get('visibility', 'private') == 'public'
+             || (signedIn()
+                 && (resource.data.ownerId == request.auth.uid
+                     || request.auth.uid in resource.data.get('memberIds', [])
+                     || request.auth.uid
+                        in resource.data.get('pendingMemberIds', [])));
     }
 
     function acceptingOwnInvite() {
@@ -169,10 +173,11 @@ service cloud.firestore {
              && (next.size() <= 4 || memberOfAlbumWithPlace(next[4], id));
     }
 
-    // Profiles remain discoverable to authenticated users, but only the
-    // account owner can create or edit their profile.
+    // Profiles are the public face of an account — Discover, a profile page,
+    // and the name under a capture all read them without asking who is
+    // looking. Only the account owner can create or edit their own.
     match /profiles/{userId} {
-      allow read: if signedIn();
+      allow read: if true;
       allow create: if signedIn() && userId == request.auth.uid;
       allow update: if signedIn()
                     && userId == request.auth.uid
@@ -223,7 +228,13 @@ service cloud.firestore {
     match /places/{placeId} {
       allow create: if signedIn()
                     && request.resource.data.uploaderId == request.auth.uid;
-      allow read: if signedIn();
+      // Open, like the splat bytes in Storage already are. A capture is only
+      // ever surfaced through something that decides its own visibility — a
+      // public journey, a profile, the feed — and scoping the read to "sits in
+      // a public album" is not expressible without a get() per document, which
+      // would price every grid in the app by the tile. Writing is still the
+      // uploader's, and everything below is unchanged.
+      allow read: if true;
       allow delete: if ownsPlace();
       allow update: if (ownsPlace()
                         && request.resource.data.uploaderId
@@ -243,7 +254,9 @@ service cloud.firestore {
     // client could write edges on other people's behalf and inflate their
     // counts. Self-follows are rejected so a profile cannot pad its own.
     match /follows/{followId} {
-      allow read: if signedIn();
+      // Counts sit on a public profile, so they are readable by a visitor who
+      // has not signed in. Creating an edge still needs an account.
+      allow read: if true;
       allow create: if signedIn()
                     && followId == request.auth.uid + '_'
                        + request.resource.data.followingId

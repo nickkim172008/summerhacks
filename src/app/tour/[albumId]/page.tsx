@@ -18,7 +18,6 @@ import { toTimelineEntries } from "@/lib/captureTimeline";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { subscribeToPlacesByIds } from "@/lib/places";
 import { warmSplat } from "@/lib/splatPrefetch";
-import { useAuth } from "@/lib/auth";
 import type { Album, Place } from "@/lib/types";
 
 /**
@@ -45,7 +44,6 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
   const { albumId } = use(params);
   const router = useRouter();
   const search = useSearchParams();
-  const { user } = useAuth();
 
   const [album, setAlbum] = useState<Album | null | undefined>();
   const [places, setPlaces] = useState<Place[] | null>(
@@ -67,10 +65,10 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
   const placeIdKey = (album?.placeIds ?? []).join(",");
   const albumLoaded = album !== undefined;
   useEffect(() => {
-    if (!isFirebaseConfigured || !user || !albumLoaded) return;
+    if (!isFirebaseConfigured || !albumLoaded) return;
     const ids = placeIdKey ? placeIdKey.split(",") : [];
     return subscribeToPlacesByIds(ids, setPlaces, () => setPlaces([]));
-  }, [user, albumLoaded, placeIdKey]);
+  }, [albumLoaded, placeIdKey]);
 
   /**
    * The walkthrough's running order. Ascending on the shared axis, the same one
@@ -247,9 +245,7 @@ function TourView({ params }: { params: Promise<{ albumId: string }> }) {
   if (steps.length === 0) {
     return (
       <Curtain href={exitHref}>
-        {user
-          ? "Nothing in this journey can be walked through yet."
-          : "Sign in to walk through this journey."}
+        Nothing in this journey can be walked through yet.
       </Curtain>
     );
   }

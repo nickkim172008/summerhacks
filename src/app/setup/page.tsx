@@ -1,14 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthProfile } from "@/lib/auth";
 import { claimUsername, validateUsername } from "@/lib/profiles";
+import { signInHref, sitePath } from "@/lib/returnTo";
 import AtlasLogo from "@/components/AtlasLogo";
 
 export default function SetupUsernamePage() {
+  return (
+    <Suspense fallback={null}>
+      <SetupUsername />
+    </Suspense>
+  );
+}
+
+function SetupUsername() {
   const router = useRouter();
+  const search = useSearchParams();
+  // Handed over by sign-in: what the visitor was in the middle of before the
+  // account existed. Claiming a handle should finish that, not end at Library.
+  const next = sitePath(search.get("next"));
+  const done = next ?? "/";
   const { user, profile, loading, needsUsername } = useAuthProfile();
   const [username, setUsername] = useState("");
   const [saving, setSaving] = useState(false);
@@ -17,11 +31,11 @@ export default function SetupUsernamePage() {
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.replace("/signin");
+      router.replace(signInHref(next));
       return;
     }
-    if (profile) router.replace("/");
-  }, [user, profile, loading, router]);
+    if (profile) router.replace(done);
+  }, [user, profile, loading, router, next, done]);
 
   async function save() {
     if (!user || saving) return;
@@ -37,7 +51,7 @@ export default function SetupUsernamePage() {
         displayName: user.displayName,
         photoURL: user.photoURL,
       });
-      router.replace("/");
+      router.replace(done);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save username");
       setSaving(false);

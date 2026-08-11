@@ -12,6 +12,7 @@ import {
   subscribeToAlbum,
 } from "@/lib/albums";
 import { useAuth } from "@/lib/auth";
+import { sitePath } from "@/lib/returnTo";
 import { getProfile } from "@/lib/profiles";
 import type { Album, Place, Profile } from "@/lib/types";
 
@@ -166,10 +167,4 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
       )}
     </main>
   );
-}
-
-// Only a path on this site may aim the exit; anything else in ?from would let a
-// shared link send the visitor to another origin.
-function sitePath(value: string | null) {
-  return value && /^\/(?![/\\])/.test(value) ? value : null;
 }

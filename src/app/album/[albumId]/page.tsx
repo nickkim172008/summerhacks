@@ -24,6 +24,7 @@ import {
 } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
+import { signInHref } from "@/lib/returnTo";
 import { COVER_EDGE, prepareImage } from "@/lib/imageFile";
 import { uploadAlbumCover } from "@/lib/splatStore";
 import PlaceThumb from "@/components/PlaceThumb";
@@ -83,19 +84,22 @@ export default function AlbumPage({
   useEffect(() => {
     if (authLoading) return;
     if (!user) {
-      router.replace("/signin");
+      // A public journey opens for anyone — that is the whole point of making
+      // one public. Recents is this account's own library, so it is the one
+      // view here that still needs a name on it.
+      if (isRecents) router.replace(signInHref("/album/recents"));
       return;
     }
     if (needsUsername) router.replace("/setup");
-  }, [authLoading, needsUsername, router, user]);
+  }, [authLoading, isRecents, needsUsername, router, user]);
 
   useEffect(() => {
-    if (isRecents || !user) return;
+    if (isRecents) return;
     return subscribeToAlbum(albumId, setAlbum, () => {
       setAlbum(null);
       setError("This journey is private, or it doesn’t exist.");
     });
-  }, [albumId, isRecents, user]);
+  }, [albumId, isRecents]);
 
   // Whose captures to load: Recents is always the signed-in account, and a
   // named album is whoever owns it — otherwise opening someone else's album
@@ -103,22 +107,22 @@ export default function AlbumPage({
   const placesOwnerId = isRecents ? user?.uid : album?.ownerId;
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !user || !placesOwnerId) return;
+    if (!isFirebaseConfigured || !placesOwnerId) return;
     return subscribeToPlacesByUploader(placesOwnerId, setPlaces, () =>
       setError("Couldn’t load places."),
     );
-  }, [user, placesOwnerId]);
+  }, [placesOwnerId]);
 
   // Joined so the listener is rebuilt when the contents change, not on every
   // snapshot that leaves the same array with a new identity.
   const placeIdKey = (album?.placeIds ?? []).join(",");
   useEffect(() => {
-    if (isRecents || !user) return;
+    if (isRecents) return;
     const ids = placeIdKey ? placeIdKey.split(",") : [];
     return subscribeToPlacesByIds(ids, setSharedPlaces, () =>
       setError("Couldn’t load places."),
     );
-  }, [placeIdKey, isRecents, user]);
+  }, [placeIdKey, isRecents]);
 
   // Only Recents offers filing into an album, so only Recents needs the list.
   useEffect(() => {
@@ -173,15 +177,30 @@ export default function AlbumPage({
   if (!isRecents && album === null) {
     return (
       <main className="flex h-screen flex-col items-center justify-center gap-3 bg-[#FAF9F7] text-[#14161A]">
-        <p className="text-[15px] text-[#4A4F57]">
-          That journey doesn&apos;t exist.
+        {/* Refused and missing look identical from out here — a private
+            journey is not allowed to confirm it exists. To a signed-out
+            visitor the likelier of the two is that it is simply not public,
+            so the way forward is an account rather than the library. */}
+        <p className="max-w-[42ch] text-center text-[15px] text-[#4A4F57]">
+          {user
+            ? "That journey doesn’t exist."
+            : "That journey is private, or it doesn’t exist."}
         </p>
-        <Link
-          href="/"
-          className="text-[15px] font-medium text-[#14161A] transition hover:opacity-70"
-        >
-          Back to Library
-        </Link>
+        {user ? (
+          <Link
+            href="/"
+            className="text-[15px] font-medium text-[#14161A] transition hover:opacity-70"
+          >
+            Back to Library
+          </Link>
+        ) : (
+          <Link
+            href={signInHref(`/album/${albumId}`)}
+            className="inline-flex h-10 items-center rounded-full bg-[#14161A] px-5 text-[15px] font-medium text-white transition hover:bg-[#2B2F36]"
+          >
+            Sign In
+          </Link>
+        )}
       </main>
     );
   }
@@ -190,7 +209,9 @@ export default function AlbumPage({
   const loading =
     !error &&
     (authLoading ||
-      !user ||
+      // Only Recents waits on an account — a public journey has everything it
+      // needs before anyone signs in.
+      (isRecents && !user) ||
       albumPlaces === null ||
       (!isRecents && album === undefined));
   const readyPlaces = albumPlaces ?? [];
@@ -302,6 +323,20 @@ export default function AlbumPage({
                   </button>
                 ))}
 
+              {/* A public journey takes places from anyone with an account, so
+                  the visitor reading one is one step from contributing — and
+                  the step is named rather than left as a button that does
+                  nothing until they guess why. */}
+              {!user && !authLoading && !error && album && (
+                <Link
+                  href={signInHref(`/album/${albumId}`)}
+                  className="inline-flex h-10 items-center gap-[7px] rounded-full border border-[rgba(20,22,26,0.14)] bg-white px-[18px] text-[15px] font-medium text-[#14161A] transition hover:bg-[rgba(20,22,26,0.04)]"
+                >
+                  <PlusGlyph />
+                  Sign in to add places
+                </Link>
+              )}
+
               <div className="relative">
                 {canContribute && (
                   <button
@@ -388,6 +423,13 @@ export default function AlbumPage({
               >
                 Add Places
               </button>
+            ) : !user && album ? (
+              <Link
+                href={signInHref(`/album/${albumId}`)}
+                className="mt-3 inline-flex h-10 items-center rounded-full bg-[#14161A] px-5 text-[15px] font-medium text-white transition hover:bg-[#2B2F36]"
+              >
+                Sign In to Add Places
+              </Link>
             ) : null}
           </div>
         )}
@@ -409,8 +451,12 @@ export default function AlbumPage({
             capture form starts work; this is where it is watched. It sits at
             the head of the places section, above what has already landed —
             and is mounted unconditionally, because it is the poll loop for
-            this album's jobs and cannot sit behind the grid's guard. */}
-        <CaptureRunner albumId={isRecents ? null : albumId} mode="album" />
+            this album's jobs and cannot sit behind the grid's guard. Only a
+            signed-in visitor can have started anything, so it is behind that
+            one guard and no other. */}
+        {user && (
+          <CaptureRunner albumId={isRecents ? null : albumId} mode="album" />
+        )}
 
         {loading && !error && (
           <>

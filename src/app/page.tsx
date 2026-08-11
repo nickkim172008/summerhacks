@@ -17,9 +17,11 @@ import {
   resolveAlbumPlaces,
   subscribeToAlbumsByOwner,
   subscribeToAlbumsSharedWith,
+  subscribeToPublicAlbums,
 } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useAuthProfile } from "@/lib/auth";
+import { signInHref, signUpHref } from "@/lib/returnTo";
 import { subscribeToRecentProfiles } from "@/lib/profiles";
 import {
   DEMO_OWNED_JOURNEYS,
@@ -59,12 +61,11 @@ export default function AlbumsPage() {
   // cover stack looks like the rest of the library.
   const [demoFaces, setDemoFaces] = useState<Profile[]>([]);
 
+  // No redirect for a signed-out visitor: this page becomes the public gallery
+  // below instead. Sending them to /signin was what made trying the deployment
+  // start with a login form and nothing to look at.
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.replace("/signin");
-      return;
-    }
+    if (authLoading || !user) return;
     if (needsUsername) router.replace("/setup");
   }, [authLoading, needsUsername, router, user]);
 
@@ -153,7 +154,7 @@ export default function AlbumsPage() {
 
   function startNewAlbum() {
     if (!user) {
-      router.push("/signin");
+      router.push(signInHref("/"));
       return;
     }
     if (needsUsername) {
@@ -162,6 +163,11 @@ export default function AlbumsPage() {
     }
     setShowNewAlbum(true);
   }
+
+  // Every hook above has already run, so this is safe to sit here rather than
+  // at the top: a visitor without an account gets the public shelf, and none of
+  // the private listeners above ever open for them.
+  if (!authLoading && !user) return <PublicLibrary />;
 
   return (
     <main className="min-h-screen bg-[#FAF9F7] text-[#14161A]">
@@ -358,6 +364,120 @@ export default function AlbumsPage() {
   );
 }
 
+/**
+ * What Atlas looks like before you have an account: every journey someone has
+ * made public, on the same shelf a library uses, opening into the same
+ * walkable captures. Signing in is offered here rather than demanded — the
+ * only things behind it are capturing and keeping, and neither is what a
+ * first visit is for.
+ */
+function PublicLibrary() {
+  // An unconfigured Firebase has no shelf to load rather than one still
+  // loading, so it starts empty instead of resolving to empty from an effect.
+  const [albums, setAlbums] = useState<Album[] | null>(
+    isFirebaseConfigured ? null : [],
+  );
+  const [places, setPlaces] = useState<Place[]>([]);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured) return;
+    return subscribeToPublicAlbums(setAlbums, () => setAlbums([]));
+  }, []);
+
+  // Covers are drawn from the captures each journey holds, so the ids are
+  // gathered across all of them and fetched once — joined into a string so a
+  // fresh snapshot with the same contents doesn't rebuild every listener.
+  const placeIdsKey = useMemo(() => {
+    const ids = new Set<string>();
+    for (const album of albums ?? []) {
+      for (const id of album.placeIds ?? []) ids.add(id);
+    }
+    return [...ids].sort().join(",");
+  }, [albums]);
+
+  useEffect(() => {
+    const ids = placeIdsKey ? placeIdsKey.split(",") : [];
+    return subscribeToPlacesByIds(ids, setPlaces, () => setPlaces([]));
+  }, [placeIdsKey]);
+
+  const placeById = useMemo(
+    () => new Map(places.map((place) => [place.id, place])),
+    [places],
+  );
+
+  const loading = albums === null;
+  const count = albums?.length ?? 0;
+
+  return (
+    <main className="min-h-screen bg-[#FAF9F7] text-[#14161A]">
+      <div className="mx-auto max-w-[1152px] px-8 py-10">
+        <div className="flex items-end justify-between gap-8">
+          <div className="min-w-0">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B7178] tabular-nums">
+              {loading
+                ? "Public journeys"
+                : countLabel(count, "public journey", "public journeys")}
+            </p>
+            <h1 className="font-display text-[44px] font-normal leading-[44px] tracking-[-0.02em]">
+              Walk somewhere
+            </h1>
+            <p className="mt-3 max-w-[52ch] text-[15px] leading-6 text-[#4A4F57]">
+              Open any journey below and walk through the places in it. Sign in
+              with Google when you want to capture your own or keep a library.
+            </p>
+          </div>
+          <div className="flex flex-none items-center gap-3">
+            <Link
+              href={signInHref("/")}
+              className="flex h-10 items-center rounded-full border border-[rgba(20,22,26,0.14)] bg-white px-[18px] text-[15px] font-medium text-[#14161A] transition-colors duration-150 hover:bg-[rgba(20,22,26,0.04)]"
+            >
+              Sign In
+            </Link>
+            <Link
+              href={signUpHref("/")}
+              className="flex h-10 items-center rounded-full bg-[#14161A] px-[22px] text-[15px] font-medium text-white transition-colors duration-150 hover:bg-[#2A2E35]"
+            >
+              Sign Up
+            </Link>
+          </div>
+        </div>
+
+        {loading ? (
+          <>
+            <p className="sr-only" role="status">
+              Loading public journeys…
+            </p>
+            <SkeletonList
+              count={8}
+              className="mt-8 grid grid-cols-4 gap-x-6 gap-y-7"
+              item={() => <AlbumCardSkeleton />}
+            />
+          </>
+        ) : count === 0 ? (
+          <p className="mt-10 max-w-[52ch] text-[15px] leading-6 text-[#4A4F57]">
+            Nothing is public yet. When someone marks a journey public, it shows
+            up here for anyone to walk through.
+          </p>
+        ) : (
+          <ul className="mt-8 grid grid-cols-4 gap-x-6 gap-y-7">
+            {(albums ?? []).map((album, index) => (
+              <AlbumCard
+                key={album.id}
+                album={album}
+                places={resolveAlbumPlaces(album.placeIds, placeById)}
+                index={index}
+                // Every journey on this shelf is public, so saying so under
+                // each one says nothing.
+                showVisibility={false}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </main>
+  );
+}
+
 function TrashGlyph() {
   return (
     <svg
@@ -404,6 +524,7 @@ function AlbumCard({
   album,
   places,
   index = 0,
+  showVisibility = true,
   onEdit,
   onRemove,
   onDelete,
@@ -412,6 +533,8 @@ function AlbumCard({
   places: Place[];
   /** Position in its grid, which is all the stagger needs. */
   index?: number;
+  /** Off where the whole grid is public and the word would be redundant. */
+  showVisibility?: boolean;
   onEdit?: () => void;
   /** Leave a shared journey — labeled Remove to match place tiles. */
   onRemove?: () => void;
@@ -466,7 +589,9 @@ function AlbumCard({
             {peopleCount > 1
               ? ` · ${countLabel(peopleCount, "person", "people")}`
               : ""}
-            {albumVisibility(album) === "public" ? " · Public" : ""}
+            {showVisibility && albumVisibility(album) === "public"
+              ? " · Public"
+              : ""}
           </p>
         </Link>
       </div>

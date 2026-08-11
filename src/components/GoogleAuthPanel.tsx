@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import {
   describeAuthError,
@@ -11,6 +11,7 @@ import {
   useAuth,
 } from "@/lib/auth";
 import { getProfile } from "@/lib/profiles";
+import { setupHref, sitePath } from "@/lib/returnTo";
 import AtlasLogo from "@/components/AtlasLogo";
 
 export type AuthMode = "signin" | "signup";
@@ -36,9 +37,24 @@ const COPY = {
   },
 } as const;
 
+// ?next names where the visitor was when they were asked to sign in, so the
+// panel needs the query string — which is a suspense boundary's worth of work.
 export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
+  return (
+    <Suspense fallback={null}>
+      <AuthPanel mode={mode} />
+    </Suspense>
+  );
+}
+
+function AuthPanel({ mode }: { mode: AuthMode }) {
   const copy = COPY[mode];
   const router = useRouter();
+  const search = useSearchParams();
+  // Where to land once there is an account: back where they came from, or the
+  // library for anyone who opened sign-in on its own.
+  const next = sitePath(search.get("next"));
+  const done = next ?? "/";
   const { user, loading } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +64,7 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
     let cancelled = false;
     void getProfile(user.uid)
       .then((existing) => {
-        if (!cancelled) router.replace(existing ? "/" : "/setup");
+        if (!cancelled) router.replace(existing ? done : setupHref(next));
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(describeAuthError(err, copy.failure));
@@ -56,7 +72,7 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
     return () => {
       cancelled = true;
     };
-  }, [busy, copy.failure, loading, router, user]);
+  }, [busy, copy.failure, done, loading, next, router, user]);
 
   async function handleGoogle() {
     setError(null);
@@ -66,11 +82,11 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
       // Sign-up should not depend on a Firestore read immediately after Auth
       // creates the account. Setup will detect and redirect existing profiles.
       if (mode === "signup") {
-        router.replace("/setup");
+        router.replace(setupHref(next));
         return;
       }
       const existing = await getProfile(signedIn.uid);
-      router.replace(existing ? "/" : "/setup");
+      router.replace(existing ? done : setupHref(next));
     } catch (err) {
       setError(describeAuthError(err, copy.failure));
       setBusy(false);
@@ -157,7 +173,11 @@ export default function GoogleAuthPanel({ mode }: { mode: AuthMode }) {
             <p className="text-center text-[13px] leading-[18px] text-[#6B7178]">
               {copy.switchText}{" "}
               <Link
-                href={copy.switchHref}
+                href={
+                  next
+                    ? `${copy.switchHref}?next=${encodeURIComponent(next)}`
+                    : copy.switchHref
+                }
                 className="font-medium text-[#14161A] transition hover:text-[#4A4F57]"
               >
                 {copy.switchLabel}

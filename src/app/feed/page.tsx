@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useAuthProfile } from "@/lib/auth";
 import { subscribeToPublicAlbums } from "@/lib/albums";
 import { subscribeToPlacesByIds } from "@/lib/places";
 import PublicFeed, { type FeedEntry } from "@/components/PublicFeed";
@@ -13,9 +11,12 @@ import type { Album, Place } from "@/lib/types";
  * The Feed tab: every place from every public journey, newest first, one
  * walkable environment per card. Each card names who captured it and the
  * journey it belongs to — the way in for exploring, or adding your own.
+ *
+ * Open to everyone, signed in or not. A public journey is public, and the
+ * shop window is a poor place to ask for an account: the ask belongs at the
+ * point someone wants to add something of their own.
  */
 export default function FeedPage() {
-  const { user } = useAuthProfile();
   const [publicAlbums, setPublicAlbums] = useState<Album[] | null>(null);
   const [places, setPlaces] = useState<Place[] | null>(null);
   // Past the first card the heading has said everything it has to say, so it
@@ -24,9 +25,8 @@ export default function FeedPage() {
   const [immersed, setImmersed] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
     return subscribeToPublicAlbums(setPublicAlbums, () => setPublicAlbums([]));
-  }, [user]);
+  }, []);
 
   // Every place any public journey holds, each pinned to the journey it was
   // found through so the feed card can wear that journey's chip.
@@ -44,10 +44,10 @@ export default function FeedPage() {
   }, [publicAlbums]);
 
   useEffect(() => {
-    if (!user || publicAlbums === null) return;
+    if (publicAlbums === null) return;
     const ids = placeIdsKey ? placeIdsKey.split(",") : [];
     return subscribeToPlacesByIds(ids, setPlaces, () => setPlaces([]));
-  }, [user, publicAlbums, placeIdsKey]);
+  }, [publicAlbums, placeIdsKey]);
 
   // Already sorted newest first by the places subscription.
   const entries: FeedEntry[] = useMemo(
@@ -66,20 +66,7 @@ export default function FeedPage() {
           immersed ? "pt-4" : "pt-8"
         }`}
       >
-        {!user ? (
-          <FeedNotice
-            title="Sign in to explore"
-            body="The feed shows walkable places from journeys people have made public."
-            action={
-              <Link
-                href="/signin"
-                className="mt-1 inline-flex h-10 items-center rounded-full bg-[#14161A] px-[22px] text-[15px] font-medium text-white transition hover:bg-[#2A2E35]"
-              >
-                Sign In
-              </Link>
-            }
-          />
-        ) : places === null ? (
+        {places === null ? (
           <>
             <p className="sr-only" role="status">
               Loading the feed…
@@ -105,15 +92,7 @@ export default function FeedPage() {
   );
 }
 
-function FeedNotice({
-  title,
-  body,
-  action,
-}: {
-  title: string;
-  body: string;
-  action?: React.ReactNode;
-}) {
+function FeedNotice({ title, body }: { title: string; body: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 rounded-2xl border border-[rgba(20,22,26,0.09)] bg-white px-8 text-center shadow-[0_1px_2px_rgba(20,22,26,0.04)]">
       <p className="font-display text-[22px] leading-[28px]">{title}</p>
@@ -122,7 +101,6 @@ function FeedNotice({
           {body}
         </p>
       )}
-      {action}
     </div>
   );
 }

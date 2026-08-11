@@ -17,10 +17,11 @@ const PlacesMap = dynamic(() => import("@/components/PlacesMap"), {
 import TimelineBar from "@/components/TimelineBar";
 import AlbumTourButton from "@/components/AlbumTourButton";
 import { TourIntroVeil, useTourIntro } from "@/components/TourIntro";
-import { subscribeToEditableAlbums } from "@/lib/albums";
+import { subscribeToAlbum, subscribeToEditableAlbums } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import { useLiveLocation } from "@/lib/geolocation";
 import { useResolvedPlaces, type LocatedPlace } from "@/lib/geocode";
+import { signInHref } from "@/lib/returnTo";
 import { subscribeToPlaces, subscribeToPlacesByUploader } from "@/lib/places";
 import { useCaptureTimeline } from "@/lib/timelinePlayback";
 import type { Album, Place } from "@/lib/types";
@@ -99,11 +100,42 @@ function MapView() {
   // it opens on. Memoised because inScope is derived from this: a fresh object
   // every render would rebuild the place list every render.
   const urlAlbumId = search.get("album");
-  // Personal and album scopes need a signed-in user, so signing out mid-session
-  // falls back rather than leaving the map showing a scope it cannot resolve.
+
+  /**
+   * The journey a link names need not be one of yours: a public one opened from
+   * the feed, or by someone who has not signed in at all. Fetched on its own and
+   * laid beside the editable ones, so the flight that opens a walkthrough
+   * departs from that journey's earliest capture rather than from everything on
+   * the map. Rules refuse the private ones, which arrives as null.
+   */
+  const [fetchedAlbum, setFetchedAlbum] = useState<Album | null>(null);
+  useEffect(() => {
+    if (!isFirebaseConfigured || !urlAlbumId) return;
+    return subscribeToAlbum(urlAlbumId, setFetchedAlbum, () =>
+      setFetchedAlbum(null),
+    );
+  }, [urlAlbumId]);
+  // Tagged by id rather than cleared on the way out, so a stale album can never
+  // stand in for the one now named in the URL.
+  const namedAlbum =
+    fetchedAlbum && fetchedAlbum.id === urlAlbumId ? fetchedAlbum : null;
+
+  // What a scope may resolve against: your own journeys, plus the one the URL
+  // named if it is not already among them.
+  const scopeAlbums = useMemo(() => {
+    if (!namedAlbum) return albums;
+    if (albums.some((album) => album.id === namedAlbum.id)) return albums;
+    return [...albums, namedAlbum];
+  }, [albums, namedAlbum]);
+
   const scope = useMemo((): Scope => {
-    if (!user) return PUBLIC_SCOPE;
-    if (chosenScope) return chosenScope;
+    // Yours is the one scope that cannot survive signing out mid-session, so it
+    // falls back rather than leaving the map showing a scope it cannot resolve.
+    if (chosenScope) {
+      return chosenScope.kind === "personal" && !user
+        ? PUBLIC_SCOPE
+        : chosenScope;
+    }
     return urlAlbumId ? { kind: "albums", ids: [urlAlbumId] } : PUBLIC_SCOPE;
   }, [user, chosenScope, urlAlbumId]);
 
@@ -116,13 +148,13 @@ function MapView() {
     // invented city pins so a young map read as busy; a map that lies about
     // where people have been is worth less than a sparse one that does not.
     if (scope.kind === "public") return places;
-    if (!user) return [];
 
     const byId = new Map(places.map((place) => [place.id, place]));
     const collect = (ids: string[]) =>
       ids.map((id) => byId.get(id)).filter((p): p is Place => Boolean(p));
 
     if (scope.kind === "personal") {
+      if (!user) return [];
       const everyAlbumsPlaces = collect(
         albums.flatMap((album) => album.placeIds ?? []),
       );
@@ -130,11 +162,13 @@ function MapView() {
       return [...new Map(everyAlbumsPlaces.map((p) => [p.id, p])).values()];
     }
 
-    const chosen = albums.filter((album) => scope.ids.includes(album.id));
+    // Resolved against scopeAlbums rather than your own: a public journey
+    // opened from a link is a scope anyone may hold, signed in or not.
+    const chosen = scopeAlbums.filter((album) => scope.ids.includes(album.id));
     const across = collect(chosen.flatMap((album) => album.placeIds ?? []));
     // Dedupe: one place can sit in several of the albums turned on.
     return [...new Map(across.map((p) => [p.id, p])).values()];
-  }, [allPlaces, albums, scope, user]);
+  }, [allPlaces, albums, scopeAlbums, scope, user]);
 
   const { located, pending } = useResolvedPlaces(inScope);
 
@@ -248,7 +282,7 @@ function MapView() {
                   active={scope.kind === "personal"}
                   onClick={() => {
                     if (!user) {
-                      router.push("/signin");
+                      router.push(signInHref("/map"));
                       return;
                     }
                     setScope({ kind: "personal" });
@@ -267,7 +301,7 @@ function MapView() {
                 {!user && (
                   <p className="px-2 py-1.5 text-[13px] leading-[18px] text-[#6B7178]">
                     <Link
-                      href="/signin"
+                      href={signInHref("/map")}
                       className="font-medium text-[#14161A] transition hover:text-[#4A4F57]"
                     >
                       Sign in
