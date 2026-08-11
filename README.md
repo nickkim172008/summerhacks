@@ -22,8 +22,8 @@ the timeline without anyone typing anything.
   reversible.
 - **Shared journeys** — invite collaborators from their profile; invites land
   as notifications and are accepted or declined in place. Members add their own
-  captures, fix a place's location, and can leave whenever; owners manage
-  membership.
+  captures, rename and re-locate a place someone else captured, and can leave
+  whenever; owners manage membership.
 - **Private and public** — a journey is private (you and collaborators) until
   its owner flips it public. Public journeys are open to explore from the
   owner's profile — and open to contribute to.
@@ -64,6 +64,7 @@ Every variable, and what breaks without it:
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | The Map tab                | `/map` explains itself and links the console |
 | `KIRI_API_KEY`                 | Reconstruction                | `/capture` cannot submit                 |
 | `NEXT_PUBLIC_DEMO_CAPTURE`     | Pitch mode (optional)         | Captures really go to reconstruction     |
+| `NEXT_PUBLIC_SPLAT_RENDERER`   | Renderer switch (optional)    | PlayCanvas draws every place             |
 
 - The Firebase values come from the console: Project settings → Your apps → Web
   app config. Enable **Firestore**, **Storage**, and **Google sign-in** under
@@ -76,6 +77,9 @@ Every variable, and what breaks without it:
 - `NEXT_PUBLIC_DEMO_CAPTURE=true` puts `/capture` in pitch mode: the walkthrough
   is accepted and the row walks through its phases locally, without submitting
   to the backend or spending credits.
+- `NEXT_PUBLIC_SPLAT_RENDERER` picks the engine that draws a place. Unset means
+  PlayCanvas, which is what you want; `spark` puts the previous three.js path
+  back for a side-by-side on the same capture.
 
 ### Firebase setup
 
@@ -89,12 +93,22 @@ bucket without one refuses the read, and a capture that saved perfectly renders
 as a black screen — `/api/places/asset` exists as the fallback for exactly that
 (see below), but setting the rule is the fix.
 
+### Tests
+
+```bash
+node --experimental-strip-types scripts/captureTimeline.test.mts
+```
+
+The timeline clustering and pacing — how a night of captures is spaced out when
+a tour plays itself — is the one piece with real fixtures behind it. There is no
+`npm test`; the file runs directly under `node:test`.
+
 ## Routes
 
 | Route               | What it does                                               |
 | ------------------- | ---------------------------------------------------------- |
 | `/`                 | Library: your journeys, shared journeys, and Recents        |
-| `/album/[id]`       | One journey's places. `recents` is virtual — everything     |
+| `/album/[albumId]`  | One journey's places. `recents` is virtual — everything     |
 | `/place/[id]`       | Walk a place and hear the walkthrough it was filmed with    |
 | `/feed`             | Live places from public journeys — explore or contribute    |
 | `/discover`         | Search people by name or handle                             |
@@ -310,6 +324,25 @@ Things that are non-obvious and cost time to rediscover:
   fresh multipart body out. Fine for a ≤ 3 minute clip; it would need to
   stream if the limit ever rises.
 
+### Loading
+
+- **Placeholders hold the page's shape, they don't announce it.** Every skeleton
+  in `Skeleton.tsx` mirrors the geometry of the thing it stands in for — same
+  aspect ratio, corner radius, gap, and two lines of caption — so when the data
+  lands it occupies space already reserved and nothing moves. A spinner reserves
+  nothing, which is why every screen using one jumps at the moment it fills.
+- **They are hidden from screen readers** and are neither links nor focusable:
+  there is nothing here to read or click, and a reader announcing twelve empty
+  boxes is worse than it announcing none. Each page carries the real status
+  message for assistive tech instead.
+
+### Demo seed data
+
+`demoJourneys.ts` and `demoOrganizers.ts` are display-only rows for the pitch —
+library covers and Discover people that never touch Firestore. Both are gated to
+one account by email and handle, so nobody else sees them. They are separate
+from `NEXT_PUBLIC_DEMO_CAPTURE`, which changes what `/capture` really does.
+
 ### Rendering
 
 - **Only the feed card on screen holds a renderer.** The Feed scrolls through
@@ -336,9 +369,9 @@ Things that are non-obvious and cost time to rediscover:
 Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · PlayCanvas Engine for
 splat rendering — the engine SuperSplat is built on — with `@spz-loader` to read
 our stored SPZ, and Spark (`@sparkjsdev/spark`) kept for its PLY→SPZ transcode
-and behind `NEXT_PUBLIC_SPLAT_RENDERER=spark` as the previous renderer ·
-three.js · Google Maps
-JavaScript API for the map · Web Audio `OfflineAudioContext` for audio
-extraction · Firebase Auth + Firestore + Storage · a 3D Gaussian Splatting
-reconstruction pipeline built on KIRI Engine, with multi-account failover and
-resumable jobs
+and behind `NEXT_PUBLIC_SPLAT_RENDERER=spark` as the previous renderer —
+three.js rides along with that path only · Google Maps JavaScript API for the
+map · Web Audio `OfflineAudioContext` for audio extraction · `fflate` to unzip
+the reconstruction archive server-side · Firebase Auth + Firestore + Storage ·
+a 3D Gaussian Splatting reconstruction pipeline built on KIRI Engine, with
+multi-account failover and resumable jobs
