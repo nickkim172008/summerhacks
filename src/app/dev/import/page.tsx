@@ -7,6 +7,9 @@ import { createPlace } from "@/lib/places";
 import { addPlacesToAlbum, createAlbum } from "@/lib/albums";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import type { WorldLabsCapture } from "@/lib/captureStatus";
+import { extractAudio } from "@/lib/audioTrack";
+import { grabPoster } from "@/lib/videoFrame";
+import { readVideoCapture } from "@/lib/videoMeta";
 
 /**
  * Brings worlds generated outside the app into a library.
@@ -114,6 +117,21 @@ export default function ImportWorldsPage() {
           const blob = await res.blob();
           if (blob.size === 0) throw new Error("this world has no splat");
 
+          // The walkthrough itself, when it is still beside the checkout. The
+          // audio in this app is never reconstructed — it is lifted off the
+          // video in the browser — so a world imported from its id alone is
+          // silent, and silence is the one way an imported capture would be
+          // worse than a captured one. Where it came from and when it was
+          // filmed come off the same file, since those are read from the
+          // container too.
+          patch(entry.world_id, { detail: "reading the walkthrough…" });
+          const source = await loadSourceVideo(entry.source_video);
+          const audio = source ? await extractAudio(source, "walkthrough").catch(() => null) : null;
+          const poster = source ? await grabPoster(source).catch(() => null) : null;
+          const filmed = source
+            ? await readVideoCapture(source).catch(() => null)
+            : null;
+
           patch(entry.world_id, { detail: "uploading…" });
           const name =
             entry.display_name?.trim() ||
@@ -136,12 +154,19 @@ export default function ImportWorldsPage() {
               type: "application/octet-stream",
             }),
             user.uid,
-            { world },
+            {
+              world,
+              audioFile: audio?.file ?? null,
+              audioSeconds: audio?.seconds,
+              thumbnail: poster,
+              capturedAt: filmed?.capturedAt ?? undefined,
+              location: filmed?.location ?? undefined,
+            },
           );
           await addPlacesToAlbum(album, [placeId]);
           patch(entry.world_id, {
             state: "done",
-            detail: `${(blob.size / 1e6).toFixed(1)} MB`,
+            detail: `${(blob.size / 1e6).toFixed(1)} MB${audio ? " · with sound" : " · silent"}`,
             placeId,
           });
         } catch (error) {
@@ -246,6 +271,25 @@ export default function ImportWorldsPage() {
       )}
     </Shell>
   );
+}
+
+/**
+ * The walkthrough a world was made from, if it is still in the project
+ * directory. Absent is ordinary — the videos are gitignored, so nobody else's
+ * clone has them — and an import without one simply saves a silent place.
+ */
+async function loadSourceVideo(name?: string): Promise<File | null> {
+  if (!name) return null;
+  try {
+    const res = await fetch(
+      `/api/dev/worlds/video?name=${encodeURIComponent(name)}`,
+    );
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return new File([blob], name, { type: blob.type || "video/quicktime" });
+  } catch {
+    return null;
+  }
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
