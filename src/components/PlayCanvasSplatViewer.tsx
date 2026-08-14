@@ -58,14 +58,26 @@ const PITCH_LIMIT = Math.PI / 2 - 0.02;
 const FREE_LOOK = process.env.NEXT_PUBLIC_DEV_FREE_LOOK === "true";
 
 /**
- * Scene radii per second while a key is held — captures arrive at any scale, so
- * speed is a fraction of the thing rather than a fixed distance.
+ * How fast a held key moves the camera, in metres per second — a brisk walk.
  *
- * Overridable with NEXT_PUBLIC_DEV_MOVE_SPEED: what feels right depends on how
- * large the capture is and what you are looking for, and the alternative is
- * asking for a rebuild every time.
+ * Metres rather than a fraction of the capture, because a fraction is not a
+ * speed. Sizing it off the scene made the same keypress mean 0.43 m/s in a
+ * 3.6m room and 13.6 m/s across a 113m intersection: a thirty-fold spread, and
+ * the reason moving felt like a different control in every capture. A metre is
+ * a metre in all of them.
  */
-const MOVE_SPEED = Number(process.env.NEXT_PUBLIC_DEV_MOVE_SPEED) || 0.12;
+const WALK_SPEED_METRES_PER_SECOND = 2;
+
+/**
+ * The fallback, for a capture with no metric scale — everything from before
+ * World Labs. Nothing there says what a unit is, so speed can only be a
+ * fraction of the capture's own radius and will still differ between them.
+ */
+const MOVE_SPEED_FRACTION = 0.12;
+
+/** Multiplies whichever of the two applies, so neither needs a rebuild to tune. */
+const MOVE_SPEED_MULTIPLIER =
+  Number(process.env.NEXT_PUBLIC_DEV_MOVE_SPEED) || 1;
 
 /**
  * Strafe, rise and forward, in that order.
@@ -240,7 +252,14 @@ export default function PlayCanvasSplatViewer({
       const q = new pc.Quat().setFromEulerAngles(pitch, yaw, 0);
       const ahead = q.transformVector(new pc.Vec3(0, 0, -1));
       const right = q.transformVector(new pc.Vec3(1, 0, 0));
-      const speed = sceneRadius * MOVE_SPEED * dt;
+      // A capture that knows its own scale is walked in real units; one that
+      // does not falls back to a fraction of itself.
+      const metricScale = worldRef.current?.metricScaleFactor;
+      const perSecond =
+        metricScale && metricScale > 0
+          ? WALK_SPEED_METRES_PER_SECOND / metricScale
+          : sceneRadius * MOVE_SPEED_FRACTION;
+      const speed = perSecond * MOVE_SPEED_MULTIPLIER * dt;
 
       pivot.x += (ahead.x * forward + right.x * strafe) * speed;
       pivot.y += (ahead.y * forward + right.y * strafe + rise) * speed;
