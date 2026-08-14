@@ -66,8 +66,12 @@ export default function PlacesMap({
   const didCenterRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  placesRef.current = places;
-  liveRef.current = liveLocation;
+  // Latest props for the effects that need them without wanting to re-run on
+  // every change. Declared first so it commits ahead of the effects below.
+  useEffect(() => {
+    placesRef.current = places;
+    liveRef.current = liveLocation;
+  });
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
