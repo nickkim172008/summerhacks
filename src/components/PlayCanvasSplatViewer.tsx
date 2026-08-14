@@ -269,7 +269,7 @@ export default function PlayCanvasSplatViewer({
       if (entity.gsplat) entity.gsplat.resource = resource;
       splat = entity;
 
-      frame(entity);
+      frame(resource);
       // A frame has to have been drawn before a poster fades off it, or the
       // fade reveals an empty canvas.
       app.once("frameend", () => {
@@ -283,11 +283,15 @@ export default function PlayCanvasSplatViewer({
      * Otherwise the middle of the capture, which is what SuperSplat uses too —
      * its focal point is the splat's bound centre.
      */
-    function frame(entity: pc.Entity) {
-      // Read before the entry-point branch returns: it is what scales movement
-      // speed, and a capture opened from an authored entry point still has to
-      // be walkable under the evaluation flag.
-      const bounds = entity.gsplat?.instance?.meshInstance?.aabb;
+    function frame(resource: pc.GSplatResource) {
+      // The resource's own bounds, not the component's.
+      // `gsplat.instance` returns null under unified rendering, which engine
+      // 2.21 turned on by default, so the old route through
+      // `instance.meshInstance.aabb` reads null on every capture: nothing was
+      // centring, and near and far clip were left at their defaults. The
+      // resource has carried an aabb the whole time and does not care which
+      // renderer draws it.
+      const bounds = resource.aabb;
       if (bounds) sceneRadius = bounds.halfExtents.length();
 
       const entry = entryPointRef.current;
@@ -304,16 +308,14 @@ export default function PlayCanvasSplatViewer({
         return;
       }
 
-      const aabb = entity.gsplat?.instance?.meshInstance?.aabb;
-      if (!aabb) return;
-      pivot.copy(aabb.center);
+      if (!bounds) return;
+      pivot.copy(bounds.center);
       distance = 0;
       yaw = 0;
       pitch = 0;
       place();
 
-      const radius = aabb.halfExtents.length();
-      sceneRadius = radius;
+      const radius = bounds.halfExtents.length();
       if (camera.camera && radius > 0) {
         camera.camera.nearClip = Math.max(radius / 1000, 0.001);
         camera.camera.farClip = radius * 100;
