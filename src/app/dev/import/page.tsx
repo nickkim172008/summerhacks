@@ -446,15 +446,24 @@ async function loadSourceVideo(name?: string): Promise<File | null> {
  * from there. Returns false for a place that never had a location: giving one
  * to a capture that carried none invents a fact rather than hiding one.
  */
+/**
+ * Whether a place still carries the coordinates its video was filmed at.
+ *
+ * The test is that the stored point is not the decoy its own id derives — not
+ * that it falls outside Toronto. A bounding box cannot answer this: captures
+ * filmed in Toronto land inside it while being entirely real, which is most of
+ * this library, and reading that as "already anonymised" reports the job done
+ * while every address is still published.
+ *
+ * The decoy is a pure function of the id, so recomputing it is free and exact.
+ */
 const inToronto = {
   notYet: (place: Place) => {
     const at = place.location;
     if (!at) return false;
-    return !(
-      at.lat >= 43.6 &&
-      at.lat <= 43.82 &&
-      at.lng >= -79.57 &&
-      at.lng <= -79.23
+    const decoy = anonymisedLocation(place.id);
+    return (
+      Math.abs(at.lat - decoy.lat) > 1e-6 || Math.abs(at.lng - decoy.lng) > 1e-6
     );
   },
 };
