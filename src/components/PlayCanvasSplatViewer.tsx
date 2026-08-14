@@ -32,6 +32,36 @@ const LOOK_SPEED = 0.005;
 /** Just under a right angle: level with the ceiling, never through it. */
 const PITCH_LIMIT = Math.PI / 2 - 0.02;
 
+/**
+ * Evaluation only, and off unless NEXT_PUBLIC_DEV_FREE_LOOK is set.
+ *
+ * A capture is deliberately something you stand inside and turn around in —
+ * pivotControls.ts sets out why at length, and it comes down to a KIRI
+ * reconstruction reading as an object rather than a place the moment you back
+ * out of it: the floaters show, the ceiling is missing, the walls thin at the
+ * edges. Nothing here changes that for anyone visiting the app.
+ *
+ * It exists because that finding was made against one reconstruction backend. A
+ * Marble world ships a collider mesh and claims to be walkable, and there is no
+ * way to judge the claim in a viewer that cannot move. So: a way to try, behind
+ * a flag, kept out of the product until the answer is in.
+ */
+const FREE_LOOK = process.env.NEXT_PUBLIC_DEV_FREE_LOOK === "true";
+
+/** Scene radii per second while a key is held — captures arrive at any scale. */
+const MOVE_SPEED = 0.5;
+
+/** Strafe, rise and forward, in that order. A/D stay unbound: they turn. */
+const MOVE_KEYS: Record<string, readonly [number, number, number]> = {
+  KeyW: [0, 0, 1],
+  KeyS: [0, 0, -1],
+  KeyQ: [-1, 0, 0],
+  KeyE: [1, 0, 0],
+  Space: [0, 1, 0],
+  ShiftLeft: [0, -1, 0],
+  ShiftRight: [0, -1, 0],
+};
+
 export default function PlayCanvasSplatViewer({
   splatUrl,
   entryPoint,
@@ -93,6 +123,8 @@ export default function PlayCanvasSplatViewer({
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
+    /** Set once the splat's bounds are known; scales how fast a key moves. */
+    let sceneRadius = 0;
 
     function place() {
       const q = new pc.Quat().setFromEulerAngles(pitch, yaw, 0);
@@ -135,6 +167,62 @@ export default function PlayCanvasSplatViewer({
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointercancel", onPointerUp);
+
+    // Everything from here to the matching cleanup is the evaluation path, and
+    // never runs with the flag off.
+    const held = new Set<string>();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.code in MOVE_KEYS)) return;
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      event.preventDefault(); // Space would scroll the page behind the canvas.
+      held.add(event.code);
+    }
+    function onKeyUp(event: KeyboardEvent) {
+      held.delete(event.code);
+    }
+    /** A key still down when the tab loses focus never reports its keyup. */
+    function onBlur() {
+      held.clear();
+    }
+
+    function step(dt: number) {
+      if (held.size === 0 || sceneRadius <= 0) return;
+
+      let strafe = 0;
+      let rise = 0;
+      let forward = 0;
+      for (const code of held) {
+        const move = MOVE_KEYS[code];
+        if (!move) continue;
+        strafe += move[0];
+        rise += move[1];
+        forward += move[2];
+      }
+      if (!strafe && !rise && !forward) return;
+
+      // Along the heading the camera actually has, pitch included — flying
+      // rather than walking, because the point is to reach anywhere in the
+      // scene and look back at it, not to simulate a person.
+      const q = new pc.Quat().setFromEulerAngles(pitch, yaw, 0);
+      const ahead = q.transformVector(new pc.Vec3(0, 0, -1));
+      const right = q.transformVector(new pc.Vec3(1, 0, 0));
+      const speed = sceneRadius * MOVE_SPEED * dt;
+
+      pivot.x += (ahead.x * forward + right.x * strafe) * speed;
+      pivot.y += (ahead.y * forward + right.y * strafe + rise) * speed;
+      pivot.z += (ahead.z * forward + right.z * strafe) * speed;
+      place();
+    }
+
+    if (FREE_LOOK) {
+      window.addEventListener("keydown", onKeyDown);
+      window.addEventListener("keyup", onKeyUp);
+      window.addEventListener("blur", onBlur);
+      app.on("update", step);
+    }
 
     const resizeObserver = new ResizeObserver(() => {
       if (disposed) return;
@@ -196,6 +284,12 @@ export default function PlayCanvasSplatViewer({
      * its focal point is the splat's bound centre.
      */
     function frame(entity: pc.Entity) {
+      // Read before the entry-point branch returns: it is what scales movement
+      // speed, and a capture opened from an authored entry point still has to
+      // be walkable under the evaluation flag.
+      const bounds = entity.gsplat?.instance?.meshInstance?.aabb;
+      if (bounds) sceneRadius = bounds.halfExtents.length();
+
       const entry = entryPointRef.current;
       if (entry) {
         pivot.set(entry.target.x, entry.target.y, entry.target.z);
@@ -219,6 +313,7 @@ export default function PlayCanvasSplatViewer({
       place();
 
       const radius = aabb.halfExtents.length();
+      sceneRadius = radius;
       if (camera.camera && radius > 0) {
         camera.camera.nearClip = Math.max(radius / 1000, 0.001);
         camera.camera.farClip = radius * 100;
@@ -242,6 +337,14 @@ export default function PlayCanvasSplatViewer({
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerUp);
+      if (FREE_LOOK) {
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+        window.removeEventListener("blur", onBlur);
+        // The feed mounts and unmounts these constantly; a listener left on the
+        // window would go on moving a pivot whose app is already destroyed.
+        app.off("update", step);
+      }
       splat?.destroy();
       // Takes the graphics device and the render loop with it. The feed mounts
       // and unmounts these constantly, and a leaked context is a hard cap on
