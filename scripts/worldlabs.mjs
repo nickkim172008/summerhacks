@@ -205,7 +205,18 @@ async function pollOperation(operationId) {
       }
       return operation.response ?? (await getWorld(operation.metadata.world_id));
     }
-    if (elapsed > 20 * 60) fail("Gave up after 20 minutes");
+    // The operation's own expiry, not a number picked here. Generation time
+    // scales with the length of the walkthrough — a 30s clip lands in about
+    // 350s and a 132s one runs past 20 minutes — so any fixed ceiling is a
+    // guess that eventually abandons a job the API is still working on and
+    // has already charged for.
+    const expiresAt = Date.parse(operation.expires_at ?? "");
+    if (Number.isFinite(expiresAt) && Date.now() > expiresAt) {
+      fail(
+        `Operation expired at ${operation.expires_at}. ` +
+          `If it finished first, fetch it with --world ${operation.metadata?.world_id ?? "<world id>"}`,
+      );
+    }
     await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 }
