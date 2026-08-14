@@ -5,6 +5,7 @@ import * as pc from "playcanvas";
 import { storedAssetUrl } from "@/lib/assetUrl";
 import type { SplatViewerProps } from "@/components/splatViewerTypes";
 import SplatLoadError from "@/components/SplatLoadError";
+import { frameFromCenters } from "@/lib/splatFraming";
 
 /**
  * The PlayCanvas renderer — the engine SuperSplat is built on, and the reason
@@ -314,27 +315,31 @@ export default function PlayCanvasSplatViewer({
      * its focal point is the splat's bound centre.
      */
     function frame(entity: pc.Entity, resource: pc.GSplatResource) {
-      // In world space, not the resource's own.
+      // Measured from the splat centres, not from resource.aabb.
       //
-      // `resource.aabb` is measured in the splat's local coordinates, and the
-      // entity carries a 180° turn about X to stand the capture upright — so a
-      // local centre of (x, y, z) is really at (x, -y, -z) once drawn. Copying
-      // the local centre straight onto the pivot put the camera that far off on
-      // two axes, which for any capture whose centre is not near the origin
-      // means standing outside the thing entirely.
+      // A bounding box is dragged off by a single floater, and a generated
+      // world has sky and haze in it — so its box can be many times the size of
+      // the room and centred on nothing in particular. That is what put the
+      // camera outside the render. splatFraming.ts was written against exactly
+      // this problem for the other renderer; this is the same percentiles.
       //
-      // Transforming the box rather than negating by hand because the rotation
-      // is the entity's business, not this function's.
-      const local = resource.aabb;
-      if (!local) return;
-      const bounds = new pc.BoundingBox();
-      bounds.setFromTransformedAabb(local, entity.getWorldTransform());
-      sceneRadius = bounds.halfExtents.length();
+      // Centres go through the entity's world transform before anything is
+      // measured, which is also where the 180° turn about X that stands a
+      // capture upright gets accounted for.
+      const matrix = entity.getWorldTransform();
+      const scratch = new pc.Vec3();
+      const framing = resource.centers
+        ? frameFromCenters(resource.centers, (x, y, z) => {
+            scratch.set(x, y, z);
+            matrix.transformPoint(scratch, scratch);
+            return [scratch.x, scratch.y, scratch.z];
+          })
+        : null;
 
-      const radius = sceneRadius;
-      if (camera.camera && radius > 0) {
-        camera.camera.nearClip = Math.max(radius / 1000, 0.001);
-        camera.camera.farClip = radius * 100;
+      if (framing && framing.radius > 0) sceneRadius = framing.radius;
+      if (camera.camera && sceneRadius > 0) {
+        camera.camera.nearClip = Math.max(sceneRadius / 1000, 0.001);
+        camera.camera.farClip = sceneRadius * 100;
       }
 
       const entry = entryPointRef.current;
@@ -351,30 +356,28 @@ export default function PlayCanvasSplatViewer({
         return;
       }
 
-      pivot.copy(bounds.center);
+      if (!framing) return;
 
-      // Stand on the floor rather than at the middle of the box.
-      //
-      // The centre of a room's bounding box is halfway up it — around head
-      // height in a bedroom, but storeys up in a street, and under the floor in
-      // anything whose geometry runs deeper than it does tall. World Labs says
-      // where the ground is, so when a capture carries that, the camera stands
-      // an eye above it instead.
-      //
-      // The floor point is built in local coordinates and put through the same
-      // transform as the box, so the flip is handled once, in one place.
+      // Standing height above the trimmed floor. Where World Labs reports a
+      // metric scale, an eye is 1.6m converted into splat units; without one
+      // there is no way to know what a unit is, so a fraction of the room's own
+      // height stands in — and either is clamped so a low capture does not put
+      // the camera through the ceiling.
       const scale = worldRef.current?.metricScaleFactor;
-      const ground = worldRef.current?.groundPlaneOffset;
-      if (scale && scale > 0 && ground !== undefined) {
-        const floor = new pc.Vec3(local.center.x, ground / scale, local.center.z);
-        entity.getWorldTransform().transformPoint(floor, floor);
-        // Rotation preserves length, so an eye height in metres converts by the
-        // same factor whichever space it lands in.
-        pivot.set(floor.x, floor.y + EYE_HEIGHT_METRES / scale, floor.z);
-      }
+      const eye = scale && scale > 0
+        ? EYE_HEIGHT_METRES / scale
+        : framing.height * 0.4;
+      pivot.set(
+        framing.center.x,
+        framing.floorY + Math.min(eye, framing.height * 0.8),
+        framing.center.z,
+      );
 
       distance = 0;
-      yaw = 0;
+      // Face down the longer horizontal axis: the most depth in view, rather
+      // than a wall up close.
+      yaw =
+        Math.atan2(-framing.forward.x, -framing.forward.z) * (180 / Math.PI);
       pitch = 0;
       place();
     }

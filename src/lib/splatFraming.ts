@@ -54,6 +54,92 @@ function percentile(sorted: Float32Array, q: number) {
   return sorted[Math.min(sorted.length - 1, Math.max(0, index))];
 }
 
+/** The same answer, in plain numbers, for a renderer that is not three.js. */
+export interface RawFraming {
+  center: { x: number; y: number; z: number };
+  radius: number;
+  floorY: number;
+  height: number;
+  forward: { x: number; y: number; z: number };
+}
+
+/**
+ * Framing from splat centres alone, for PlayCanvas.
+ *
+ * The same percentiles as `frameCapture` and for the same reason — a bounding
+ * box is dragged off by a single floater, and a generated world has sky in it,
+ * so its box can be an order of magnitude larger than the room and centred on
+ * nothing. That is what put the camera outside the render.
+ *
+ * Centres are put through `toWorld` before anything is measured rather than
+ * after, so the floor is the smallest y in the space the viewer actually sees
+ * and no sign has to be reasoned about. Opacity is not available here the way
+ * Spark exposes it, so haze is trimmed by percentile only — which is what was
+ * removing most of it anyway.
+ */
+export function frameFromCenters(
+  centers: Float32Array,
+  toWorld: (x: number, y: number, z: number) => [number, number, number],
+): RawFraming | null {
+  const total = Math.floor(centers.length / 3);
+  if (total === 0) return null;
+
+  const stride = Math.ceil(total / MAX_SAMPLES);
+  const capacity = Math.ceil(total / stride);
+  const xs = new Float32Array(capacity);
+  const ys = new Float32Array(capacity);
+  const zs = new Float32Array(capacity);
+  let count = 0;
+
+  for (let i = 0; i < total && count < capacity; i += stride) {
+    const [x, y, z] = toWorld(
+      centers[i * 3],
+      centers[i * 3 + 1],
+      centers[i * 3 + 2],
+    );
+    // A non-finite centre would sort to the end and poison every percentile.
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+      continue;
+    }
+    xs[count] = x;
+    ys[count] = y;
+    zs[count] = z;
+    count += 1;
+  }
+  if (count < MIN_SAMPLES) return null;
+
+  // Float32Array#sort is numeric already; the default lexicographic comparator
+  // is an Array thing and would put 10 before 9 here.
+  const sortedX = xs.slice(0, count).sort();
+  const sortedY = ys.slice(0, count).sort();
+  const sortedZ = zs.slice(0, count).sort();
+
+  const minX = percentile(sortedX, TRIM);
+  const maxX = percentile(sortedX, 1 - TRIM);
+  const minY = percentile(sortedY, TRIM);
+  const maxY = percentile(sortedY, 1 - TRIM);
+  const minZ = percentile(sortedZ, TRIM);
+  const maxZ = percentile(sortedZ, 1 - TRIM);
+
+  const sizeX = maxX - minX;
+  const sizeY = maxY - minY;
+  const sizeZ = maxZ - minZ;
+
+  return {
+    center: {
+      x: (minX + maxX) / 2,
+      y: (minY + maxY) / 2,
+      z: (minZ + maxZ) / 2,
+    },
+    radius: Math.hypot(sizeX, sizeY, sizeZ) / 2,
+    floorY: minY,
+    height: sizeY,
+    // Face down the longer horizontal axis: the view with the most depth in it,
+    // rather than a wall up close.
+    forward: sizeX >= sizeZ ? { x: 1, y: 0, z: 0 } : { x: 0, y: 0, z: 1 },
+  };
+}
+
 export function frameCapture(mesh: SplatMesh): Framing | null {
   const total = mesh.splats?.getNumSplats() ?? 0;
   if (total === 0) return null;
