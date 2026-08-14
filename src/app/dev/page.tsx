@@ -31,9 +31,35 @@ const PLACES: Record<string, Place> = {
   },
 };
 
+/**
+ * A capture pulled down by scripts/worldlabs.mjs, so a Marble world can be put
+ * next to the fixtures in the same renderer. Set NEXT_PUBLIC_DEV_SPLAT_URL to
+ * `/dev-splats/<world id>.spz` — the script prints exactly that line.
+ *
+ * A variable rather than another entry above because the file is megabytes of
+ * binary that public/dev-splats/ keeps out of git: hard-coding one world's id
+ * would leave everyone else with a button that 404s.
+ */
+const LOCAL_SPLAT_URL = process.env.NEXT_PUBLIC_DEV_SPLAT_URL;
+
+const LOCAL_PLACE: Record<string, Place> = LOCAL_SPLAT_URL
+  ? {
+      local: {
+        id: "local",
+        name: "Local splat",
+        uploaderId: "dev",
+        createdAt: null as unknown as Timestamp,
+        splatUrl: LOCAL_SPLAT_URL,
+        thumbnailUrl: "",
+      },
+    }
+  : {};
+
 export default function DevPage() {
-  const [placeId, setPlaceId] = useState("butterfly");
-  const [places] = useState(PLACES);
+  const [placeId, setPlaceId] = useState(
+    LOCAL_SPLAT_URL ? "local" : "butterfly",
+  );
+  const [places] = useState({ ...PLACES, ...LOCAL_PLACE });
 
   return (
     <div className="h-screen w-screen">

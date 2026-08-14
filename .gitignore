@@ -51,3 +51,7 @@ next-env.d.ts
 
 # agent worktrees
 /.claude/worktrees/
+
+# Splats pulled down by scripts/worldlabs.mjs for side-by-side comparison.
+# Megabytes of binary per capture, and re-downloadable by world id.
+/public/dev-splats/
