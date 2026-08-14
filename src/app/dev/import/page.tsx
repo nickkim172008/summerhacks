@@ -8,6 +8,7 @@ import {
   createPlace,
   repinPlace,
   subscribeToPlacesByUploader,
+  subscribeToTrashedPlaces,
 } from "@/lib/places";
 import { addPlacesToAlbum, createAlbum } from "@/lib/albums";
 import type { Place } from "@/lib/types";
@@ -79,6 +80,14 @@ export default function ImportWorldsPage() {
   const [existing, setExisting] = useState<Map<string, Place>>(new Map());
   /** Every place of the viewer's, for the re-pin below — not only imported ones. */
   const [mine, setMine] = useState<Place[]>([]);
+  /**
+   * The trash holds captures too, and a place in it is still a document the
+   * rules let anyone read — deleting is reversible here, so nothing has left.
+   * Eight of them carry the coordinates their video was filmed at, one of them
+   * in another country. Leaving them out would be scattering the pins somebody
+   * can see while keeping the ones they can also see.
+   */
+  const [trashed, setTrashed] = useState<Place[]>([]);
   const [repinning, setRepinning] = useState<string | null>(null);
 
   useEffect(() => {
@@ -93,6 +102,11 @@ export default function ImportWorldsPage() {
         ),
       );
     });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    return subscribeToTrashedPlaces(user.uid, setTrashed);
   }, [user]);
 
   useEffect(() => {
@@ -268,12 +282,13 @@ export default function ImportWorldsPage() {
     }
   }, [rows, user, patch, existing]);
 
-  const repin = useRepin(mine, setRepinning);
+  const everyPlace = [...mine, ...trashed];
+  const repin = useRepin(everyPlace, setRepinning);
   // Anything outside the box the decoys are drawn from still holds what the
   // video said. Not proof — a real coordinate could fall inside Toronto, which
   // is exactly the case for anything genuinely filmed here — but it is what can
   // be told from the outside, and it errs toward offering the sweep again.
-  const realCount = mine.filter(inToronto.notYet).length;
+  const realCount = everyPlace.filter(inToronto.notYet).length;
 
   const newCount = rows.filter(
     ({ run: entry }) => !existing.has(entry.world_id),
@@ -282,7 +297,7 @@ export default function ImportWorldsPage() {
   if (!isFirebaseConfigured) {
     return (
       <Shell>
-        <p className="text-[15px] text-white/70">
+        <p className="text-[15px] text-[#4A4F57]">
           This needs Firebase. Fill in the NEXT_PUBLIC_FIREBASE_* values in
           .env.local and reload.
         </p>
@@ -293,7 +308,7 @@ export default function ImportWorldsPage() {
   return (
     <Shell>
       {manifestError && (
-        <p className="mb-4 rounded-xl bg-red-500/10 px-4 py-3 text-[14px] text-red-200">
+        <p className="mb-4 rounded-xl border border-[rgba(161,18,18,0.2)] bg-[#FDECEC] px-4 py-3 text-[14px] text-[#A11212]">
           {manifestError}
         </p>
       )}
@@ -302,17 +317,17 @@ export default function ImportWorldsPage() {
         {rows.map(({ run: entry, state, detail, placeId }) => (
           <li
             key={entry.world_id}
-            className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3"
+            className="rounded-xl border border-[rgba(20,22,26,0.1)] bg-white px-4 py-3"
           >
             <div className="flex items-baseline justify-between gap-3">
-              <span className="text-[15px] font-medium text-white">
+              <span className="text-[15px] font-medium text-[#14161A]">
                 {entry.display_name ?? entry.world_id}
               </span>
-              <span className="shrink-0 text-[13px] text-white/50">
+              <span className="shrink-0 text-[13px] text-[#6B7178]">
                 {state === "done" && placeId ? (
                   <Link
                     href={`/place/${placeId}`}
-                    className="text-emerald-300 underline underline-offset-2"
+                    className="text-[#0A7B34] underline underline-offset-2"
                   >
                     saved · {detail}
                   </Link>
@@ -321,7 +336,7 @@ export default function ImportWorldsPage() {
                 )}
               </span>
             </div>
-            <p className="mt-1 text-[13px] text-white/45">
+            <p className="mt-1 text-[13px] text-[#8A9098]">
               {entry.model ?? "—"} · {entry.source_video ?? "—"}
               {entry.semantics_metadata?.metric_scale_factor
                 ? ` · scale ×${entry.semantics_metadata.metric_scale_factor.toFixed(2)}`
@@ -333,7 +348,7 @@ export default function ImportWorldsPage() {
       </ol>
 
       {!loading && !user && (
-        <p className="text-[15px] text-white/70">
+        <p className="text-[15px] text-[#4A4F57]">
           <Link href="/signin?next=/dev/import" className="underline">
             Sign in
           </Link>{" "}
@@ -345,7 +360,7 @@ export default function ImportWorldsPage() {
         <button
           onClick={run}
           disabled={running || rows.length === 0}
-          className="rounded-full bg-white px-5 py-2.5 text-[14px] font-medium text-[#14161A] disabled:opacity-40"
+          className="rounded-full bg-[#14161A] px-5 py-2.5 text-[14px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {running
             ? "Working…"
@@ -358,14 +373,15 @@ export default function ImportWorldsPage() {
       )}
 
       {user && (
-        <section className="mt-8 rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] p-5">
-          <h2 className="text-[15px] font-semibold text-amber-100">
+        <section className="mt-8 rounded-2xl border border-[rgba(180,120,20,0.28)] bg-[#FFF6E5] p-5">
+          <h2 className="text-[15px] font-semibold text-[#7A4E00]">
             Where your captures say they are
           </h2>
           {realCount > 0 ? (
             <>
-              <p className="mt-1 text-[14px] leading-relaxed text-amber-100/70">
-                {realCount} of your {mine.length} places still carry the
+              <p className="mt-1 text-[14px] leading-relaxed text-[#6B5320]">
+                {realCount} of your {everyPlace.length} places (the trash
+                included) still carry the
                 coordinates their video was filmed at. A phone writes GPS into
                 the container, and an indoor capture is usually somebody&rsquo;s
                 home — this moves each to a point in Toronto derived from its
@@ -374,14 +390,14 @@ export default function ImportWorldsPage() {
               <button
                 onClick={repin}
                 disabled={repinning !== null}
-                className="mt-4 rounded-full bg-amber-200 px-5 py-2.5 text-[14px] font-medium text-[#2A1D05] disabled:opacity-40"
+                className="mt-4 rounded-full bg-[#B4780F] px-5 py-2.5 text-[14px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
               >
                 {repinning
                   ? `Re-pinning ${repinning}…`
                   : `Scatter ${realCount} place${realCount === 1 ? "" : "s"} across Toronto`}
               </button>
-              <ul className="mt-4 space-y-1 text-[12px] text-amber-100/50">
-                {mine
+              <ul className="mt-4 space-y-1 text-[12px] text-[#8A7340]">
+                {everyPlace
                   .filter(inToronto.notYet)
                   .slice(0, 8)
                   .map((place) => (
@@ -393,7 +409,7 @@ export default function ImportWorldsPage() {
               </ul>
             </>
           ) : (
-            <p className="mt-1 text-[14px] text-amber-100/70">
+            <p className="mt-1 text-[14px] text-[#6B5320]">
               Every place with a location is pinned inside Toronto. Nothing here
               is where it was filmed.
             </p>
@@ -405,7 +421,7 @@ export default function ImportWorldsPage() {
         <p className="mt-4 text-[15px]">
           <Link
             href={`/album/${albumId}`}
-            className="text-emerald-300 underline underline-offset-2"
+            className="text-[#0A7B34] underline underline-offset-2"
           >
             Open the journey →
           </Link>
@@ -495,17 +511,19 @@ function useRepin(
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="mx-auto max-w-2xl px-6 py-12">
-      <h1 className="mb-1 text-[26px] font-semibold text-white">
+    <main className="min-h-screen bg-[#FAF9F7] px-6 py-12 text-[#14161A]">
+      <div className="mx-auto max-w-2xl">
+      <h1 className="mb-1 text-[26px] font-semibold text-[#14161A]">
         Import World Labs captures
       </h1>
-      <p className="mb-6 text-[14px] text-white/55">
+      <p className="mb-6 text-[14px] leading-relaxed text-[#6B7178]">
         Worlds generated by scripts/worldlabs.mjs before the app pointed at
         World Labs. Anything already in your library is repaired in place —
         given the sound and the still frame it was saved without — rather than
         imported a second time.
       </p>
       {children}
+      </div>
     </main>
   );
 }
