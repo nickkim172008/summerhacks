@@ -89,6 +89,7 @@ export default function ImportWorldsPage() {
    */
   const [trashed, setTrashed] = useState<Place[]>([]);
   const [repinning, setRepinning] = useState<string | null>(null);
+  const [repinFailures, setRepinFailures] = useState<string[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -283,7 +284,7 @@ export default function ImportWorldsPage() {
   }, [rows, user, patch, existing]);
 
   const everyPlace = [...mine, ...trashed];
-  const repin = useRepin(everyPlace, setRepinning);
+  const repin = useRepin(everyPlace, setRepinning, setRepinFailures);
   // Anything outside the box the decoys are drawn from still holds what the
   // video said. Not proof — a real coordinate could fall inside Toronto, which
   // is exactly the case for anything genuinely filmed here — but it is what can
@@ -396,10 +397,16 @@ export default function ImportWorldsPage() {
                   ? `Re-pinning ${repinning}…`
                   : `Scatter ${realCount} place${realCount === 1 ? "" : "s"} across Toronto`}
               </button>
+              {repinFailures.length > 0 && (
+                <ul className="mt-3 space-y-1 text-[12px] text-[#A11212]">
+                  {repinFailures.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              )}
               <ul className="mt-4 space-y-1 text-[12px] text-[#8A7340]">
                 {everyPlace
                   .filter(inToronto.notYet)
-                  .slice(0, 8)
                   .map((place) => (
                     <li key={place.id} className="font-mono">
                       {place.name} — {place.location!.lat.toFixed(4)},{" "}
@@ -487,24 +494,44 @@ const inToronto = {
 async function repinToronto(place: Place): Promise<boolean> {
   if (!place.location) return false;
   const location = anonymisedLocation(place.id);
-  // Named from the decoy so the label agrees with the pin. A failed lookup
-  // clears the name rather than leaving the real street under a false pin.
-  const name = await reverseGeocode(location).catch(() => null);
-  return repinPlace(place.id, location, name).catch(() => false);
+  // Named from the decoy so the label agrees with the pin — labels like
+  // "Nick's Basement" identify an address on their own, with or without
+  // coordinates. Given at most a couple of seconds: the naming is a courtesy
+  // and the move is the point, and a geocoder that hangs must not be able to
+  // stop the sweep partway and leave the rest published. A lookup that does not
+  // answer clears the name instead, which is the safe direction to fail.
+  const name = await Promise.race([
+    reverseGeocode(location).catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+  ]);
+  return repinPlace(place.id, location, name);
 }
 
 function useRepin(
   mine: Place[],
   setRepinning: (value: string | null) => void,
+  onFailures: (failures: string[]) => void,
 ) {
   return async () => {
     const pinned = mine.filter((place) => place.location);
+    const failures: string[] = [];
     let done = 0;
     for (const place of pinned) {
       setRepinning(`${done}/${pinned.length}`);
-      await repinToronto(place);
+      try {
+        await repinToronto(place);
+      } catch (error) {
+        // Named rather than swallowed. A silent catch here is how a run
+        // finishes looking complete while places stay where they were filmed —
+        // which is what a previous sweep did, stopping at 8 of 22 with nothing
+        // on screen to say so.
+        failures.push(
+          `${place.name}: ${error instanceof Error ? error.message : "refused"}`,
+        );
+      }
       done += 1;
     }
+    onFailures(failures);
     setRepinning(null);
   };
 }
