@@ -57,6 +57,17 @@ export const CREDITS_PER_USD = 1250;
  * stand in for the pre-flight check that keeps a bad file from costing credits.
  * Where the real edges are is still an open question.
  */
+/**
+ * The one hard limit found so far, and it is not in the docs: the signed upload
+ * URL comes back carrying `x-goog-content-length-range: 0,104857600`, so
+ * storage refuses anything past 100 MB before generation is ever reached.
+ *
+ * Worth checking before the upload rather than after — the failure otherwise
+ * arrives from Google Cloud Storage as a bare 4xx, having already spent the
+ * bandwidth of the whole file.
+ */
+export const MAX_UPLOAD_BYTES = 104857600;
+
 export const VIDEO_GUIDANCE = [
   "Sweep 180°–360° of the space in one unbroken take",
   "Move steadily — motion blur comes back as smeared geometry",

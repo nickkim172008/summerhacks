@@ -1,6 +1,7 @@
 import "server-only";
 import {
   DEFAULT_SPLAT_RESOLUTION,
+  MAX_UPLOAD_BYTES,
   WORLDLABS_MODELS,
   type SplatResolution,
   type WorldLabsModel,
@@ -20,7 +21,15 @@ function apiKey() {
   return key;
 }
 
-export type OperationStatus = "SUCCEEDED" | "FAILED" | "RUNNING" | "PENDING";
+/**
+ * Observed on the wire rather than documented, so the union stays open: a
+ * status this does not name should read as "still working", never crash a poll.
+ */
+export type OperationStatus =
+  | "SUCCEEDED"
+  | "FAILED"
+  | "IN_PROGRESS"
+  | (string & {});
 
 export type WorldAssets = {
   mesh: {
@@ -143,12 +152,21 @@ export async function submitVideo(
     textPrompt?: string;
   } = {},
 ): Promise<string> {
+  if (video.size > MAX_UPLOAD_BYTES) {
+    throw new Error(
+      `This walkthrough is ${(video.size / 1e6).toFixed(0)} MB; the limit is 100 MB`,
+    );
+  }
+
   const extension = video.name.split(".").pop()?.toLowerCase() || "mp4";
 
   const prepared = await call<{
-    media_asset: { id: string };
-    upload_url: string;
-    upload_method?: string;
+    media_asset: { media_asset_id: string };
+    upload_info: {
+      upload_url: string;
+      upload_method?: string;
+      required_headers?: Record<string, string>;
+    };
   }>("/media-assets:prepare_upload", {
     method: "POST",
     body: JSON.stringify({
@@ -158,15 +176,23 @@ export async function submitVideo(
     }),
   });
 
-  // Straight to their storage, not through the API host — so no API key here,
-  // and Content-Type has to be set explicitly rather than inherited from `call`.
-  const upload = await fetch(prepared.upload_url, {
-    method: prepared.upload_method ?? "PUT",
+  const { upload_url: uploadUrl, upload_method: method, required_headers: required } =
+    prepared.upload_info;
+
+  // Straight to Google Cloud Storage, not through the API host — so no API key
+  // here. `required_headers` is not decoration: the signed URL carries
+  // `x-goog-content-length-range`, and GCS refuses the PUT without it. Sent as
+  // given, and nothing added — a Content-Type the signature did not cover is
+  // another way to be turned away.
+  const upload = await fetch(uploadUrl, {
+    method: method ?? "PUT",
     body: video,
-    headers: { "Content-Type": video.type || "video/mp4" },
+    headers: { ...required },
   });
   if (!upload.ok) {
-    throw new Error(`Could not upload the walkthrough (${upload.status})`);
+    throw new Error(
+      `Could not upload the walkthrough (${upload.status} ${upload.statusText})`,
+    );
   }
 
   const operation = await call<Operation>("/worlds:generate", {
@@ -178,7 +204,7 @@ export async function submitVideo(
         type: "video",
         video_prompt: {
           source: "media_asset",
-          media_asset_id: prepared.media_asset.id,
+          media_asset_id: prepared.media_asset.media_asset_id,
         },
         // Optional, and left off unless a caller has something to say: the
         // scene is what the video shows, and a stray prompt is a chance for the

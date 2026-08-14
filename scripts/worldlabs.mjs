@@ -118,17 +118,26 @@ async function submitVideo(path, model, displayName) {
   const name = basename(path);
   const extension = extname(path).slice(1).toLowerCase() || "mp4";
 
+  // The signed upload URL caps at 100 MB; catching it here saves sending the
+  // whole file only to be refused by storage.
+  if (bytes.length > 104857600) {
+    fail(`${name} is ${(bytes.length / 1e6).toFixed(0)} MB; the limit is 100 MB`);
+  }
+
   console.log(`  Uploading ${name} (${(bytes.length / 1e6).toFixed(1)} MB)…`);
   const prepared = await call("/media-assets:prepare_upload", {
     method: "POST",
     body: JSON.stringify({ file_name: name, kind: "video", extension }),
   });
 
-  // Straight to their storage — no API key on this one.
-  const upload = await fetch(prepared.upload_url, {
-    method: prepared.upload_method ?? "PUT",
+  // Straight to Google Cloud Storage — no API key, and `required_headers` sent
+  // exactly as given: the signed URL covers x-goog-content-length-range, and
+  // GCS refuses the PUT without it.
+  const info = prepared.upload_info;
+  const upload = await fetch(info.upload_url, {
+    method: info.upload_method ?? "PUT",
     body: bytes,
-    headers: { "Content-Type": `video/${extension === "mov" ? "quicktime" : extension}` },
+    headers: { ...info.required_headers },
   });
   if (!upload.ok) fail(`Upload failed (${upload.status} ${upload.statusText})`);
 
@@ -142,7 +151,7 @@ async function submitVideo(path, model, displayName) {
         type: "video",
         video_prompt: {
           source: "media_asset",
-          media_asset_id: prepared.media_asset.id,
+          media_asset_id: prepared.media_asset.media_asset_id,
         },
       },
     }),
