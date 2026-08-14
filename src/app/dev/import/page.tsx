@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { createPlace } from "@/lib/places";
+import { backfillPlaceMedia, createPlace, subscribeToPlacesByUploader } from "@/lib/places";
 import { addPlacesToAlbum, createAlbum } from "@/lib/albums";
+import type { Place } from "@/lib/types";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import type { WorldLabsCapture } from "@/lib/captureStatus";
 import { extractAudio } from "@/lib/audioTrack";
@@ -62,6 +63,26 @@ export default function ImportWorldsPage() {
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [albumId, setAlbumId] = useState<string | null>(null);
+  /**
+   * Worlds already in the library, by world id. An import that ran before the
+   * audio was being carried across left silent places behind, and making a
+   * second journey full of second copies is not the repair — these are the ones
+   * to fill in rather than create.
+   */
+  const [existing, setExisting] = useState<Map<string, Place>>(new Map());
+
+  useEffect(() => {
+    if (!user) return;
+    return subscribeToPlacesByUploader(user.uid, (places) => {
+      setExisting(
+        new Map(
+          places
+            .filter((place) => place.world?.worldId)
+            .map((place) => [place.world!.worldId, place]),
+        ),
+      );
+    });
+  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,24 +119,23 @@ export default function ImportWorldsPage() {
     if (!user) return;
     setRunning(true);
     try {
-      const album = await createAlbum(JOURNEY_NAME, user.uid);
-      setAlbumId(album);
+      // Only worth a new journey if anything is actually new. A run that only
+      // repairs what is already filed leaves the journeys alone.
+      const missing = rows.filter(
+        ({ run: entry }) => !existing.has(entry.world_id),
+      );
+      const album = missing.length
+        ? await createAlbum(JOURNEY_NAME, user.uid)
+        : null;
+      if (album) setAlbumId(album);
 
       // One at a time on purpose: each pulls several megabytes and then uploads
       // them again, and running four of those at once on a phone tether is how
       // the whole batch fails together.
       for (const { run: entry } of rows) {
-        patch(entry.world_id, { state: "working", detail: "downloading…" });
+        patch(entry.world_id, { state: "working", detail: "reading…" });
         try {
-          const res = await fetch(
-            `/api/capture/model?world=${encodeURIComponent(entry.world_id)}`,
-          );
-          if (!res.ok) {
-            const body = await res.json().catch(() => ({}));
-            throw new Error(body.error ?? `download failed (${res.status})`);
-          }
-          const blob = await res.blob();
-          if (blob.size === 0) throw new Error("this world has no splat");
+          const already = existing.get(entry.world_id);
 
           // The walkthrough itself, when it is still beside the checkout. The
           // audio in this app is never reconstructed — it is lifted off the
@@ -131,6 +151,45 @@ export default function ImportWorldsPage() {
           const filmed = source
             ? await readVideoCapture(source).catch(() => null)
             : null;
+
+          // Already in the library: give it the sound and the still it was
+          // saved without, and leave everything else as it is.
+          if (already) {
+            if (!source) {
+              patch(entry.world_id, {
+                state: "skipped",
+                detail: "already saved · source video not here",
+                placeId: already.id,
+              });
+              continue;
+            }
+            const filled = await backfillPlaceMedia(already.id, {
+              audioFile: audio?.file ?? null,
+              audioSeconds: audio?.seconds,
+              thumbnail: poster,
+            });
+            patch(entry.world_id, {
+              state: "done",
+              detail: filled.audio
+                ? "sound added"
+                : already.audioUrl
+                  ? "already had sound"
+                  : "no audio on that video",
+              placeId: already.id,
+            });
+            continue;
+          }
+
+          patch(entry.world_id, { detail: "downloading the splat…" });
+          const res = await fetch(
+            `/api/capture/model?world=${encodeURIComponent(entry.world_id)}`,
+          );
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error ?? `download failed (${res.status})`);
+          }
+          const blob = await res.blob();
+          if (blob.size === 0) throw new Error("this world has no splat");
 
           patch(entry.world_id, { detail: "uploading…" });
           const name =
@@ -163,7 +222,7 @@ export default function ImportWorldsPage() {
               location: filmed?.location ?? undefined,
             },
           );
-          await addPlacesToAlbum(album, [placeId]);
+          if (album) await addPlacesToAlbum(album, [placeId]);
           patch(entry.world_id, {
             state: "done",
             detail: `${(blob.size / 1e6).toFixed(1)} MB${audio ? " · with sound" : " · silent"}`,
@@ -183,7 +242,11 @@ export default function ImportWorldsPage() {
     } finally {
       setRunning(false);
     }
-  }, [rows, user, patch]);
+  }, [rows, user, patch, existing]);
+
+  const newCount = rows.filter(
+    ({ run: entry }) => !existing.has(entry.world_id),
+  ).length;
 
   if (!isFirebaseConfigured) {
     return (
@@ -254,8 +317,12 @@ export default function ImportWorldsPage() {
           className="rounded-full bg-white px-5 py-2.5 text-[14px] font-medium text-[#14161A] disabled:opacity-40"
         >
           {running
-            ? "Importing…"
-            : `Import ${rows.length} world${rows.length === 1 ? "" : "s"} into “${JOURNEY_NAME}”`}
+            ? "Working…"
+            : newCount === 0
+              ? `Add sound to ${rows.length} already-saved world${rows.length === 1 ? "" : "s"}`
+              : newCount === rows.length
+                ? `Import ${rows.length} world${rows.length === 1 ? "" : "s"} into “${JOURNEY_NAME}”`
+                : `Import ${newCount} new, repair ${rows.length - newCount} already saved`}
         </button>
       )}
 
@@ -300,8 +367,9 @@ function Shell({ children }: { children: React.ReactNode }) {
       </h1>
       <p className="mb-6 text-[14px] text-white/55">
         Worlds generated by scripts/worldlabs.mjs before the app pointed at
-        World Labs. Running this twice makes a second journey holding second
-        copies — there is no dedupe.
+        World Labs. Anything already in your library is repaired in place —
+        given the sound and the still frame it was saved without — rather than
+        imported a second time.
       </p>
       {children}
     </main>

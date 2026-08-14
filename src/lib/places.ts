@@ -316,6 +316,51 @@ function pruneUndefined<T extends object>(value: T): Partial<T> {
   ) as Partial<T>;
 }
 
+/**
+ * Adds the walkthrough's own sound, and a frame off it, to a place that was
+ * saved without either.
+ *
+ * The import path once wrote places from a world id alone, which is everything
+ * a reconstruction returns and none of what the video carried — so those
+ * captures are silent and show the gradient tile. This fills that in without
+ * making a second copy of a place that is already in a journey.
+ *
+ * Only ever adds. A place that already has audio keeps the audio it has, since
+ * the one here was reconstructed from a file sitting beside the checkout and
+ * has no better claim than whatever was uploaded at capture time.
+ */
+export async function backfillPlaceMedia(
+  placeId: string,
+  media: {
+    audioFile?: (Blob & { name?: string }) | null;
+    audioSeconds?: number;
+    thumbnail?: Blob | null;
+  },
+): Promise<{ audio: boolean; thumbnail: boolean }> {
+  const existing = await getPlace(placeId);
+  if (!existing) throw new Error("That place is gone");
+
+  const wantsAudio = Boolean(media.audioFile) && !existing.audioUrl;
+  const wantsThumb = Boolean(media.thumbnail) && !existing.thumbnailUrl;
+  if (!wantsAudio && !wantsThumb) return { audio: false, thumbnail: false };
+
+  const patch: Record<string, unknown> = {};
+  if (wantsAudio && media.audioFile) {
+    patch.audioUrl = await uploadAudio(placeId, media.audioFile);
+    if (media.audioSeconds !== undefined) {
+      // Measured at extraction: a WAV served without a length answers Infinity
+      // for duration, so the transport has nothing to draw without this.
+      patch.audioSeconds = media.audioSeconds;
+    }
+  }
+  if (wantsThumb && media.thumbnail) {
+    patch.thumbnailUrl = await uploadThumbnail(placeId, media.thumbnail);
+  }
+
+  await updateDoc(doc(db, "places", placeId), patch);
+  return { audio: wantsAudio, thumbnail: wantsThumb };
+}
+
 export interface PlaceEdits {
   name: string;
   locationName: string;
