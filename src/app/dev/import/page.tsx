@@ -3,13 +3,20 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { backfillPlaceMedia, createPlace, subscribeToPlacesByUploader } from "@/lib/places";
+import {
+  backfillPlaceMedia,
+  createPlace,
+  repinPlace,
+  subscribeToPlacesByUploader,
+} from "@/lib/places";
 import { addPlacesToAlbum, createAlbum } from "@/lib/albums";
 import type { Place } from "@/lib/types";
 import { isFirebaseConfigured } from "@/lib/firebase";
 import type { WorldLabsCapture } from "@/lib/captureStatus";
 import { extractAudio } from "@/lib/audioTrack";
 import { grabPoster } from "@/lib/videoFrame";
+import { anonymisedLocation, locationToStore } from "@/lib/privacy";
+import { reverseGeocode } from "@/lib/geocode";
 import { readVideoCapture } from "@/lib/videoMeta";
 
 /**
@@ -70,10 +77,14 @@ export default function ImportWorldsPage() {
    * to fill in rather than create.
    */
   const [existing, setExisting] = useState<Map<string, Place>>(new Map());
+  /** Every place of the viewer's, for the re-pin below — not only imported ones. */
+  const [mine, setMine] = useState<Place[]>([]);
+  const [repinning, setRepinning] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     return subscribeToPlacesByUploader(user.uid, (places) => {
+      setMine(places);
       setExisting(
         new Map(
           places
@@ -219,7 +230,10 @@ export default function ImportWorldsPage() {
               audioSeconds: audio?.seconds,
               thumbnail: poster,
               capturedAt: filmed?.capturedAt ?? undefined,
-              location: filmed?.location ?? undefined,
+              // The walkthroughs these were made from carry real GPS, and a
+              // home office is somebody's home. Seeded on the world id so the
+              // pin is the same every time this runs.
+              location: locationToStore(entry.world_id, filmed?.location),
             },
           );
           if (album) await addPlacesToAlbum(album, [placeId]);
@@ -243,6 +257,8 @@ export default function ImportWorldsPage() {
       setRunning(false);
     }
   }, [rows, user, patch, existing]);
+
+  const repin = useRepin(mine, setRepinning);
 
   const newCount = rows.filter(
     ({ run: entry }) => !existing.has(entry.world_id),
@@ -326,6 +342,22 @@ export default function ImportWorldsPage() {
         </button>
       )}
 
+      {user && mine.some((place) => place.location) && (
+        <p className="mt-6 border-t border-white/10 pt-6 text-[14px] text-white/60">
+          {mine.filter((place) => place.location).length} of your places carry
+          the coordinates their video was filmed at.{" "}
+          <button
+            onClick={repin}
+            disabled={repinning !== null}
+            className="underline underline-offset-2 hover:text-white disabled:opacity-40"
+          >
+            {repinning
+              ? `Re-pinning ${repinning}…`
+              : "Scatter them across Toronto"}
+          </button>
+        </p>
+      )}
+
       {albumId && !running && (
         <p className="mt-4 text-[15px]">
           <Link
@@ -357,6 +389,33 @@ async function loadSourceVideo(name?: string): Promise<File | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Re-pins every place that already carries a location.
+ *
+ * Captures saved before this stored the coordinates their video was filmed at,
+ * which for anything shot indoors is somebody's address. Nothing about the
+ * capture changes but where the map says it is, and the label with it.
+ */
+function useRepin(
+  mine: Place[],
+  setRepinning: (value: string | null) => void,
+) {
+  return async () => {
+    const pinned = mine.filter((place) => place.location);
+    let done = 0;
+    for (const place of pinned) {
+      setRepinning(`${done}/${pinned.length}`);
+      const location = anonymisedLocation(place.id);
+      // Named from the decoy so the label agrees with the pin. A failed lookup
+      // clears the name rather than leaving the real one under a false pin.
+      const name = await reverseGeocode(location).catch(() => null);
+      await repinPlace(place.id, location, name).catch(() => false);
+      done += 1;
+    }
+    setRepinning(null);
+  };
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

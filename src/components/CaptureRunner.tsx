@@ -76,6 +76,7 @@ import { isFirebaseConfigured } from "@/lib/firebase";
 import CaptureQueue from "@/components/CaptureQueue";
 import { useAuth } from "@/lib/auth";
 import { getLiveLocation } from "@/lib/geolocation";
+import { ANONYMISE_LOCATIONS, locationToStore } from "@/lib/privacy";
 
 const SplatViewer = dynamic(() => import("@/components/SplatViewer"), {
   ssr: false,
@@ -244,9 +245,17 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
         const meta = await readVideoMeta(file);
         // Everything only the video can answer, read while the File is in hand:
         // after a reload there is no File left and the splat is still an hour out.
-        const found = await readVideoCapture(file);
+        let found = await readVideoCapture(file);
         if (!mountedRef.current) return;
         const when = found.capturedAt ?? fileDate(file);
+        // Swapped here, at the first moment the real coordinates exist, rather
+        // than at save. Everything downstream — the suggested name, the form,
+        // the pin, the document — then works from the decoy, and the real
+        // coordinates never reach a field anyone can read or a request that
+        // leaves the browser. Changing it at save would still have sent the
+        // true position to the geocoder to be named.
+        const pinned = locationToStore(item.id, found.location);
+        found = { ...found, location: pinned };
         dispatch({
           type: "meta-read",
           id: item.id,
@@ -397,8 +406,16 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           // Where the video says it was filmed is the true answer. The device's
           // own position only stands in for a walkthrough that carried no GPS —
           // which is what puts the place on the Map tab either way.
+          // The device's position stands in only for a walkthrough that
+          // carried none — and it is the person's own position, so it is
+          // swapped for the same decoy rather than being the one true
+          // coordinate that survives.
+          const live = ANONYMISE_LOCATIONS
+            ? null
+            : await getLiveLocation().catch(() => null);
           const location =
-            item.location ?? (await getLiveLocation().catch(() => null));
+            item.location ??
+            (ANONYMISE_LOCATIONS ? locationToStore(item.id, null) : live);
           const placeId = await createPlace(
             splat.name,
             // Already SPZ: World Labs stores it that way, so the transcode the

@@ -361,6 +361,31 @@ export async function backfillPlaceMedia(
   return { audio: wantsAudio, thumbnail: wantsThumb };
 }
 
+/**
+ * Moves a place's pin, and renames it to match.
+ *
+ * For places saved before captures were pinned away from where they were
+ * filmed. The name goes with the coordinates deliberately: a decoy pin under a
+ * label naming the real street is not a decoy, and leaving the old name is the
+ * easiest way to think the problem is solved when it is not.
+ *
+ * A place that never had a location is left alone — giving one to a capture
+ * that carried none would be inventing a fact rather than obscuring one.
+ */
+export async function repinPlace(
+  placeId: string,
+  location: { lat: number; lng: number },
+  locationName?: string | null,
+): Promise<boolean> {
+  const existing = await getPlace(placeId);
+  if (!existing?.location) return false;
+  await updateDoc(doc(db, "places", placeId), {
+    location,
+    locationName: locationName?.trim() ? locationName.trim() : deleteField(),
+  });
+  return true;
+}
+
 export interface PlaceEdits {
   name: string;
   locationName: string;
