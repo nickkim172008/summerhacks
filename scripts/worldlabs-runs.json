@@ -1,0 +1,82 @@
+{
+  "runs": [
+    {
+      "world_id": "f4f55314-6e56-4acd-9cb3-9dbebc59eb2b",
+      "display_name": "Atlas probe",
+      "model": "marble-1.0-draft",
+      "marble_url": "https://marble.worldlabs.ai/world/f4f55314-6e56-4acd-9cb3-9dbebc59eb2b",
+      "semantics_metadata": null,
+      "collider_mesh_url": "https://cdn.marble.worldlabs.ai/f4f55314-6e56-4acd-9cb3-9dbebc59eb2b/f41b6e34.glb",
+      "caption": "The scene is a small, sunlit bedroom, rendered in a realistic style, exuding a cozy and lived-in atmosphere. The overall tone is peaceful and inviting, with soft light illuminating the space. An unmade bed, covered with rumpled white sheets and a light blue duvet, dominates the center of the room, suggesting recent occupancy. A wooden headboard with a simple, clean design stands against the wall behind the bed. To the left of the bed, a small wooden nightstand holds a white ceramic lamp with a fabric shade. A window, draped with sheer white curtains, is positioned on the wall opposite the bed, allowing abundant natural light to stream in and cast soft shadows across the room. A wooden desk with a single drawer is situated beneath the window, a black office chair tucked neatly underneath it. On the desk, a stack of books and a small potted plant are visible. The walls are painted a light, neutral beige, providing a warm backdrop for the room's furnishings. A light-colored rug with a subtle geometric pattern covers the wooden floor, adding texture and warmth. The unmade bed is centrally located, with the nightstand to its left. The desk is positioned against the wall beneath the window, and the chair is directly in front of the desk. ",
+      "recorded_at": "2026-08-14T20:57:07.283Z",
+      "resolution": "500k",
+      "source_video": "(text prompt — API probe)",
+      "credits": 230,
+      "cost_line_items": [
+        {
+          "name": "Pano generation (text)",
+          "credits": 80
+        },
+        {
+          "name": "Draft world generation",
+          "credits": 150
+        }
+      ],
+      "splat_bytes": 5560632
+    },
+    {
+      "world_id": "cf14abf3-c165-4038-aaed-78960127d0ed",
+      "display_name": "Atlas outdoor A/B",
+      "model": "marble-1.1",
+      "marble_url": "https://marble.worldlabs.ai/world/cf14abf3-c165-4038-aaed-78960127d0ed",
+      "semantics_metadata": {
+        "metric_scale_factor": 2.6673927307128906,
+        "ground_plane_offset": 1.623167872428894
+      },
+      "collider_mesh_url": "https://cdn.marble.worldlabs.ai/cf14abf3-c165-4038-aaed-78960127d0ed/792262c1.glb",
+      "caption": "The scene is an urban streetscape, captured in a realistic style, showcasing a mix of modern architecture and infrastructure under a bright, overcast sky. The overall tone is functional and dynamic, reflecting a busy city environment. The street features multiple lanes of asphalt, clearly marked with white lines for traffic and dedicated bicycle lanes, indicated by white bicycle symbols. A metal bridge, with an intricate latticework design, spans across the street, carrying what appears to be a railway track overhead. Tall, contemporary buildings with glass facades and multi-colored paneling rise on both sides of the street. Some buildings have distinctive architectural elements, such as large, white, cylindrical columns that extend from the ground level upwards. Traffic lights and streetlights are suspended on overhead wires and poles, regulating the flow of vehicles and pedestrians. Pedestrian sidewalks, made of concrete slabs with tactile paving for accessibility, run alongside the street. Along the sidewalk, metal grates are embedded, likely for drainage or utility access. Billboards and signs, some advertising luxury residences, are placed strategically along the route. A pedestrian crosswalk with thick white stripes is visible, connecting the two sides of the street. The modern buildings with their colored panels line the right side of the street, with the white cylindrical columns forming a prominent feature on the building nearest to the sidewalk. The metal bridge is positioned further down the street, spanning across the lanes, while the traffic lights are mounted on poles at intersections. ",
+      "recorded_at": "2026-08-14T20:57:07.859Z",
+      "resolution": "500k",
+      "source_video": "IMG_1208.MOV",
+      "credits": 1600,
+      "cost_line_items": [
+        {
+          "name": "Pano generation (video)",
+          "credits": 100
+        },
+        {
+          "name": "World generation",
+          "credits": 1500
+        }
+      ],
+      "splat_bytes": 8002794
+    },
+    {
+      "world_id": "f8f22390-94a2-4760-86db-c604d765c446",
+      "display_name": "Atlas A/B #2",
+      "model": "marble-1.1",
+      "marble_url": "https://marble.worldlabs.ai/world/f8f22390-94a2-4760-86db-c604d765c446",
+      "semantics_metadata": {
+        "metric_scale_factor": 1.1063816547393799,
+        "ground_plane_offset": 1.3247201442718506
+      },
+      "collider_mesh_url": "https://cdn.marble.worldlabs.ai/f8f22390-94a2-4760-86db-c604d765c446/9a11b45c.glb",
+      "caption": "The scene is a realistic portrayal of a home office area that transitions into a dining space, exuding a comfortable and lived-in tone. A large, dark wooden dining table serves as the central piece, surrounded by various elements suggesting both work and leisure activities. Several laptops are open on the table, indicating a workspace, with one displaying colorful squares. A white and black printer sits on a white table behind one of the laptops, next to a window covered by a white roller blind. On the opposite side, a large piece of colorful abstract art in a black frame hangs on a light gray wall. To the right of the art, a small desk with a black office chair is visible, also with a laptop. A white chandelier with six lights, each encased in a frosted glass shade, hangs from the white ceiling, providing ambient lighting. Below the window, a patterned rug with abstract shapes in red, blue, and yellow covers a portion of the floor, extending toward a dark wooden chest of drawers. The white door, with two recessed panels and a black handle, stands ajar, revealing a glimpse of a dark tiled floor and what appears to be another room. The wooden table is positioned in the center of the room, with the office setup and the printer to its left and the art and additional desk to its right. The chandelier is directly above the table. ",
+      "recorded_at": "2026-08-14T20:57:07.978Z",
+      "resolution": "500k",
+      "source_video": "IMG_1210.MOV",
+      "credits": 1600,
+      "cost_line_items": [
+        {
+          "name": "Pano generation (video)",
+          "credits": 100
+        },
+        {
+          "name": "World generation",
+          "credits": 1500
+        }
+      ],
+      "splat_bytes": 7700000
+    }
+  ]
+}

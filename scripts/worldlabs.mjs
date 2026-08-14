@@ -17,15 +17,27 @@
  *     node scripts/worldlabs.mjs --video walk.mp4 --model marble-1.0-draft
  *     node scripts/worldlabs.mjs --operation OPERATION_ID   # resume a poll
  *     node scripts/worldlabs.mjs --world WORLD_ID           # download again
+ *     node scripts/worldlabs.mjs --list                     # what has been made
+ *     node scripts/worldlabs.mjs --restore                  # re-download it all
  *
  * Splats land in public/dev-splats/, which /dev can be pointed at.
+ *
+ * Every run is recorded in worldlabs-runs.json beside this file, and that is
+ * the part worth keeping: the splats are megabytes of binary that git should
+ * never carry, while a world stays on World Labs' CDN and costs nothing to
+ * fetch again. Losing public/dev-splats/ is a `--restore` away; losing the
+ * manifest means paying 1,500 credits a second time to learn the same thing.
  */
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const BASE = "https://api.worldlabs.ai/marble/v1";
 const OUT_DIR = "public/dev-splats";
+// fileURLToPath, not URL#pathname: the checkout lives under a directory with a
+// space in its name, and pathname hands back the percent-encoded form.
+const MANIFEST = fileURLToPath(new URL("worldlabs-runs.json", import.meta.url));
 
 const MODELS = [
   "marble-1.0-draft",
@@ -72,6 +84,8 @@ function fail(message) {
 }
 
 let API_KEY;
+/** What the last polled operation was billed, for the manifest row. */
+let lastCost = null;
 
 async function call(path, init = {}) {
   const res = await fetch(`${BASE}${path}`, {
@@ -185,6 +199,9 @@ async function pollOperation(operationId) {
         console.log(
           `  Cost ${operation.cost.total_credits} credits (${items})`,
         );
+        // Stashed for the manifest: only the operation knows what was billed,
+        // and by download() time it is out of reach.
+        lastCost = operation.cost;
       }
       return operation.response ?? (await getWorld(operation.metadata.world_id));
     }
@@ -197,11 +214,84 @@ async function getWorld(worldId) {
   return call(`/worlds/${encodeURIComponent(worldId)}`, { method: "GET" });
 }
 
+async function readManifest() {
+  try {
+    return JSON.parse(await readFile(MANIFEST, "utf8"));
+  } catch {
+    return { runs: [] }; // First run, or someone deleted it.
+  }
+}
+
+/**
+ * Records what a world was made from and what it cost. Keyed by world id, so
+ * re-downloading an existing world updates its row rather than adding another.
+ */
+async function recordRun(world, extra = {}) {
+  const manifest = await readManifest();
+  const existing = manifest.runs.findIndex((r) => r.world_id === world.world_id);
+  const row = {
+    world_id: world.world_id,
+    display_name: world.display_name ?? null,
+    model: world.model ?? null,
+    marble_url: world.world_marble_url ?? null,
+    semantics_metadata: world.assets?.splats?.semantics_metadata ?? null,
+    collider_mesh_url: world.assets?.mesh?.collider_mesh_url ?? null,
+    caption: world.assets?.caption ?? null,
+    recorded_at: new Date().toISOString(),
+    ...(existing >= 0 ? manifest.runs[existing] : {}),
+    ...extra,
+  };
+  // The freshly-read fields win over whatever the old row held; only the
+  // details this run cannot know (source video, cost) survive from before.
+  Object.assign(row, {
+    display_name: world.display_name ?? row.display_name,
+    semantics_metadata:
+      world.assets?.splats?.semantics_metadata ?? row.semantics_metadata,
+  });
+
+  if (existing >= 0) manifest.runs[existing] = row;
+  else manifest.runs.push(row);
+
+  await writeFile(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
+  return row;
+}
+
+async function listRuns() {
+  const { runs } = await readManifest();
+  if (runs.length === 0) return console.log("  No runs recorded yet.");
+  for (const run of runs) {
+    const scale = run.semantics_metadata;
+    console.log(
+      `\n  ${run.display_name ?? "(unnamed)"}  ${run.model ?? "?"}\n` +
+        `    world   ${run.world_id}\n` +
+        `    source  ${run.source_video ?? "?"}${run.credits ? `  (${run.credits} credits)` : ""}\n` +
+        `    scale   ${scale ? `x${scale.metric_scale_factor?.toFixed(3)}  ground ${scale.ground_plane_offset?.toFixed(3)}` : "none"}`,
+    );
+  }
+  console.log(`\n  ${runs.length} world(s). --restore re-downloads them all.`);
+}
+
+/** Pulls every recorded world back down, for a machine that has none of them. */
+async function restoreAll(resolution) {
+  const { runs } = await readManifest();
+  if (runs.length === 0) return console.log("  Nothing recorded to restore.");
+  for (const run of runs) {
+    console.log(`\n  ${run.display_name ?? run.world_id}`);
+    try {
+      await download(await getWorld(run.world_id), resolution, {
+        record: false,
+      });
+    } catch (error) {
+      console.error(`  ! ${run.world_id}: ${error?.message ?? error}`);
+    }
+  }
+}
+
 /**
  * Downloads the splat and thumbnail. The CDN serves both without the API key,
  * so these are plain fetches.
  */
-async function download(world, resolution) {
+async function download(world, resolution, { record = true, extra = {} } = {}) {
   await mkdir(OUT_DIR, { recursive: true });
   const urls = world.assets?.splats?.spz_urls ?? {};
   const url = urls[resolution] ?? urls["500k"] ?? Object.values(urls)[0];
@@ -232,6 +322,15 @@ async function download(world, resolution) {
   if (world.assets?.caption) {
     console.log(`\n  Caption: ${world.assets.caption.slice(0, 200)}…`);
   }
+
+  if (record) {
+    await recordRun(world, {
+      splat_bytes: bytes.length,
+      resolution,
+      ...extra,
+    });
+    console.log(`  Recorded in scripts/worldlabs-runs.json`);
+  }
 }
 
 async function main() {
@@ -244,12 +343,24 @@ async function main() {
     return;
   }
 
+  if (args.list) {
+    await listRuns();
+    return;
+  }
+
+  if (args.restore) {
+    await restoreAll(resolution);
+    return;
+  }
+
   let world;
+  let sourceVideo;
   if (typeof args.world === "string") {
     world = await getWorld(args.world);
   } else if (typeof args.operation === "string") {
     world = await pollOperation(args.operation);
   } else if (typeof args.video === "string") {
+    sourceVideo = basename(args.video);
     const model = typeof args.model === "string" ? args.model : "marble-1.1";
     if (!MODELS.includes(model)) {
       fail(`Unknown model "${model}". One of: ${MODELS.join(", ")}`);
@@ -267,7 +378,14 @@ async function main() {
     );
   }
 
-  await download(world, resolution);
+  await download(world, resolution, {
+    extra: {
+      ...(sourceVideo ? { source_video: sourceVideo } : {}),
+      ...(lastCost
+        ? { credits: lastCost.total_credits, cost_line_items: lastCost.line_items }
+        : {}),
+    },
+  });
 }
 
 main().catch((error) => fail(error?.message ?? String(error)));
