@@ -10,7 +10,7 @@
       "caption": "The scene is a small, sunlit bedroom, rendered in a realistic style, exuding a cozy and lived-in atmosphere. The overall tone is peaceful and inviting, with soft light illuminating the space. An unmade bed, covered with rumpled white sheets and a light blue duvet, dominates the center of the room, suggesting recent occupancy. A wooden headboard with a simple, clean design stands against the wall behind the bed. To the left of the bed, a small wooden nightstand holds a white ceramic lamp with a fabric shade. A window, draped with sheer white curtains, is positioned on the wall opposite the bed, allowing abundant natural light to stream in and cast soft shadows across the room. A wooden desk with a single drawer is situated beneath the window, a black office chair tucked neatly underneath it. On the desk, a stack of books and a small potted plant are visible. The walls are painted a light, neutral beige, providing a warm backdrop for the room's furnishings. A light-colored rug with a subtle geometric pattern covers the wooden floor, adding texture and warmth. The unmade bed is centrally located, with the nightstand to its left. The desk is positioned against the wall beneath the window, and the chair is directly in front of the desk. ",
       "recorded_at": "2026-08-14T20:57:07.283Z",
       "resolution": "500k",
-      "source_video": "(text prompt — API probe)",
+      "source_video": "(text prompt \u2014 API probe)",
       "credits": 230,
       "cost_line_items": [
         {
@@ -77,6 +77,33 @@
         }
       ],
       "splat_bytes": 7700000
+    },
+    {
+      "world_id": "95805a62-0b53-4b6c-a709-1d627880b100",
+      "display_name": "Atlas A/B #3",
+      "model": "marble-1.1",
+      "marble_url": "https://marble.worldlabs.ai/world/95805a62-0b53-4b6c-a709-1d627880b100",
+      "semantics_metadata": {
+        "metric_scale_factor": 3.0941414833068848,
+        "ground_plane_offset": 1.8663392066955566
+      },
+      "collider_mesh_url": "https://cdn.marble.worldlabs.ai/95805a62-0b53-4b6c-a709-1d627880b100/bb1acd72.glb",
+      "caption": "The scene is a realistic urban outdoor setting, imbued with a casual and inviting tone, perfect for a relaxed dining experience. A brightly colored building with murals on its exterior serves as a central feature, housing an eatery with outdoor seating. Large trees with green foliage line the street, providing shade and a natural element to the urban landscape. The ground consists of a paved sidewalk and a raised wooden deck area with picnic tables and a large red umbrella, offering an open-air dining option. Bicycles are parked near the building and on the sidewalk, indicating a bike-friendly environment. Street signs and poles are visible along the paved areas, suggesting an active street. The building itself is adorned with vibrant murals and signs, including a \"Kibo the Bikes\" sign with a QR code and another menu board displaying various food items. The eatery building with its colorful murals stands to the right of the large trees, with a paved sidewalk directly in front of it. The wooden deck with picnic tables and the red umbrella is positioned adjacent to the sidewalk, to the left of the eatery. Bicycles are parked both near the entrance of the eatery and further down the sidewalk, along the curb. Street signs and poles are interspersed along the paved sidewalk, aligning with the general urban setting. ",
+      "recorded_at": "2026-08-14T21:02:15.510Z",
+      "splat_bytes": 7800225,
+      "resolution": "500k",
+      "source_video": "IMG_1202.MOV",
+      "credits": 1600,
+      "cost_line_items": [
+        {
+          "name": "Pano generation (video)",
+          "credits": 100
+        },
+        {
+          "name": "World generation",
+          "credits": 1500
+        }
+      ]
     }
   ]
 }
