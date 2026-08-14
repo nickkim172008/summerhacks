@@ -17,6 +17,7 @@ import { deleteDoc } from "firebase/firestore";
 import { db, storage } from "./firebase";
 import { uploadAudio, uploadSplat, uploadThumbnail } from "./splatStore";
 import type { Place } from "./types";
+import type { WorldLabsCapture } from "./captureStatus";
 
 /** Prefer when it was filmed; fall back to when it was saved. */
 export function placeTakenMs(place: Place): number {
@@ -257,6 +258,13 @@ export async function createPlace(
     audioSeconds?: number;
     /** A frame off the walkthrough, taken when its video was picked. */
     thumbnail?: Blob | null;
+    /**
+     * What the reconstruction backend knows about this world that the splat
+     * itself does not say — its id, the scale it came back at, the collision
+     * mesh. Written because regenerating a world to recover it costs 1,500
+     * credits, and because the scale numbers are needed to place anything in it.
+     */
+    world?: WorldLabsCapture;
   },
 ) {
   const placeRef = doc(collection(db, "places"));
@@ -292,8 +300,20 @@ export async function createPlace(
     ...(options?.capturedAt ? { capturedAt: options.capturedAt } : {}),
     ...(options?.location ? { location: options.location } : {}),
     ...(options?.locationName ? { locationName: options.locationName } : {}),
+    ...(options?.world ? { world: pruneUndefined(options.world) } : {}),
   });
   return placeRef.id;
+}
+
+/**
+ * Firestore rejects an undefined value anywhere in a document, nested included,
+ * so a world whose optional details are missing has to arrive without the keys
+ * rather than with empty ones.
+ */
+function pruneUndefined<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, v]) => v !== undefined),
+  ) as Partial<T>;
 }
 
 export interface PlaceEdits {

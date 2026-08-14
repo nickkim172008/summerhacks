@@ -1,4 +1,5 @@
 import type { Timestamp } from "firebase/firestore";
+import type { WorldLabsCapture } from "./captureStatus";
 
 export interface Vec3 {
   x: number;
@@ -38,6 +39,12 @@ export interface Place {
    * edit location without opening every album up to a collection query.
    */
   albumIds?: string[];
+  /**
+   * What the reconstruction backend knows about this capture beyond its splat.
+   * Absent on everything captured before the move to World Labs, and on
+   * anything imported by hand — so every reader has to treat it as optional.
+   */
+  world?: WorldLabsCapture;
 }
 
 /** Who may see a journey outside its members. Missing means private. */

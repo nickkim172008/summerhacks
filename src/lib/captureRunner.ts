@@ -15,7 +15,7 @@
 import type { ExtractedAudio } from "./audioTrack";
 import type { StatusReport } from "./captureJob";
 import type { CaptureJob } from "./captureQueue";
-import type { KiriStatus } from "./kiri";
+import type { CaptureStatus, WorldLabsCapture } from "./captureStatus";
 
 /**
  * A blip during a 90-minute job is not a failure, so polling rides them out —
@@ -99,7 +99,13 @@ export interface CaptureItem {
   problem: string | null;
   startedAt: number | null;
   uploadFraction: number;
-  status: KiriStatus | null;
+  status: CaptureStatus | null;
+  /**
+   * What the finished world is, beyond its splat. Arrives with the status that
+   * reports success and is held until the place is written, since that is the
+   * first moment there is a document to put it on.
+   */
+  world: WorldLabsCapture | null;
   pollFailures: number;
   error: string | null;
   /**
@@ -207,6 +213,7 @@ function blankItem(id: string, name: string): CaptureItem {
     id,
     name,
     phase: "checking",
+    world: null,
     file: null,
     serialize: null,
     albumId: null,
@@ -514,12 +521,16 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
       const settled: CaptureItem = {
         ...item,
         status: event.report.status,
+        // Only ever arrives with the report that says success, so a later poll
+        // finding nothing must not wipe what an earlier one established.
+        world: event.report.world ?? item.world,
         pollFailures: 0,
         error: null,
       };
       if (event.report.failed) {
-        // KIRI could not reconstruct this walkthrough. Retrying the same task id
-        // asks the same question and gets the same answer.
+        // The world could not be generated. Retrying the same operation id asks
+        // the same question and gets the same answer — and World Labs bills at
+        // submit, so a retry is another 1,500 credits, not a free second go.
         return {
           ...settled,
           phase: "failed",

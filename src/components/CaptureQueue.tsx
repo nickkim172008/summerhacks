@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
-import { KIRI_STATUS_LABEL } from "@/lib/kiri";
+import { CAPTURE_STATUS_LABEL } from "@/lib/captureStatus";
 import {
   isDetailable,
   isRetryable,
@@ -554,7 +554,7 @@ function describePhase(item: CaptureItem) {
       if (item.demo) return "Queued for reconstruction";
       return item.status === null
         ? "Checking on it…"
-        : `${KIRI_STATUS_LABEL[item.status]}.`;
+        : `${CAPTURE_STATUS_LABEL[item.status]}.`;
     case "downloading":
       return "Downloading your place…";
     case "previewable":

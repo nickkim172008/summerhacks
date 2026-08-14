@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PlaceExperience from "@/components/PlaceExperience";
 import PlaceDetailsEditor from "@/components/PlaceDetailsEditor";
+import WorldDetails from "@/components/WorldDetails";
 import { getPlace } from "@/lib/places";
 import {
   canEditAlbum,
@@ -157,6 +158,8 @@ function PlaceView({ params }: { params: Promise<{ placeId: string }> }) {
         backLabel={exitLabel}
         onEdit={canEditPlace ? () => setEditing(true) : undefined}
       />
+      {/* Provenance is for whoever captured it, not for a visitor. */}
+      {isUploader && <WorldDetails place={place} />}
       {editing && (
         <PlaceDetailsEditor
           place={place}

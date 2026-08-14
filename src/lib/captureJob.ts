@@ -1,4 +1,4 @@
-import type { KiriStatus } from "./kiri";
+import type { CaptureStatus, WorldLabsCapture } from "./captureStatus";
 
 /** One definition of the job shape, declared next to the storage that owns it. */
 export type { CaptureJob } from "./captureQueue";
@@ -37,9 +37,13 @@ export function uploadVideo(
 }
 
 export interface StatusReport {
-  status: KiriStatus;
+  status: CaptureStatus;
   ready: boolean;
   failed: boolean;
+  /** Why it failed, when it did — including that the credits are spent. */
+  error?: string;
+  /** Present once ready: what the world is, beyond its splat. */
+  world?: WorldLabsCapture;
 }
 
 export async function fetchStatus(serialize: string): Promise<StatusReport> {
@@ -51,11 +55,22 @@ export async function fetchStatus(serialize: string): Promise<StatusReport> {
   return body as StatusReport;
 }
 
-/** The finished PLY, extracted server-side from KIRI's result zip. */
-export async function fetchSplat(serialize: string): Promise<Blob> {
-  const res = await fetch(
-    `/api/capture/model?serialize=${encodeURIComponent(serialize)}`,
-  );
+/**
+ * The finished splat, already SPZ — World Labs stores it that way, so nothing
+ * transcodes it on arrival any more.
+ *
+ * Prefers the world id when the job has one: an operation stops being
+ * addressable three hours after it starts, and a capture left overnight would
+ * otherwise come back to a job that has aged out while its world is still there.
+ */
+export async function fetchSplat(
+  serialize: string,
+  worldId?: string | null,
+): Promise<Blob> {
+  const query = worldId
+    ? `world=${encodeURIComponent(worldId)}`
+    : `serialize=${encodeURIComponent(serialize)}`;
+  const res = await fetch(`/api/capture/model?${query}`);
   if (!res.ok) throw new Error((await res.json()).error ?? "Download failed");
   return res.blob();
 }

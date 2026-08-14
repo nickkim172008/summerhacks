@@ -10,12 +10,13 @@ import {
   useSyncExternalStore,
 } from "react";
 import dynamic from "next/dynamic";
+import { CAPTURE_STATUS_LABEL } from "@/lib/captureStatus";
 import {
-  KIRI_STATUS_LABEL,
   MAX_VIDEO_HEIGHT,
   MAX_VIDEO_SECONDS,
   MAX_VIDEO_WIDTH,
 } from "@/lib/kiri";
+import { MAX_UPLOAD_BYTES } from "@/lib/worldlabs";
 import { fetchSplat, fetchStatus, uploadVideo } from "@/lib/captureJob";
 import {
   listJobs,
@@ -250,10 +251,11 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           type: "meta-read",
           id: item.id,
           meta,
-          // Demo mode never reaches KIRI, so KIRI's limits are not this row's
-          // problem. An unreadable file is let through as it always was: the
-          // server rejects what it must.
-          problem: DEMO_CAPTURE || !meta ? null : describeProblem(meta),
+          // Demo mode never reaches the backend, so its limits are not this
+          // row's problem. An unreadable file is let through as it always was:
+          // the server rejects what it must.
+          problem:
+            DEMO_CAPTURE || !meta ? null : describeProblem(meta, file.size),
           details: toDetails(found, when),
         });
 
@@ -347,7 +349,12 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
       const serialize = item.serialize;
       if (!serialize) return;
       try {
-        const blob = await downloadLimit(() => fetchSplat(serialize));
+        const blob = await downloadLimit(() =>
+          // By world id when it is known: an operation stops being addressable
+          // three hours in, and a capture left overnight would otherwise find
+          // its job aged out while the world is still there.
+          fetchSplat(serialize, item.world?.worldId),
+        );
         const splat = attachSplat(
           item.id,
           splatFile(blob, item.name),
@@ -394,7 +401,9 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
             item.location ?? (await getLiveLocation().catch(() => null));
           const placeId = await createPlace(
             splat.name,
-            await toSpz(splat),
+            // Already SPZ: World Labs stores it that way, so the transcode the
+            // KIRI path ran here has nothing left to do.
+            splat.file,
             user?.uid ?? "anonymous",
             {
               location,
@@ -403,6 +412,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
               audioFile: wav && wavFile(wav, splat.name),
               audioSeconds: item.audioSeconds ?? undefined,
               thumbnail: poster,
+              world: item.world ?? undefined,
             },
           );
           const album = item.albumId ?? albumId;
@@ -539,7 +549,9 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
       try {
         const report = await fetchStatus(target.serialize as string);
         if (stopped) return;
-        const message = KIRI_STATUS_LABEL[report.status];
+        // A failure now says why, and says that the credits went with it —
+        // World Labs charges at submit and does not return them.
+        const message = report.error ?? CAPTURE_STATUS_LABEL[report.status];
         // Written down before the row hears about it: a refusal is final, and a
         // reload that found this job still looking unanswered would put it back
         // in the poll loop to be told the same thing again.
@@ -771,13 +783,21 @@ async function liftAudio(file: File) {
   }
 }
 
-function describeProblem({ seconds, width, height }: VideoMeta) {
+function describeProblem({ seconds, width, height }: VideoMeta, bytes?: number) {
+  // Checked first because it is the one that bites in practice. World Labs
+  // signs its upload URL over an x-goog-content-length-range of 100 MB, and a
+  // 1080p iPhone walkthrough passes that at about two and a half minutes —
+  // sooner than the duration cap below. Caught here, or the whole file is sent
+  // to earn a bare refusal from Google Cloud Storage.
+  if (bytes !== undefined && bytes > MAX_UPLOAD_BYTES) {
+    return `too big at ${Math.round(bytes / 1e6)} MB, max ${Math.round(MAX_UPLOAD_BYTES / 1e6)} MB`;
+  }
   if (seconds > MAX_VIDEO_SECONDS) {
     return `too long, max ${MAX_VIDEO_SECONDS / 60} minutes`;
   }
-  // KIRI documents the cap as a frame size, not an orientation, and phones
-  // record portrait — so measure the long and short sides, not width and
-  // height, or every handheld walkthrough gets rejected at 1080×1920.
+  // The cap is a frame size, not an orientation, and phones record portrait —
+  // so measure the long and short sides, not width and height, or every
+  // handheld walkthrough gets rejected at 1080×1920.
   if (
     Math.max(width, height) > MAX_VIDEO_WIDTH ||
     Math.min(width, height) > MAX_VIDEO_HEIGHT
@@ -817,27 +837,10 @@ function prettyName(fileName: string) {
   return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
 }
 
-/**
- * KIRI returns float32 PLY — 65MB for a small room, most of it spherical
- * harmonics stored at full precision. SPZ quantizes them to roughly a
- * thirteenth of the size with no visible loss, and Spark reads it natively,
- * so only the compressed copy is ever uploaded or served.
- *
- * Spark is imported lazily: the form and progress views have no use for it.
- * Saves run one at a time — this holds the whole capture in memory, decoded.
- */
-async function toSpz({ file, name }: { file: File; name: string }) {
-  const { transcodeSpz } = await import("@sparkjsdev/spark");
-  const { fileBytes } = await transcodeSpz({
-    inputs: [{ fileBytes: new Uint8Array(await file.arrayBuffer()) }],
-  });
-  return new File([fileBytes as BlobPart], `${slug(name)}.spz`, {
-    type: "application/octet-stream",
-  });
-}
-
 function splatFile(blob: Blob, name: string) {
-  return new File([blob], `${slug(name)}.ply`, {
+  // .spz now, not .ply — what arrives from World Labs is already the stored
+  // format, and Storage keys the object off this name.
+  return new File([blob], `${slug(name)}.spz`, {
     type: "application/octet-stream",
   });
 }

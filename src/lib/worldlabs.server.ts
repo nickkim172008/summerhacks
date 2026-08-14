@@ -72,6 +72,8 @@ export type Operation = {
   metadata: {
     progress?: { status: OperationStatus; description?: string };
     world_id?: string;
+    /** The model as the API names it back, e.g. "marble-1.1". */
+    public_model_name?: string;
   } | null;
   response: World | null;
   cost: {
