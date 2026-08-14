@@ -1,4 +1,5 @@
 import type { EntryPoint } from "@/lib/types";
+import type { WorldLabsCapture } from "@/lib/captureStatus";
 
 /**
  * The contract every splat renderer honours, so the screens above one never
@@ -8,6 +9,13 @@ import type { EntryPoint } from "@/lib/types";
 export interface SplatViewerProps {
   splatUrl: string;
   entryPoint?: EntryPoint;
+  /**
+   * What the reconstruction knows about this capture. Only the scale factor and
+   * ground plane are read, and only to stand the camera on the floor rather
+   * than at the middle of the bounding box — absent on every capture made
+   * before World Labs, which then frames off the bounds as it always did.
+   */
+  world?: WorldLabsCapture;
   /** Fired once the splat has decoded — for posters that fade out over it. */
   onReady?: () => void;
 }
@@ -16,8 +24,8 @@ export interface SplatViewerProps {
  * Which renderer is mounted. PlayCanvas is what SuperSplat is built on and is
  * the default; Spark stays reachable for a side-by-side while the swap settles.
  *
- * Spark is not gone from the app either way: the capture pipeline still calls
- * its `transcodeSpz` to turn KIRI's PLY into the SPZ we store.
+ * Spark is no longer on the capture path: World Labs returns SPZ, so the
+ * `transcodeSpz` step it was kept for is gone.
  */
 export type SplatRenderer = "playcanvas" | "spark";
 

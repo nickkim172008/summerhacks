@@ -27,6 +27,14 @@ const UPRIGHT_X_DEGREES = 180;
 /** Matches the framing Spark used, so the swap does not change how wide a room reads. */
 const FOV_DEGREES = 60;
 
+/**
+ * Where a person's eyes are, in metres. Only usable on a capture that came back
+ * with a metric scale factor — raw output arrives at arbitrary size, and the
+ * four generated so far ranged from 1.1x to 3.1x, so a fixed number in splat
+ * units would be waist height in one capture and above the roof in another.
+ */
+const EYE_HEIGHT_METRES = 1.6;
+
 /** How fast a drag turns the view, in radians per pixel. */
 const LOOK_SPEED = 0.005;
 /** Just under a right angle: level with the ceiling, never through it. */
@@ -84,6 +92,7 @@ const MOVE_KEYS: Record<string, readonly [number, number, number]> = {
 export default function PlayCanvasSplatViewer({
   splatUrl,
   entryPoint,
+  world,
   onReady,
 }: SplatViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -97,9 +106,11 @@ export default function PlayCanvasSplatViewer({
 
   // Latest-value refs so the load callbacks never close over stale props.
   const entryPointRef = useRef(entryPoint);
+  const worldRef = useRef(world);
   const onReadyRef = useRef(onReady);
   useEffect(() => {
     entryPointRef.current = entryPoint;
+    worldRef.current = world;
     onReadyRef.current = onReady;
   });
 
@@ -288,7 +299,7 @@ export default function PlayCanvasSplatViewer({
       if (entity.gsplat) entity.gsplat.resource = resource;
       splat = entity;
 
-      frame(resource);
+      frame(entity, resource);
       // A frame has to have been drawn before a poster fades off it, or the
       // fade reveals an empty canvas.
       app.once("frameend", () => {
@@ -302,16 +313,29 @@ export default function PlayCanvasSplatViewer({
      * Otherwise the middle of the capture, which is what SuperSplat uses too —
      * its focal point is the splat's bound centre.
      */
-    function frame(resource: pc.GSplatResource) {
-      // The resource's own bounds, not the component's.
-      // `gsplat.instance` returns null under unified rendering, which engine
-      // 2.21 turned on by default, so the old route through
-      // `instance.meshInstance.aabb` reads null on every capture: nothing was
-      // centring, and near and far clip were left at their defaults. The
-      // resource has carried an aabb the whole time and does not care which
-      // renderer draws it.
-      const bounds = resource.aabb;
-      if (bounds) sceneRadius = bounds.halfExtents.length();
+    function frame(entity: pc.Entity, resource: pc.GSplatResource) {
+      // In world space, not the resource's own.
+      //
+      // `resource.aabb` is measured in the splat's local coordinates, and the
+      // entity carries a 180° turn about X to stand the capture upright — so a
+      // local centre of (x, y, z) is really at (x, -y, -z) once drawn. Copying
+      // the local centre straight onto the pivot put the camera that far off on
+      // two axes, which for any capture whose centre is not near the origin
+      // means standing outside the thing entirely.
+      //
+      // Transforming the box rather than negating by hand because the rotation
+      // is the entity's business, not this function's.
+      const local = resource.aabb;
+      if (!local) return;
+      const bounds = new pc.BoundingBox();
+      bounds.setFromTransformedAabb(local, entity.getWorldTransform());
+      sceneRadius = bounds.halfExtents.length();
+
+      const radius = sceneRadius;
+      if (camera.camera && radius > 0) {
+        camera.camera.nearClip = Math.max(radius / 1000, 0.001);
+        camera.camera.farClip = radius * 100;
+      }
 
       const entry = entryPointRef.current;
       if (entry) {
@@ -327,18 +351,32 @@ export default function PlayCanvasSplatViewer({
         return;
       }
 
-      if (!bounds) return;
       pivot.copy(bounds.center);
+
+      // Stand on the floor rather than at the middle of the box.
+      //
+      // The centre of a room's bounding box is halfway up it — around head
+      // height in a bedroom, but storeys up in a street, and under the floor in
+      // anything whose geometry runs deeper than it does tall. World Labs says
+      // where the ground is, so when a capture carries that, the camera stands
+      // an eye above it instead.
+      //
+      // The floor point is built in local coordinates and put through the same
+      // transform as the box, so the flip is handled once, in one place.
+      const scale = worldRef.current?.metricScaleFactor;
+      const ground = worldRef.current?.groundPlaneOffset;
+      if (scale && scale > 0 && ground !== undefined) {
+        const floor = new pc.Vec3(local.center.x, ground / scale, local.center.z);
+        entity.getWorldTransform().transformPoint(floor, floor);
+        // Rotation preserves length, so an eye height in metres converts by the
+        // same factor whichever space it lands in.
+        pivot.set(floor.x, floor.y + EYE_HEIGHT_METRES / scale, floor.z);
+      }
+
       distance = 0;
       yaw = 0;
       pitch = 0;
       place();
-
-      const radius = bounds.halfExtents.length();
-      if (camera.camera && radius > 0) {
-        camera.camera.nearClip = Math.max(radius / 1000, 0.001);
-        camera.camera.farClip = radius * 100;
-      }
     }
 
     void load().catch((error: unknown) => {

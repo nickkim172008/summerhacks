@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PlaceExperience from "@/components/PlaceExperience";
 import type { Place } from "@/lib/types";
+import type { WorldLabsCapture } from "@/lib/captureStatus";
 import type { Timestamp } from "firebase/firestore";
 
 // Local harness: renders a capture without depending on
@@ -42,6 +43,17 @@ const PLACES: Record<string, Place> = {
  */
 const LOCAL_SPLAT_URL = process.env.NEXT_PUBLIC_DEV_SPLAT_URL;
 
+interface ManifestRun {
+  world_id: string;
+  display_name: string | null;
+  model: string | null;
+  caption: string | null;
+  semantics_metadata: {
+    metric_scale_factor?: number;
+    ground_plane_offset?: number;
+  } | null;
+}
+
 const LOCAL_PLACE: Record<string, Place> = LOCAL_SPLAT_URL
   ? {
       local: {
@@ -59,7 +71,42 @@ export default function DevPage() {
   const [placeId, setPlaceId] = useState(
     LOCAL_SPLAT_URL ? "local" : "butterfly",
   );
-  const [places] = useState({ ...PLACES, ...LOCAL_PLACE });
+  const [places, setPlaces] = useState({ ...PLACES, ...LOCAL_PLACE });
+
+  // A downloaded splat is named for the world it came from, so the manifest can
+  // be searched for its scale and ground plane without any of it being
+  // configured twice. Without them the harness frames off the bounding box,
+  // which is the thing being compared against.
+  useEffect(() => {
+    const worldId = LOCAL_SPLAT_URL?.match(/([0-9a-f-]{36})\.spz$/i)?.[1];
+    if (!worldId) return;
+    let cancelled = false;
+    fetch("/api/dev/worlds")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { runs?: ManifestRun[] } | null) => {
+        const run = body?.runs?.find((entry) => entry.world_id === worldId);
+        const scale = run?.semantics_metadata;
+        if (cancelled || !run) return;
+        const world: WorldLabsCapture = {
+          worldId,
+          model: run.model ?? undefined,
+          caption: run.caption ?? undefined,
+          metricScaleFactor: scale?.metric_scale_factor,
+          groundPlaneOffset: scale?.ground_plane_offset,
+        };
+        setPlaces((current) => ({
+          ...current,
+          local: { ...current.local, name: run.display_name ?? "Local splat", world },
+        }));
+      })
+      .catch(() => {
+        // The manifest is a development convenience; without it the harness
+        // still renders, just framed off the bounds.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="h-screen w-screen">

@@ -147,7 +147,11 @@ export default function PlaceExperience({
       {/* The pointer listener sits here rather than on the root so that a press
           on the chrome — Next, Exit — is never mistaken for a look around. */}
       <div className="h-full w-full" onPointerDown={beginLook}>
-        <SplatViewer splatUrl={place.splatUrl} entryPoint={place.entryPoint} />
+        <SplatViewer
+          splatUrl={place.splatUrl}
+          entryPoint={place.entryPoint}
+          world={place.world}
+        />
       </div>
 
       {/* Two scrims, one at each end, so white chrome holds against a bright
