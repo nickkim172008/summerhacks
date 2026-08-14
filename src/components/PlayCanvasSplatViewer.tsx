@@ -375,6 +375,29 @@ export default function PlayCanvasSplatViewer({
         return;
       }
 
+      // Captures made before World Labs open where they always did: at the
+      // origin, looking down -Z.
+      //
+      // Not nostalgia. Until recently `frame()` read its bounds through
+      // `gsplat.instance`, which returns null under the unified rendering
+      // engine 2.21 switched on — so it took its early return on every capture
+      // and the camera simply stayed where it was put. Everything captured in
+      // that period was framed, named and judged under that behaviour, and the
+      // SummerHacks journey was composed against it. Re-aiming those now would
+      // be changing shots somebody already chose.
+      //
+      // Absence of reconstruction metadata is the test rather than an album
+      // name: what it really asks is "was this captured before the pipeline
+      // knew where the floor was", and nothing captured from here on will be.
+      if (!worldRef.current) {
+        pivot.set(0, 0, 0);
+        distance = 0;
+        yaw = 0;
+        pitch = 0;
+        place();
+        return;
+      }
+
       if (!framing) return;
 
       // Standing height above the trimmed floor. Where World Labs reports a
