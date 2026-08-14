@@ -179,13 +179,23 @@ export default function ImportWorldsPage() {
               audioSeconds: audio?.seconds,
               thumbnail: poster,
             });
+            // Re-pinned here as well. A place written before captures were
+            // pinned away from where they were filmed still holds the real
+            // coordinates, and adding sound to it does not change that — so
+            // repairing one without the other leaves the thing that matters.
+            const moved = await repinToronto(already);
             patch(entry.world_id, {
               state: "done",
-              detail: filled.audio
-                ? "sound added"
-                : already.audioUrl
-                  ? "already had sound"
-                  : "no audio on that video",
+              detail: [
+                filled.audio
+                  ? "sound added"
+                  : already.audioUrl
+                    ? "already had sound"
+                    : "no audio on that video",
+                moved ? "re-pinned" : null,
+              ]
+                .filter(Boolean)
+                .join(" · "),
               placeId: already.id,
             });
             continue;
@@ -259,6 +269,11 @@ export default function ImportWorldsPage() {
   }, [rows, user, patch, existing]);
 
   const repin = useRepin(mine, setRepinning);
+  // Anything outside the box the decoys are drawn from still holds what the
+  // video said. Not proof — a real coordinate could fall inside Toronto, which
+  // is exactly the case for anything genuinely filmed here — but it is what can
+  // be told from the outside, and it errs toward offering the sweep again.
+  const realCount = mine.filter(inToronto.notYet).length;
 
   const newCount = rows.filter(
     ({ run: entry }) => !existing.has(entry.world_id),
@@ -342,20 +357,48 @@ export default function ImportWorldsPage() {
         </button>
       )}
 
-      {user && mine.some((place) => place.location) && (
-        <p className="mt-6 border-t border-white/10 pt-6 text-[14px] text-white/60">
-          {mine.filter((place) => place.location).length} of your places carry
-          the coordinates their video was filmed at.{" "}
-          <button
-            onClick={repin}
-            disabled={repinning !== null}
-            className="underline underline-offset-2 hover:text-white disabled:opacity-40"
-          >
-            {repinning
-              ? `Re-pinning ${repinning}…`
-              : "Scatter them across Toronto"}
-          </button>
-        </p>
+      {user && (
+        <section className="mt-8 rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] p-5">
+          <h2 className="text-[15px] font-semibold text-amber-100">
+            Where your captures say they are
+          </h2>
+          {realCount > 0 ? (
+            <>
+              <p className="mt-1 text-[14px] leading-relaxed text-amber-100/70">
+                {realCount} of your {mine.length} places still carry the
+                coordinates their video was filmed at. A phone writes GPS into
+                the container, and an indoor capture is usually somebody&rsquo;s
+                home — this moves each to a point in Toronto derived from its
+                own id, and renames it to match.
+              </p>
+              <button
+                onClick={repin}
+                disabled={repinning !== null}
+                className="mt-4 rounded-full bg-amber-200 px-5 py-2.5 text-[14px] font-medium text-[#2A1D05] disabled:opacity-40"
+              >
+                {repinning
+                  ? `Re-pinning ${repinning}…`
+                  : `Scatter ${realCount} place${realCount === 1 ? "" : "s"} across Toronto`}
+              </button>
+              <ul className="mt-4 space-y-1 text-[12px] text-amber-100/50">
+                {mine
+                  .filter(inToronto.notYet)
+                  .slice(0, 8)
+                  .map((place) => (
+                    <li key={place.id} className="font-mono">
+                      {place.name} — {place.location!.lat.toFixed(4)},{" "}
+                      {place.location!.lng.toFixed(4)}
+                    </li>
+                  ))}
+              </ul>
+            </>
+          ) : (
+            <p className="mt-1 text-[14px] text-amber-100/70">
+              Every place with a location is pinned inside Toronto. Nothing here
+              is where it was filmed.
+            </p>
+          )}
+        </section>
       )}
 
       {albumId && !running && (
@@ -398,6 +441,33 @@ async function loadSourceVideo(name?: string): Promise<File | null> {
  * which for anything shot indoors is somebody's address. Nothing about the
  * capture changes but where the map says it is, and the label with it.
  */
+/**
+ * Moves one place to a Toronto point derived from its own id, and renames it
+ * from there. Returns false for a place that never had a location: giving one
+ * to a capture that carried none invents a fact rather than hiding one.
+ */
+const inToronto = {
+  notYet: (place: Place) => {
+    const at = place.location;
+    if (!at) return false;
+    return !(
+      at.lat >= 43.6 &&
+      at.lat <= 43.82 &&
+      at.lng >= -79.57 &&
+      at.lng <= -79.23
+    );
+  },
+};
+
+async function repinToronto(place: Place): Promise<boolean> {
+  if (!place.location) return false;
+  const location = anonymisedLocation(place.id);
+  // Named from the decoy so the label agrees with the pin. A failed lookup
+  // clears the name rather than leaving the real street under a false pin.
+  const name = await reverseGeocode(location).catch(() => null);
+  return repinPlace(place.id, location, name).catch(() => false);
+}
+
 function useRepin(
   mine: Place[],
   setRepinning: (value: string | null) => void,
@@ -407,11 +477,7 @@ function useRepin(
     let done = 0;
     for (const place of pinned) {
       setRepinning(`${done}/${pinned.length}`);
-      const location = anonymisedLocation(place.id);
-      // Named from the decoy so the label agrees with the pin. A failed lookup
-      // clears the name rather than leaving the real one under a false pin.
-      const name = await reverseGeocode(location).catch(() => null);
-      await repinPlace(place.id, location, name).catch(() => false);
+      await repinToronto(place);
       done += 1;
     }
     setRepinning(null);
