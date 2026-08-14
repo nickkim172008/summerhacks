@@ -51,7 +51,9 @@ const PITCH_LIMIT = Math.PI / 2 - 0.02;
 const FREE_LOOK = process.env.NEXT_PUBLIC_DEV_FREE_LOOK === "true";
 
 /**
- * How fast a held key moves the camera, in metres per second — a brisk walk.
+ * How fast a held key moves the camera, in metres per second — a jog rather
+ * than a walk, because covering a 113m intersection at walking pace is a
+ * minute of holding a key down.
  *
  * Metres rather than a fraction of the capture, because a fraction is not a
  * speed. Sizing it off the scene made the same keypress mean 0.43 m/s in a
@@ -59,14 +61,14 @@ const FREE_LOOK = process.env.NEXT_PUBLIC_DEV_FREE_LOOK === "true";
  * the reason moving felt like a different control in every capture. A metre is
  * a metre in all of them.
  */
-const WALK_SPEED_METRES_PER_SECOND = 2;
+const WALK_SPEED_METRES_PER_SECOND = 3.5;
 
 /**
  * The fallback, for a capture with no metric scale — everything from before
  * World Labs. Nothing there says what a unit is, so speed can only be a
  * fraction of the capture's own radius and will still differ between them.
  */
-const MOVE_SPEED_FRACTION = 0.12;
+const MOVE_SPEED_FRACTION = 0.2;
 
 /** Multiplies whichever of the two applies, so neither needs a rebuild to tune. */
 const MOVE_SPEED_MULTIPLIER =
