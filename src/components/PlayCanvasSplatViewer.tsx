@@ -48,14 +48,33 @@ const PITCH_LIMIT = Math.PI / 2 - 0.02;
  */
 const FREE_LOOK = process.env.NEXT_PUBLIC_DEV_FREE_LOOK === "true";
 
-/** Scene radii per second while a key is held — captures arrive at any scale. */
-const MOVE_SPEED = 0.5;
+/**
+ * Scene radii per second while a key is held — captures arrive at any scale, so
+ * speed is a fraction of the thing rather than a fixed distance.
+ *
+ * Overridable with NEXT_PUBLIC_DEV_MOVE_SPEED: what feels right depends on how
+ * large the capture is and what you are looking for, and the alternative is
+ * asking for a rebuild every time.
+ */
+const MOVE_SPEED = Number(process.env.NEXT_PUBLIC_DEV_MOVE_SPEED) || 0.12;
 
-/** Strafe, rise and forward, in that order. A/D stay unbound: they turn. */
+/**
+ * Strafe, rise and forward, in that order.
+ *
+ * A/D and the arrows are free here in a way they are not on the Spark path,
+ * where they turn: this renderer has never bound a key, and turning is the
+ * drag. So they go to strafing, which is where a hand expects them.
+ */
 const MOVE_KEYS: Record<string, readonly [number, number, number]> = {
   KeyW: [0, 0, 1],
+  ArrowUp: [0, 0, 1],
   KeyS: [0, 0, -1],
+  ArrowDown: [0, 0, -1],
+  KeyA: [-1, 0, 0],
+  ArrowLeft: [-1, 0, 0],
   KeyQ: [-1, 0, 0],
+  KeyD: [1, 0, 0],
+  ArrowRight: [1, 0, 0],
   KeyE: [1, 0, 0],
   Space: [0, 1, 0],
   ShiftLeft: [0, -1, 0],
