@@ -28,13 +28,6 @@ const UPRIGHT_X_DEGREES = 180;
 /** Matches the framing Spark used, so the swap does not change how wide a room reads. */
 const FOV_DEGREES = 60;
 
-/**
- * Where a person's eyes are, in metres. Only usable on a capture that came back
- * with a metric scale factor — raw output arrives at arbitrary size, and the
- * four generated so far ranged from 1.1x to 3.1x, so a fixed number in splat
- * units would be waist height in one capture and above the roof in another.
- */
-const EYE_HEIGHT_METRES = 1.6;
 
 /** How fast a drag turns the view, in radians per pixel. */
 const LOOK_SPEED = 0.005;
@@ -334,17 +327,16 @@ export default function PlayCanvasSplatViewer({
      * its focal point is the splat's bound centre.
      */
     function frame(entity: pc.Entity, resource: pc.GSplatResource) {
-      // Measured from the splat centres, not from resource.aabb.
+      // Splat centres rather than resource.aabb, for the scene's radius — which
+      // sizes the clip planes and, for a capture with no metric scale, the
+      // movement speed. A bounding box is dragged out by a single floater, and
+      // a generated world has sky in it: on the street the box is three times
+      // the size of anything real. The camera itself is placed below.
       //
-      // A bounding box is dragged off by a single floater, and a generated
-      // world has sky and haze in it — so its box can be many times the size of
-      // the room and centred on nothing in particular. That is what put the
-      // camera outside the render. splatFraming.ts was written against exactly
-      // this problem for the other renderer; this is the same percentiles.
-      //
+      // The same percentiles splatFraming.ts uses for the other renderer.
       // Centres go through the entity's world transform before anything is
-      // measured, which is also where the 180° turn about X that stands a
-      // capture upright gets accounted for.
+      // measured, which is where the 180° turn about X that stands a capture
+      // upright gets accounted for.
       const matrix = entity.getWorldTransform();
       const scratch = new pc.Vec3();
       const framing = resource.centers
@@ -375,51 +367,28 @@ export default function PlayCanvasSplatViewer({
         return;
       }
 
-      // Captures made before World Labs open where they always did: at the
-      // origin, looking down -Z.
+      // Every capture opens at the origin, looking down -Z.
       //
-      // Not nostalgia. Until recently `frame()` read its bounds through
-      // `gsplat.instance`, which returns null under the unified rendering
-      // engine 2.21 switched on — so it took its early return on every capture
-      // and the camera simply stayed where it was put. Everything captured in
-      // that period was framed, named and judged under that behaviour, and the
-      // SummerHacks journey was composed against it. Re-aiming those now would
-      // be changing shots somebody already chose.
+      // Because that is where the camera was. Marble builds a world around the
+      // viewpoint it was given, and it shows in the geometry: across all four
+      // generated so far the median splat sits within 0.01 of x=0 and z=0, and
+      // the origin stands 1.4-2.1m above the floor — a held phone. It also
+      // agrees with the metadata, which reports the ground 0.60, 0.61 and 1.20
+      // units down where the splats put it at 0.67, 0.77 and 1.23.
       //
-      // Absence of reconstruction metadata is the test rather than an album
-      // name: what it really asks is "was this captured before the pipeline
-      // knew where the floor was", and nothing captured from here on will be.
-      if (!worldRef.current) {
-        pivot.set(0, 0, 0);
-        distance = 0;
-        yaw = 0;
-        pitch = 0;
-        place();
-        return;
-      }
-
-      if (!framing) return;
-
-      // Standing height above the trimmed floor. Where World Labs reports a
-      // metric scale, an eye is 1.6m converted into splat units; without one
-      // there is no way to know what a unit is, so a fraction of the room's own
-      // height stands in — and either is clamped so a low capture does not put
-      // the camera through the ceiling.
-      const scale = worldRef.current?.metricScaleFactor;
-      const eye = scale && scale > 0
-        ? EYE_HEIGHT_METRES / scale
-        : framing.height * 0.4;
-      pivot.set(
-        framing.center.x,
-        framing.floorY + Math.min(eye, framing.height * 0.8),
-        framing.center.z,
-      );
-
+      // Framing off the splats was solving a problem that does not exist here.
+      // It reads well enough in a room, where the middle of the extent is also
+      // roughly where you stood, but a generated outdoor scene runs off into
+      // sky and distance on one side: on the street the midpoint of the extent
+      // lands 45% of the horizontal radius away from any of the geometry, and
+      // at the food stall 69%. That is the pov that could never be pinpointed.
+      //
+      // It is also why captures from before all of this opened correctly. The
+      // camera sat at the origin then because a null bounding box made frame()
+      // give up early — accidentally right, for this reason.
+      pivot.set(0, 0, 0);
       distance = 0;
-      // Face down the longer horizontal axis: the most depth in view, rather
-      // than a wall up close.
-      yaw =
-        Math.atan2(-framing.forward.x, -framing.forward.z) * (180 / Math.PI);
+      yaw = 0;
       pitch = 0;
       place();
     }
