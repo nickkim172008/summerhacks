@@ -16,6 +16,7 @@ import type { ExtractedAudio } from "./audioTrack";
 import type { StatusReport } from "./captureJob";
 import type { CaptureJob } from "./captureQueue";
 import type { CaptureStatus, WorldLabsCapture } from "./captureStatus";
+import type { CaptureBackend } from "./captureBackend";
 
 /**
  * A blip during a 90-minute job is not a failure, so polling rides them out —
@@ -100,6 +101,12 @@ export interface CaptureItem {
   startedAt: number | null;
   uploadFraction: number;
   status: CaptureStatus | null;
+  /**
+   * Which service this row goes to, and once it has been uploaded, which one is
+   * holding it. Every later call about the job has to be addressed to the same
+   * one — the other has never heard of it.
+   */
+  backend: CaptureBackend;
   /**
    * What the finished world is, beyond its splat. Arrives with the status that
    * reports success and is held until the place is written, since that is the
@@ -191,6 +198,7 @@ export type CaptureEvent =
       type: "upload-succeeded";
       id: string;
       serialize: string;
+      backend: CaptureBackend;
       startedAt: number;
     }
   | { type: "upload-failed"; id: string; message: string }
@@ -214,6 +222,11 @@ function blankItem(id: string, name: string): CaptureItem {
     name,
     phase: "checking",
     world: null,
+    // The literal, not the constant from captureBackend: this file may not
+    // import a value from another module — the tests run it under Node's type
+    // stripping, which erases `import type` but would have to resolve a real
+    // import, and the repo's specifiers are extensionless.
+    backend: "worldlabs",
     file: null,
     serialize: null,
     albumId: null,
@@ -250,8 +263,12 @@ export function pickedItem(
   file: File,
   name: string,
   albumId: string | null = null,
+  backend: CaptureBackend = "worldlabs",
 ): CaptureItem {
-  return { ...blankItem(id, name), file, albumId };
+  // Fixed to the row here rather than read from the form later: the choice can
+  // be changed while a batch is still uploading, and a row must be judged
+  // against, sent to and polled at the service it was picked for.
+  return { ...blankItem(id, name), file, albumId, backend };
 }
 
 export function resumedItem(id: string, job: CaptureJob): CaptureItem {
@@ -269,6 +286,10 @@ export function resumedItem(id: string, job: CaptureJob): CaptureItem {
         }
       : null),
     serialize: job.serialize,
+    // Back off storage, because polling it at the other service asks about a
+    // job that has never existed there. Absent on jobs written before the
+    // choice existed, all of which went to World Labs.
+    backend: job.backend ?? "worldlabs",
     startedAt: job.startedAt,
     albumId: job.albumId ?? null,
     capturedAt: job.capturedAt ?? null,
@@ -484,6 +505,8 @@ function stepItem(item: CaptureItem, event: CaptureEvent): CaptureItem {
         ...item,
         phase: "waiting",
         serialize: event.serialize,
+        // What the server says took it, which may not be what was asked for.
+        backend: event.backend,
         startedAt: event.startedAt,
         uploadFraction: 1,
         file: null,

@@ -15,6 +15,13 @@
  */
 export interface CaptureJob {
   serialize: string;
+  /**
+   * Which service is holding this job. Optional because jobs written before
+   * the choice existed are already in somebody's localStorage and still have a
+   * splat coming — a missing value means World Labs, which is what everything
+   * from that period went to.
+   */
+  backend?: "worldlabs" | "kiri";
   name: string;
   startedAt: number;
   albumId?: string;

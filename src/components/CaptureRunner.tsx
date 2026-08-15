@@ -12,11 +12,11 @@ import {
 import dynamic from "next/dynamic";
 import { CAPTURE_STATUS_LABEL } from "@/lib/captureStatus";
 import {
-  MAX_VIDEO_HEIGHT,
-  MAX_VIDEO_SECONDS,
-  MAX_VIDEO_WIDTH,
-} from "@/lib/kiri";
-import { MAX_UPLOAD_BYTES } from "@/lib/worldlabs";
+  BACKENDS,
+  DEFAULT_BACKEND,
+  describeVideoProblem,
+  type CaptureBackend,
+} from "@/lib/captureBackend";
 import { fetchSplat, fetchStatus, uploadVideo } from "@/lib/captureJob";
 import {
   listJobs,
@@ -144,6 +144,12 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
 
   const [queue, dispatch] = useReducer(reduceQueue, !isNew, createQueue);
   const [formKey, setFormKey] = useState(0);
+  /**
+   * Which service the next videos go to. Held on the form rather than per row,
+   * because it is a decision about the batch you are about to pick — a row that
+   * has already been uploaded is at whichever service took it and cannot move.
+   */
+  const [backend, setBackend] = useState<CaptureBackend>(DEFAULT_BACKEND);
   const [now, setNow] = useState(() => Date.now());
 
   // The jobs live in localStorage, not in state: reconstruction outlasts the
@@ -264,7 +270,9 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           // row's problem. An unreadable file is let through as it always was:
           // the server rejects what it must.
           problem:
-            DEMO_CAPTURE || !meta ? null : describeProblem(meta, file.size),
+            DEMO_CAPTURE || !meta
+              ? null
+              : describeVideoProblem(item.backend, { ...meta, bytes: file.size }),
           details: toDetails(found, when),
         });
 
@@ -286,7 +294,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
         type: "cache-checked",
         id: item.id,
         splat: cached
-          ? attachSplat(item.id, splatFile(cached, item.name), item.name)
+          ? attachSplat(item.id, splatFile(cached, item.name, item.backend), item.name)
           : null,
       });
     },
@@ -315,9 +323,12 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
         // only thing that reads it, and what survives afterwards is the splat,
         // the details, and the sound — a few megabytes rather than the several
         // hundred a copy of every source video would cost to keep unread.
-        const serialize = await uploadLimit(() =>
-          uploadVideo(file, (fraction) =>
-            dispatch({ type: "upload-progress", id: item.id, fraction }),
+        const { serialize, backend } = await uploadLimit(() =>
+          uploadVideo(
+            file,
+            (fraction) =>
+              dispatch({ type: "upload-progress", id: item.id, fraction }),
+            item.backend,
           ),
         );
         const startedAt = Date.now();
@@ -325,6 +336,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           type: "upload-succeeded",
           id: item.id,
           serialize,
+          backend,
           startedAt,
         });
         // A row dropped mid-upload must not come back from the dead: persisting
@@ -339,6 +351,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
             location: item.location ?? undefined,
             locationName: item.locationName.trim() || undefined,
             audioSeconds: item.audio?.seconds,
+            backend,
           });
         }
       } catch (err) {
@@ -362,11 +375,11 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
           // By world id when it is known: an operation stops being addressable
           // three hours in, and a capture left overnight would otherwise find
           // its job aged out while the world is still there.
-          fetchSplat(serialize, item.world?.worldId),
+          fetchSplat(serialize, item.world?.worldId, item.backend),
         );
         const splat = attachSplat(
           item.id,
-          splatFile(blob, item.name),
+          splatFile(blob, item.name, item.backend),
           item.name,
         );
         if (!splat) return;
@@ -418,9 +431,12 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
             (ANONYMISE_LOCATIONS ? locationToStore(item.id, null) : live);
           const placeId = await createPlace(
             splat.name,
-            // Already SPZ: World Labs stores it that way, so the transcode the
-            // KIRI path ran here has nothing left to do.
-            splat.file,
+            // World Labs stores SPZ, so its result needs nothing doing to it.
+            // KIRI returns float32 PLY — 65MB for a small room, most of it
+            // spherical harmonics at full precision — which SPZ quantises to
+            // about a thirteenth with no visible loss, and only the compressed
+            // copy is ever uploaded or served.
+            item.backend === "kiri" ? await toSpz(splat) : splat.file,
             user?.uid ?? "anonymous",
             {
               location,
@@ -564,7 +580,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
 
     async function check(target: CaptureItem) {
       try {
-        const report = await fetchStatus(target.serialize as string);
+        const report = await fetchStatus(target.serialize as string, target.backend);
         if (stopped) return;
         // A failure now says why, and says that the credits went with it —
         // World Labs charges at submit and does not return them.
@@ -627,7 +643,7 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
     dispatch({
       type: "added",
       items: Array.from(files).map((file) =>
-        pickedItem(nextRowId(), file, prettyName(file.name), albumId),
+        pickedItem(nextRowId(), file, prettyName(file.name), albumId, backend),
       ),
     });
     // The input holds on to its selection, so re-picking a file that was just
@@ -669,6 +685,8 @@ export default function CaptureRunner({ albumId, mode }: CaptureRunnerProps) {
             onChange={(e) => addVideos(e.target.files)}
             className="sr-only"
           />
+
+          <BackendPicker value={backend} onChange={setBackend} />
 
           {!isFirebaseConfigured && !DEMO_CAPTURE && (
             <p className="mt-6 rounded-xl border border-[rgba(138,90,18,0.25)] bg-[rgba(138,90,18,0.06)] px-4 py-3 text-[13px] leading-[18px] text-[#8A5A12]">
@@ -800,29 +818,6 @@ async function liftAudio(file: File) {
   }
 }
 
-function describeProblem({ seconds, width, height }: VideoMeta, bytes?: number) {
-  // Checked first because it is the one that bites in practice. World Labs
-  // signs its upload URL over an x-goog-content-length-range of 100 MB, and a
-  // 1080p iPhone walkthrough passes that at about two and a half minutes —
-  // sooner than the duration cap below. Caught here, or the whole file is sent
-  // to earn a bare refusal from Google Cloud Storage.
-  if (bytes !== undefined && bytes > MAX_UPLOAD_BYTES) {
-    return `too big at ${Math.round(bytes / 1e6)} MB, max ${Math.round(MAX_UPLOAD_BYTES / 1e6)} MB`;
-  }
-  if (seconds > MAX_VIDEO_SECONDS) {
-    return `too long, max ${MAX_VIDEO_SECONDS / 60} minutes`;
-  }
-  // The cap is a frame size, not an orientation, and phones record portrait —
-  // so measure the long and short sides, not width and height, or every
-  // handheld walkthrough gets rejected at 1080×1920.
-  if (
-    Math.max(width, height) > MAX_VIDEO_WIDTH ||
-    Math.min(width, height) > MAX_VIDEO_HEIGHT
-  ) {
-    return `too large, max ${MAX_VIDEO_WIDTH}×${MAX_VIDEO_HEIGHT}`;
-  }
-  return null;
-}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -846,6 +841,76 @@ function toIso(local: string) {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined;
 }
 
+/**
+ * Which service the next videos go to.
+ *
+ * Both are shown with what they cost you rather than only what they offer.
+ * They differ in ways that are invisible until it is too late to change your
+ * mind — one invents the parts of a room it never saw, the other takes an hour
+ * and charges nothing — and someone picking between them at the moment they
+ * pick a video is the only point where that is still a choice.
+ */
+function BackendPicker({
+  value,
+  onChange,
+}: {
+  value: CaptureBackend;
+  onChange: (next: CaptureBackend) => void;
+}) {
+  return (
+    <fieldset className="mt-6">
+      <legend className="text-[11px] leading-3 font-semibold tracking-[0.12em] uppercase text-[#6B7178]">
+        Reconstruct with
+      </legend>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {Object.values(BACKENDS).map((profile) => {
+          const active = profile.id === value;
+          return (
+            <label
+              key={profile.id}
+              className={`cursor-pointer rounded-2xl border p-4 transition-colors duration-150 ${
+                active
+                  ? "border-[#0071E3] bg-[rgba(0,113,227,0.04)]"
+                  : "border-[rgba(20,22,26,0.12)] bg-white hover:border-[rgba(20,22,26,0.24)]"
+              }`}
+            >
+              <span className="flex items-baseline gap-2">
+                <input
+                  type="radio"
+                  name="capture-backend"
+                  value={profile.id}
+                  checked={active}
+                  onChange={() => onChange(profile.id)}
+                  className="sr-only"
+                />
+                <span className="text-[15px] font-semibold text-[#14161A]">
+                  {profile.label}
+                </span>
+                <span className="text-[12px] text-[#6B7178]">
+                  {profile.duration}
+                </span>
+              </span>
+              <span className="mt-1 block text-[13px] leading-[18px] text-[#4A4F57]">
+                {profile.summary}
+              </span>
+              <ul className="mt-2 space-y-1">
+                {profile.notes.map((note) => (
+                  <li
+                    key={note}
+                    className="text-[12px] leading-[17px] text-[#6B7178]"
+                  >
+                    {note}
+                  </li>
+                ))}
+              </ul>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 function wavFile(blob: Blob, name: string) {
   return new File([blob], `${slug(name)}.wav`, { type: "audio/wav" });
 }
@@ -854,10 +919,26 @@ function prettyName(fileName: string) {
   return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
 }
 
-function splatFile(blob: Blob, name: string) {
-  // .spz now, not .ply — what arrives from World Labs is already the stored
-  // format, and Storage keys the object off this name.
-  return new File([blob], `${slug(name)}.spz`, {
+/**
+ * Spark's transcode, imported lazily: the form and progress views have no use
+ * for it, and only KIRI's output reaches it. Saves run one at a time — this
+ * holds the whole capture in memory, decoded.
+ */
+async function toSpz({ file, name }: { file: File; name: string }) {
+  const { transcodeSpz } = await import("@sparkjsdev/spark");
+  const { fileBytes } = await transcodeSpz({
+    inputs: [{ fileBytes: new Uint8Array(await file.arrayBuffer()) }],
+  });
+  return new File([fileBytes as BlobPart], `${slug(name)}.spz`, {
+    type: "application/octet-stream",
+  });
+}
+
+function splatFile(blob: Blob, name: string, backend: CaptureBackend) {
+  // The extension has to match what actually arrived: Spark and PlayCanvas both
+  // sniff the format from the bytes, but Storage keys the object off this name
+  // and a .spz holding PLY is a capture nobody can explain later.
+  return new File([blob], `${slug(name)}.${backend === "kiri" ? "ply" : "spz"}`, {
     type: "application/octet-stream",
   });
 }

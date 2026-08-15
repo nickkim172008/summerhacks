@@ -1,17 +1,39 @@
 import { CAPTURE_STATUS, type WorldLabsCapture } from "@/lib/captureStatus";
+import { DEFAULT_BACKEND, isCaptureBackend } from "@/lib/captureBackend";
 import { getOperation, type Operation } from "@/lib/worldlabs.server";
+import { getStatus as getKiriStatus } from "@/lib/kiri.server";
+import { KIRI_STATUS } from "@/lib/kiri";
 
 /**
- * Polls one generation, and hands back the world's details the moment it is
- * done. The details ride along with the status rather than needing a call of
- * their own: the client is already polling, and the metadata is small.
+ * Polls one job at whichever service started it, and reports it in the app's
+ * own vocabulary so the queue never learns which one that was.
+ *
+ * A finished World Labs job also hands back the world's details here rather
+ * than needing a call of their own: the client is already polling, and the
+ * metadata is small.
  */
 export async function GET(req: Request) {
-  const serialize = new URL(req.url).searchParams.get("serialize");
+  const params = new URL(req.url).searchParams;
+  const serialize = params.get("serialize");
   if (!serialize) {
     return Response.json({ error: "serialize is required" }, { status: 400 });
   }
+  const asked = params.get("backend");
+  const backend = isCaptureBackend(asked) ? asked : DEFAULT_BACKEND;
+
   try {
+    if (backend === "kiri") {
+      const status = await getKiriStatus(serialize);
+      return Response.json({
+        status,
+        ready: status === KIRI_STATUS.successful,
+        // Expiry is fatal the same way failure is: the result is gone and the
+        // same task id will never produce it.
+        failed:
+          status === KIRI_STATUS.failed || status === KIRI_STATUS.expired,
+      });
+    }
+
     const operation = await getOperation(serialize);
     const reported = operation.metadata?.progress?.status;
 

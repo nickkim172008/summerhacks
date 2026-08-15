@@ -24,8 +24,9 @@ export interface SplatViewerProps {
  * Which renderer is mounted. PlayCanvas is what SuperSplat is built on and is
  * the default; Spark stays reachable for a side-by-side while the swap settles.
  *
- * Spark is no longer on the capture path: World Labs returns SPZ, so the
- * `transcodeSpz` step it was kept for is gone.
+ * Spark is still on the capture path for one thing: KIRI returns float32 PLY,
+ * and `transcodeSpz` is what turns it into the SPZ that gets stored. A capture
+ * reconstructed by World Labs never reaches it.
  */
 export type SplatRenderer = "playcanvas" | "spark";
 
